@@ -1,129 +1,108 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
-import { _initTestDatabase, createTask, getTaskById } from './db.js';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { AgentRunner } from './agent-engine.js';
 import {
-  _resetSchedulerLoopForTests,
+  _resetDatabaseForTests,
+  closeDatabase,
+  createConversation,
+  createTask,
+  getConversation,
+  getTaskById,
+  initDatabase,
+} from './db.js';
+import {
+  computeInitialNextRun,
   computeNextRun,
-  startSchedulerLoop,
+  runTask,
 } from './task-scheduler.js';
 
+function setupDb(): void {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-scheduler-'));
+  initDatabase({
+    persistentDbPath: path.join(root, 'store', 'messages.db'),
+    localDbPath: path.join(root, 'tmp', 'messages.db'),
+    forceReinitialize: true,
+  });
+}
+
+afterEach(() => {
+  closeDatabase();
+  _resetDatabaseForTests();
+});
+
 describe('task scheduler', () => {
-  beforeEach(() => {
-    _initTestDatabase();
-    _resetSchedulerLoopForTests();
-    vi.useFakeTimers();
+  it('computes initial next_run for interval schedules', () => {
+    const now = new Date('2026-03-08T00:00:00.000Z');
+    const next = computeInitialNextRun('interval', '60000', now);
+    expect(next).toBe('2026-03-08T00:01:00.000Z');
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('pauses due tasks with invalid group folders to prevent retry churn', async () => {
-    createTask({
-      id: 'task-invalid-folder',
-      group_folder: '../../outside',
-      chat_jid: 'bad@g.us',
-      prompt: 'run',
-      schedule_type: 'once',
-      schedule_value: '2026-02-22T00:00:00.000Z',
-      context_mode: 'isolated',
-      next_run: new Date(Date.now() - 60_000).toISOString(),
-      status: 'active',
-      created_at: '2026-02-22T00:00:00.000Z',
-    });
-
-    const enqueueTask = vi.fn(
-      (_groupJid: string, _taskId: string, fn: () => Promise<void>) => {
-        void fn();
+  it('skips missed interval windows when computing next run', () => {
+    const now = new Date('2026-03-08T00:10:00.000Z');
+    const next = computeNextRun(
+      {
+        id: 'task-1',
+        conversation_id: 'conv-1',
+        prompt: 'hello',
+        schedule_type: 'interval',
+        schedule_value: '60000',
+        context_mode: 'isolated',
+        next_run: '2026-03-08T00:00:00.000Z',
+        last_run: null,
+        last_result: null,
+        status: 'active',
+        created_at: now.toISOString(),
       },
+      now,
     );
 
-    startSchedulerLoop({
-      registeredGroups: () => ({}),
-      getSessions: () => ({}),
-      queue: { enqueueTask } as any,
-      onProcess: () => {},
-      sendMessage: async () => {},
+    expect(next).toBe('2026-03-08T00:11:00.000Z');
+  });
+
+  it('runs task and updates conversation session for group mode', async () => {
+    setupDb();
+    createConversation('conv-123');
+
+    createTask({
+      id: 'task-group',
+      conversation_id: 'conv-123',
+      prompt: 'do work',
+      schedule_type: 'once',
+      schedule_value: '2026-03-09T10:00:00',
+      context_mode: 'group',
+      next_run: '2026-03-09T02:00:00.000Z',
+      status: 'active',
+      created_at: '2026-03-08T00:00:00.000Z',
     });
 
-    await vi.advanceTimersByTimeAsync(10);
-
-    const task = getTaskById('task-invalid-folder');
-    expect(task?.status).toBe('paused');
-  });
-
-  it('computeNextRun anchors interval tasks to scheduled time to prevent drift', () => {
-    const scheduledTime = new Date(Date.now() - 2000).toISOString(); // 2s ago
-    const task = {
-      id: 'drift-test',
-      group_folder: 'test',
-      chat_jid: 'test@g.us',
-      prompt: 'test',
-      schedule_type: 'interval' as const,
-      schedule_value: '60000', // 1 minute
-      context_mode: 'isolated' as const,
-      next_run: scheduledTime,
-      last_run: null,
-      last_result: null,
-      status: 'active' as const,
-      created_at: '2026-01-01T00:00:00.000Z',
+    const fakeEngine: AgentRunner = {
+      async run() {
+        return {
+          status: 'success',
+          result: 'task result',
+          newSessionId: 'session-1',
+          lastAssistantUuid: 'assistant-1',
+        };
+      },
     };
 
-    const nextRun = computeNextRun(task);
-    expect(nextRun).not.toBeNull();
+    const task = getTaskById('task-group');
+    if (!task) {
+      throw new Error('task not found');
+    }
 
-    // Should be anchored to scheduledTime + 60s, NOT Date.now() + 60s
-    const expected = new Date(scheduledTime).getTime() + 60000;
-    expect(new Date(nextRun!).getTime()).toBe(expected);
-  });
+    const result = await runTask(task, fakeEngine);
+    expect(result.status).toBe('success');
 
-  it('computeNextRun returns null for once-tasks', () => {
-    const task = {
-      id: 'once-test',
-      group_folder: 'test',
-      chat_jid: 'test@g.us',
-      prompt: 'test',
-      schedule_type: 'once' as const,
-      schedule_value: '2026-01-01T00:00:00.000Z',
-      context_mode: 'isolated' as const,
-      next_run: new Date(Date.now() - 1000).toISOString(),
-      last_run: null,
-      last_result: null,
-      status: 'active' as const,
-      created_at: '2026-01-01T00:00:00.000Z',
-    };
+    const updatedTask = getTaskById('task-group');
+    expect(updatedTask?.status).toBe('completed');
 
-    expect(computeNextRun(task)).toBeNull();
-  });
-
-  it('computeNextRun skips missed intervals without infinite loop', () => {
-    // Task was due 10 intervals ago (missed)
-    const ms = 60000;
-    const missedBy = ms * 10;
-    const scheduledTime = new Date(Date.now() - missedBy).toISOString();
-
-    const task = {
-      id: 'skip-test',
-      group_folder: 'test',
-      chat_jid: 'test@g.us',
-      prompt: 'test',
-      schedule_type: 'interval' as const,
-      schedule_value: String(ms),
-      context_mode: 'isolated' as const,
-      next_run: scheduledTime,
-      last_run: null,
-      last_result: null,
-      status: 'active' as const,
-      created_at: '2026-01-01T00:00:00.000Z',
-    };
-
-    const nextRun = computeNextRun(task);
-    expect(nextRun).not.toBeNull();
-    // Must be in the future
-    expect(new Date(nextRun!).getTime()).toBeGreaterThan(Date.now());
-    // Must be aligned to the original schedule grid
-    const offset =
-      (new Date(nextRun!).getTime() - new Date(scheduledTime).getTime()) % ms;
-    expect(offset).toBe(0);
+    const conversation = getConversation('conv-123');
+    expect(conversation?.session_id).toBe('session-1');
+    expect(conversation?.last_assistant_uuid).toBe('assistant-1');
   });
 });

@@ -1,281 +1,195 @@
-import { ChildProcess } from 'child_process';
-import { CronExpressionParser } from 'cron-parser';
-import fs from 'fs';
+import { randomUUID } from 'crypto';
 
-import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL, TIMEZONE } from './config.js';
+import { CronExpressionParser } from 'cron-parser';
+
+import { AgentRunner } from './agent-engine.js';
+import { TIMEZONE } from './config.js';
 import {
-  ContainerOutput,
-  runContainerAgent,
-  writeTasksSnapshot,
-} from './container-runner.js';
-import {
-  getAllTasks,
-  getDueTasks,
-  getTaskById,
+  ensureConversation,
+  getConversation,
   logTaskRun,
-  updateTask,
+  storeConversationMessage,
+  updateConversationSession,
   updateTaskAfterRun,
 } from './db.js';
-import { GroupQueue } from './group-queue.js';
-import { resolveGroupFolderPath } from './group-folder.js';
-import { logger } from './logger.js';
-import { RegisteredGroup, ScheduledTask } from './types.js';
+import { ScheduledTask } from './types.js';
 
-/**
- * Compute the next run time for a recurring task, anchored to the
- * task's scheduled time rather than Date.now() to prevent cumulative
- * drift on interval-based tasks.
- *
- * Co-authored-by: @community-pr-601
- */
-export function computeNextRun(task: ScheduledTask): string | null {
-  if (task.schedule_type === 'once') return null;
+function validateCron(scheduleValue: string): void {
+  CronExpressionParser.parse(scheduleValue, { tz: TIMEZONE });
+}
 
-  const now = Date.now();
+function validateInterval(scheduleValue: string): number {
+  const intervalMs = Number.parseInt(scheduleValue, 10);
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+    throw new Error(`Invalid interval: ${scheduleValue}`);
+  }
+  return intervalMs;
+}
 
-  if (task.schedule_type === 'cron') {
-    const interval = CronExpressionParser.parse(task.schedule_value, {
+function parseLocalTimestamp(scheduleValue: string): Date {
+  if (/[Zz]$/.test(scheduleValue) || /[+-]\d{2}:\d{2}$/.test(scheduleValue)) {
+    throw new Error(
+      'schedule_value for once must be local time without timezone suffix',
+    );
+  }
+  const date = new Date(scheduleValue);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Invalid once schedule_value: ${scheduleValue}`);
+  }
+  return date;
+}
+
+export function computeInitialNextRun(
+  scheduleType: ScheduledTask['schedule_type'],
+  scheduleValue: string,
+  now: Date = new Date(),
+): string | null {
+  if (scheduleType === 'once') {
+    return parseLocalTimestamp(scheduleValue).toISOString();
+  }
+
+  if (scheduleType === 'cron') {
+    validateCron(scheduleValue);
+    const expression = CronExpressionParser.parse(scheduleValue, {
+      currentDate: now,
       tz: TIMEZONE,
     });
-    return interval.next().toISOString();
+    return expression.next().toISOString();
   }
 
-  if (task.schedule_type === 'interval') {
-    const ms = parseInt(task.schedule_value, 10);
-    if (!ms || ms <= 0) {
-      // Guard against malformed interval that would cause an infinite loop
-      logger.warn(
-        { taskId: task.id, value: task.schedule_value },
-        'Invalid interval value',
-      );
-      return new Date(now + 60_000).toISOString();
-    }
-    // Anchor to the scheduled time, not now, to prevent drift.
-    // Skip past any missed intervals so we always land in the future.
-    let next = new Date(task.next_run!).getTime() + ms;
-    while (next <= now) {
-      next += ms;
-    }
-    return new Date(next).toISOString();
-  }
-
-  return null;
+  const intervalMs = validateInterval(scheduleValue);
+  return new Date(now.getTime() + intervalMs).toISOString();
 }
 
-export interface SchedulerDependencies {
-  registeredGroups: () => Record<string, RegisteredGroup>;
-  getSessions: () => Record<string, string>;
-  queue: GroupQueue;
-  onProcess: (
-    groupJid: string,
-    proc: ChildProcess,
-    containerName: string,
-    groupFolder: string,
-  ) => void;
-  sendMessage: (jid: string, text: string) => Promise<void>;
-}
-
-async function runTask(
+export function computeNextRun(
   task: ScheduledTask,
-  deps: SchedulerDependencies,
-): Promise<void> {
-  const startTime = Date.now();
-  let groupDir: string;
-  try {
-    groupDir = resolveGroupFolderPath(task.group_folder);
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    // Stop retry churn for malformed legacy rows.
-    updateTask(task.id, { status: 'paused' });
-    logger.error(
-      { taskId: task.id, groupFolder: task.group_folder, error },
-      'Task has invalid group folder',
-    );
-    logTaskRun({
-      task_id: task.id,
-      run_at: new Date().toISOString(),
-      duration_ms: Date.now() - startTime,
-      status: 'error',
-      result: null,
-      error,
-    });
-    return;
-  }
-  fs.mkdirSync(groupDir, { recursive: true });
-
-  logger.info(
-    { taskId: task.id, group: task.group_folder },
-    'Running scheduled task',
-  );
-
-  const groups = deps.registeredGroups();
-  const group = Object.values(groups).find(
-    (g) => g.folder === task.group_folder,
-  );
-
-  if (!group) {
-    logger.error(
-      { taskId: task.id, groupFolder: task.group_folder },
-      'Group not found for task',
-    );
-    logTaskRun({
-      task_id: task.id,
-      run_at: new Date().toISOString(),
-      duration_ms: Date.now() - startTime,
-      status: 'error',
-      result: null,
-      error: `Group not found: ${task.group_folder}`,
-    });
-    return;
+  now: Date = new Date(),
+): string | null {
+  if (task.schedule_type === 'once') {
+    return null;
   }
 
-  // Update tasks snapshot for container to read (filtered by group)
-  const isMain = group.isMain === true;
-  const tasks = getAllTasks();
-  writeTasksSnapshot(
-    task.group_folder,
-    isMain,
-    tasks.map((t) => ({
-      id: t.id,
-      groupFolder: t.group_folder,
-      prompt: t.prompt,
-      schedule_type: t.schedule_type,
-      schedule_value: t.schedule_value,
-      status: t.status,
-      next_run: t.next_run,
-    })),
-  );
+  if (task.schedule_type === 'cron') {
+    validateCron(task.schedule_value);
+    const expression = CronExpressionParser.parse(task.schedule_value, {
+      currentDate: now,
+      tz: TIMEZONE,
+    });
+    return expression.next().toISOString();
+  }
 
-  let result: string | null = null;
-  let error: string | null = null;
+  const intervalMs = validateInterval(task.schedule_value);
+  const anchorTime = task.next_run
+    ? new Date(task.next_run).getTime()
+    : now.getTime();
 
-  // For group context mode, use the group's current session
-  const sessions = deps.getSessions();
-  const sessionId =
-    task.context_mode === 'group' ? sessions[task.group_folder] : undefined;
+  let next = anchorTime + intervalMs;
+  while (next <= now.getTime()) {
+    next += intervalMs;
+  }
 
-  // After the task produces a result, close the container promptly.
-  // Tasks are single-turn — no need to wait IDLE_TIMEOUT (30 min) for the
-  // query loop to time out. A short delay handles any final MCP calls.
-  const TASK_CLOSE_DELAY_MS = 10000;
-  let closeTimer: ReturnType<typeof setTimeout> | null = null;
+  return new Date(next).toISOString();
+}
 
-  const scheduleClose = () => {
-    if (closeTimer) return; // already scheduled
-    closeTimer = setTimeout(() => {
-      logger.debug({ taskId: task.id }, 'Closing task container after result');
-      deps.queue.closeStdin(task.chat_jid);
-    }, TASK_CLOSE_DELAY_MS);
-  };
+export interface TaskExecutionResult {
+  status: 'success' | 'timeout' | 'error';
+  task_id: string;
+  result: string | null;
+  duration_ms: number;
+  next_run: string | null;
+  error?: string;
+}
+
+export async function runTask(
+  task: ScheduledTask,
+  agentEngine: AgentRunner,
+): Promise<TaskExecutionResult> {
+  const startedAt = Date.now();
+  const nowIso = new Date().toISOString();
+  let resultText: string | null = null;
+  let error: string | undefined;
+  let status: 'success' | 'timeout' | 'error' = 'success';
+
+  const baseConversation =
+    task.context_mode === 'group'
+      ? ensureConversation(task.conversation_id)
+      : undefined;
+  const conversationId =
+    task.context_mode === 'group'
+      ? task.conversation_id
+      : `task-${task.id}-${randomUUID()}`;
 
   try {
-    const output = await runContainerAgent(
-      group,
-      {
-        prompt: task.prompt,
-        sessionId,
-        groupFolder: task.group_folder,
-        chatJid: task.chat_jid,
-        isMain,
-        isScheduledTask: true,
-        assistantName: ASSISTANT_NAME,
-      },
-      (proc, containerName) =>
-        deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
-      async (streamedOutput: ContainerOutput) => {
-        if (streamedOutput.result) {
-          result = streamedOutput.result;
-          // Forward result to user (sendMessage handles formatting)
-          await deps.sendMessage(task.chat_jid, streamedOutput.result);
-          scheduleClose();
-        }
-        if (streamedOutput.status === 'success') {
-          deps.queue.notifyIdle(task.chat_jid);
-        }
-        if (streamedOutput.status === 'error') {
-          error = streamedOutput.error || 'Unknown error';
-        }
-      },
-    );
+    const agentOutput = await agentEngine.run({
+      prompt: task.prompt,
+      conversationId,
+      sessionId: baseConversation?.session_id,
+      resumeAt: baseConversation?.last_assistant_uuid,
+      isScheduledTask: true,
+    });
 
-    if (closeTimer) clearTimeout(closeTimer);
+    resultText = agentOutput.result;
+    status = agentOutput.status;
+    error = agentOutput.error;
 
-    if (output.status === 'error') {
-      error = output.error || 'Unknown error';
-    } else if (output.result) {
-      // Result was already forwarded to the user via the streaming callback above
-      result = output.result;
+    if (task.context_mode === 'group') {
+      updateConversationSession(
+        conversationId,
+        agentOutput.newSessionId,
+        agentOutput.lastAssistantUuid,
+      );
+
+      if (resultText) {
+        storeConversationMessage({
+          id: `msg-${randomUUID()}`,
+          conversationId,
+          role: 'assistant',
+          sender: 'assistant',
+          senderName: 'Assistant',
+          content: resultText,
+          createdAt: nowIso,
+        });
+      }
     }
-
-    logger.info(
-      { taskId: task.id, durationMs: Date.now() - startTime },
-      'Task completed',
-    );
   } catch (err) {
-    if (closeTimer) clearTimeout(closeTimer);
+    status = 'error';
     error = err instanceof Error ? err.message : String(err);
-    logger.error({ taskId: task.id, error }, 'Task failed');
   }
 
-  const durationMs = Date.now() - startTime;
+  const nextRun = computeNextRun(task, new Date());
+  const summary =
+    status === 'error'
+      ? `Error: ${error || 'Unknown error'}`
+      : status === 'timeout'
+        ? `Timeout: ${(resultText || '').slice(0, 200)}`
+        : (resultText || 'Completed').slice(0, 200);
 
+  updateTaskAfterRun(task.id, nextRun, summary);
+
+  const durationMs = Date.now() - startedAt;
   logTaskRun({
     task_id: task.id,
     run_at: new Date().toISOString(),
     duration_ms: durationMs,
-    status: error ? 'error' : 'success',
-    result,
-    error,
+    status,
+    result: resultText,
+    error: error || null,
   });
 
-  const nextRun = computeNextRun(task);
-  const resultSummary = error
-    ? `Error: ${error}`
-    : result
-      ? result.slice(0, 200)
-      : 'Completed';
-  updateTaskAfterRun(task.id, nextRun, resultSummary);
-}
-
-let schedulerRunning = false;
-
-export function startSchedulerLoop(deps: SchedulerDependencies): void {
-  if (schedulerRunning) {
-    logger.debug('Scheduler loop already running, skipping duplicate start');
-    return;
-  }
-  schedulerRunning = true;
-  logger.info('Scheduler loop started');
-
-  const loop = async () => {
-    try {
-      const dueTasks = getDueTasks();
-      if (dueTasks.length > 0) {
-        logger.info({ count: dueTasks.length }, 'Found due tasks');
-      }
-
-      for (const task of dueTasks) {
-        // Re-check task status in case it was paused/cancelled
-        const currentTask = getTaskById(task.id);
-        if (!currentTask || currentTask.status !== 'active') {
-          continue;
-        }
-
-        deps.queue.enqueueTask(currentTask.chat_jid, currentTask.id, () =>
-          runTask(currentTask, deps),
-        );
-      }
-    } catch (err) {
-      logger.error({ err }, 'Error in scheduler loop');
-    }
-
-    setTimeout(loop, SCHEDULER_POLL_INTERVAL);
+  return {
+    status,
+    task_id: task.id,
+    result: resultText,
+    duration_ms: durationMs,
+    next_run: nextRun,
+    error,
   };
-
-  loop();
 }
 
-/** @internal - for tests only. */
-export function _resetSchedulerLoopForTests(): void {
-  schedulerRunning = false;
+export function getTaskConversation(task: ScheduledTask): string | undefined {
+  if (task.context_mode !== 'group') {
+    return undefined;
+  }
+  const conversation = getConversation(task.conversation_id);
+  return conversation?.id;
 }
