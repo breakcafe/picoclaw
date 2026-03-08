@@ -10,6 +10,8 @@ NanoClaw Lite is a serverless-friendly variant of NanoClaw. It keeps Claude Agen
 - Multi-turn state is persisted in SQLite + Claude session resume metadata.
 - Scheduled tasks are externally triggered by `/task/check` (EventBridge/FC timer).
 
+Detailed operations and deployment guide: `docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md`.
+
 ## API Overview
 
 - `GET /health`

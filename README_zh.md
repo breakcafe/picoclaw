@@ -10,6 +10,8 @@ NanoClaw Lite 是 NanoClaw 的 Serverless 裁剪版本。核心仍然使用 Clau
 - 多轮会话状态保存在 SQLite + Claude session resume 元数据。
 - 定时任务由外部 Cron 调用 `/task/check` 驱动。
 
+详细运维与部署手册：`docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md`。
+
 ## API 列表
 
 - `GET /health`
