@@ -1,0 +1,851 @@
+openapi: 3.0.3
+info:
+  title: NanoClaw Lite Serverless API
+  version: 1.0.0
+  description: |
+    HTTP API for NanoClaw Lite (serverless-oriented runtime).
+
+    Notes:
+    - All endpoints except `/health` require Bearer token authentication.
+    - `POST /chat` supports both JSON response mode and SSE streaming mode.
+    - Scheduled tasks are externally triggered by calling `/task/check`.
+servers:
+  - url: http://localhost:9000
+    description: Local development
+security:
+  - bearerAuth: []
+tags:
+  - name: System
+  - name: Chat
+  - name: Task
+paths:
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health check
+      description: Returns service health and runtime execution limit.
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                ok:
+                  value:
+                    status: ok
+                    version: 1.0.0
+                    max_execution_ms: 300000
+
+  /chat:
+    post:
+      tags:
+        - Chat
+      summary: Start or continue a conversation
+      description: |
+        Sends a user message to the agent.
+
+        Behavior:
+        - Without `conversation_id`: creates a new conversation.
+        - With `conversation_id`: resumes an existing conversation.
+        - With `stream=true`: returns `text/event-stream` (SSE).
+      operationId: postChat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            examples:
+              newConversation:
+                value:
+                  message: 请只回答数字：1+1 等于几？
+                  sender: verify
+                  sender_name: Verifier
+                  stream: false
+              continueConversation:
+                value:
+                  message: 上一轮你回答了什么？只回答内容。
+                  conversation_id: conv-0df6aee0-86e1-45ac-b33b-c13086b72c36
+                  sender: verify
+                  sender_name: Verifier
+                  stream: false
+              streamMode:
+                value:
+                  message: 逐步思考后给结论
+                  sender: verify
+                  sender_name: Verifier
+                  stream: true
+                  max_execution_ms: 120000
+      responses:
+        '200':
+          description: Chat processed successfully (JSON or SSE stream)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+              examples:
+                success:
+                  value:
+                    status: success
+                    conversation_id: conv-0df6aee0-86e1-45ac-b33b-c13086b72c36
+                    message_id: msg-3aaf5d3f-a17b-4e8e-bec3-a33df4c9af86
+                    result: '2'
+                    session_id: 3e49773a-b4a6-4c53-8cd9-b3f96c5377e3
+                    duration_ms: 6701
+                    error: null
+                    outbound_messages: []
+                timeout:
+                  value:
+                    status: timeout
+                    conversation_id: conv-aaa
+                    message_id: msg-bbb
+                    result: 已生成部分结果
+                    session_id: session-xxx
+                    duration_ms: 120000
+                    error: Execution aborted after 120000ms. Use conversation_id to continue.
+                    outbound_messages: []
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                sse:
+                  value: |
+                    event: start
+                    data: {"conversation_id":"conv-123","message_id":"msg-123"}
+
+                    event: chunk
+                    data: {"text":"部分输出"}
+
+                    event: done
+                    data: {"status":"success","conversation_id":"conv-123","message_id":"msg-123","result":"最终结果","session_id":"session-123","duration_ms":3210,"error":null,"outbound_messages":[]}
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                missingMessage:
+                  value:
+                    error: message is required
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Conversation ID not found when resuming
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                notFound:
+                  value:
+                    error: 'conversation_id not found: conv-missing'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatInternalErrorResponse'
+
+  /chat/{conversation_id}:
+    get:
+      tags:
+        - Chat
+      summary: Get conversation state
+      operationId: getConversation
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '200':
+          description: Conversation state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationStatusResponse'
+        '400':
+          description: Missing or invalid path parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /task:
+    post:
+      tags:
+        - Task
+      summary: Create a scheduled task
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+            examples:
+              once:
+                value:
+                  id: verify-task-once
+                  prompt: 请只回复 ok
+                  schedule_type: once
+                  schedule_value: '2026-03-07T00:00:00'
+                  context_mode: isolated
+              interval:
+                value:
+                  prompt: 每 5 分钟输出一次状态
+                  schedule_type: interval
+                  schedule_value: '300000'
+                  context_mode: isolated
+              cron:
+                value:
+                  prompt: 生成每日摘要
+                  schedule_type: cron
+                  schedule_value: 0 9 * * 1-5
+                  context_mode: group
+                  conversation_id: conv-123
+      responses:
+        '201':
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          description: Invalid task payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tasks:
+    get:
+      tags:
+        - Task
+      summary: List tasks
+      operationId: listTasks
+      responses:
+        '200':
+          description: Task list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /task/{task_id}:
+    put:
+      tags:
+        - Task
+      summary: Update a task
+      operationId: updateTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskRequest'
+            examples:
+              updateSchedule:
+                value:
+                  schedule_type: interval
+                  schedule_value: '600000'
+              pause:
+                value:
+                  status: paused
+      responses:
+        '200':
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+    delete:
+      tags:
+        - Task
+      summary: Delete a task
+      operationId: deleteTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '204':
+          description: Task deleted
+        '400':
+          description: Invalid path parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /task/trigger:
+    post:
+      tags:
+        - Task
+      summary: Trigger one specific task immediately
+      operationId: triggerTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskTriggerRequest'
+            examples:
+              trigger:
+                value:
+                  task_id: verify-task-once
+      responses:
+        '200':
+          description: Task execution result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskExecutionResult'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '500':
+          description: Internal trigger failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /task/check:
+    post:
+      tags:
+        - Task
+      summary: Check due tasks and execute one
+      description: |
+        Fetches due tasks and executes only the first one.
+        If no due tasks exist, returns checked=0.
+      operationId: checkDueTasks
+      responses:
+        '200':
+          description: No due task or one task execution completed
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/TaskCheckNoDueResponse'
+                  - $ref: '#/components/schemas/TaskCheckDueResponse'
+              examples:
+                noDue:
+                  value:
+                    checked: 0
+                    message: No due tasks
+                dueExecuted:
+                  value:
+                    checked: 3
+                    executed:
+                      status: success
+                      task_id: task-1
+                      result: ok
+                      duration_ms: 4874
+                      next_run: null
+                      error: null
+                    remaining: 2
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: Unexpected runtime failure while checking/executing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskCheckErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API_TOKEN
+
+  parameters:
+    ConversationId:
+      name: conversation_id
+      in: path
+      required: true
+      description: Conversation ID
+      schema:
+        type: string
+        minLength: 1
+    TaskId:
+      name: task_id
+      in: path
+      required: true
+      description: Task ID
+      schema:
+        type: string
+        minLength: 1
+
+  responses:
+    Unauthorized:
+      description: Unauthorized (missing or invalid bearer token)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          examples:
+            unauthorized:
+              value:
+                error: Unauthorized
+
+  schemas:
+    ApiError:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+      properties:
+        error:
+          type: string
+
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - version
+        - max_execution_ms
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+        version:
+          type: string
+        max_execution_ms:
+          type: integer
+          minimum: 1
+
+    ChatRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          minLength: 1
+        conversation_id:
+          type: string
+          description: Existing conversation ID for multi-turn continuation.
+        sender:
+          type: string
+          description: Sender identifier.
+          default: user
+        sender_name:
+          type: string
+          description: Sender display name.
+        stream:
+          type: boolean
+          default: false
+          description: Return SSE stream when true.
+        max_execution_ms:
+          type: integer
+          minimum: 1
+          description: |
+            Request-level timeout in milliseconds.
+            Effective timeout is min(max_execution_ms, env MAX_EXECUTION_MS).
+
+    OutboundMessage:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - conversation_id
+        - text
+        - sender
+        - created_at
+      properties:
+        id:
+          type: integer
+        conversation_id:
+          type: string
+        text:
+          type: string
+        sender:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ChatResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - conversation_id
+        - message_id
+        - result
+        - duration_ms
+        - outbound_messages
+      properties:
+        status:
+          type: string
+          enum:
+            - success
+            - timeout
+            - error
+        conversation_id:
+          type: string
+        message_id:
+          type: string
+        result:
+          type: string
+          nullable: true
+        session_id:
+          type: string
+          nullable: true
+        duration_ms:
+          type: integer
+          minimum: 0
+        error:
+          type: string
+          nullable: true
+        outbound_messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutboundMessage'
+
+    ChatInternalErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - conversation_id
+        - message_id
+        - result
+        - error
+      properties:
+        status:
+          type: string
+          enum:
+            - error
+        conversation_id:
+          type: string
+        message_id:
+          type: string
+        result:
+          type: string
+          nullable: true
+        error:
+          type: string
+
+    ConversationStatusResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - conversation_id
+        - message_count
+        - last_activity
+        - status
+      properties:
+        conversation_id:
+          type: string
+        session_id:
+          type: string
+          nullable: true
+        message_count:
+          type: integer
+          minimum: 0
+        last_activity:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum:
+            - idle
+            - running
+
+    Task:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - conversation_id
+        - prompt
+        - schedule_type
+        - schedule_value
+        - context_mode
+        - next_run
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+        conversation_id:
+          type: string
+        prompt:
+          type: string
+        schedule_type:
+          type: string
+          enum:
+            - cron
+            - interval
+            - once
+        schedule_value:
+          type: string
+        context_mode:
+          type: string
+          enum:
+            - group
+            - isolated
+        next_run:
+          type: string
+          format: date-time
+          nullable: true
+        last_run:
+          type: string
+          format: date-time
+          nullable: true
+        last_result:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+            - active
+            - paused
+            - completed
+        created_at:
+          type: string
+          format: date-time
+
+    CreateTaskRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - prompt
+        - schedule_type
+        - schedule_value
+      properties:
+        id:
+          type: string
+          description: Optional custom task ID.
+        prompt:
+          type: string
+          minLength: 1
+        schedule_type:
+          type: string
+          enum:
+            - cron
+            - interval
+            - once
+        schedule_value:
+          type: string
+          minLength: 1
+          description: |
+            - cron: cron expression (TZ-aware)
+            - interval: milliseconds string (positive integer)
+            - once: local timestamp string without timezone suffix
+        context_mode:
+          type: string
+          enum:
+            - group
+            - isolated
+          default: isolated
+        conversation_id:
+          type: string
+          description: Existing conversation ID. Auto-created if omitted.
+
+    UpdateTaskRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+        schedule_type:
+          type: string
+          enum:
+            - cron
+            - interval
+            - once
+        schedule_value:
+          type: string
+          minLength: 1
+        context_mode:
+          type: string
+          enum:
+            - group
+            - isolated
+        status:
+          type: string
+          enum:
+            - active
+            - paused
+            - completed
+        conversation_id:
+          type: string
+
+    TaskListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - tasks
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+
+    TaskTriggerRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - task_id
+      properties:
+        task_id:
+          type: string
+          minLength: 1
+
+    TaskExecutionResult:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - task_id
+        - result
+        - duration_ms
+        - next_run
+      properties:
+        status:
+          type: string
+          enum:
+            - success
+            - timeout
+            - error
+        task_id:
+          type: string
+        result:
+          type: string
+          nullable: true
+        duration_ms:
+          type: integer
+          minimum: 0
+        next_run:
+          type: string
+          format: date-time
+          nullable: true
+        error:
+          type: string
+          nullable: true
+
+    TaskCheckNoDueResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - checked
+        - message
+      properties:
+        checked:
+          type: integer
+          enum:
+            - 0
+        message:
+          type: string
+          enum:
+            - No due tasks
+
+    TaskCheckDueResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - checked
+        - executed
+        - remaining
+      properties:
+        checked:
+          type: integer
+          minimum: 1
+        executed:
+          $ref: '#/components/schemas/TaskExecutionResult'
+        remaining:
+          type: integer
+          minimum: 0
+
+    TaskCheckErrorExecuted:
+      type: object
+      additionalProperties: false
+      required:
+        - task_id
+        - status
+        - error
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - error
+        error:
+          type: string
+
+    TaskCheckErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - checked
+        - executed
+        - remaining
+      properties:
+        checked:
+          type: integer
+          minimum: 1
+        executed:
+          $ref: '#/components/schemas/TaskCheckErrorExecuted'
+        remaining:
+          type: integer
+          minimum: 0
