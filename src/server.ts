@@ -5,11 +5,17 @@ import { syncDatabaseToVolume } from './db.js';
 import { logger } from './logger.js';
 import { authMiddleware } from './middleware/auth.js';
 import { chatRoutes } from './routes/chat.js';
+import { controlRoutes } from './routes/control.js';
 import { healthRoutes } from './routes/health.js';
 import { taskRoutes } from './routes/task.js';
 
+export interface ServerOptions {
+  onStop?: (reason: string) => Promise<void> | void;
+}
+
 export function createServer(
   agentEngine: AgentRunner = new AgentEngine(),
+  options: ServerOptions = {},
 ): Express {
   const app = express();
 
@@ -31,6 +37,7 @@ export function createServer(
   app.use(authMiddleware);
   app.use('/chat', chatRoutes(agentEngine));
   app.use(taskRoutes(agentEngine));
+  app.use('/control', controlRoutes({ onStop: options.onStop }));
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Not Found' });

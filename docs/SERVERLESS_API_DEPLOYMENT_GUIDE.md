@@ -58,6 +58,11 @@ HTTP Client / API Gateway / Cron Trigger
 /data/store     # 持久化 SQLite
 ```
 
+关键提醒（避免误区）：
+
+- 在 Serverless 模式下，`memory` 与 `conversation history` 依然是核心能力。
+- 业务侧“同一用户的间隔请求”需要复用历史上下文时，必须保证上述目录持久化（如 OSS/NAS/EFS 挂载）持续可用。
+
 ## 3. 生命周期与状态
 
 ### 3.1 对话状态
@@ -93,6 +98,14 @@ HTTP Client / API Gateway / Cron Trigger
 - 运行中操作 `/tmp/messages.db`（高性能本地路径）。
 - 每次请求结束时自动 `wal_checkpoint + copy` 到 `/data/store/messages.db`。
 - 收到 `SIGTERM/SIGINT` 时再次同步并关闭 DB。
+
+### 3.4 版本对齐原则
+
+- Claude Agent SDK 与 MCP SDK 版本以原版 NanoClaw 的稳定基线为准。
+- 当前实现对齐：
+  - `@anthropic-ai/claude-agent-sdk`: `^0.2.34`
+  - `@modelcontextprotocol/sdk`: `^1.12.1`
+- 后续升级应做兼容回归，不建议“为了裁剪而降级”。
 
 ## 4. 环境变量
 
@@ -177,7 +190,9 @@ Base URL 示例：`http://localhost:9000`
   "result": "2",
   "session_id": "3e49...",
   "duration_ms": 6701,
-  "outbound_messages": []
+  "outbound_messages": [],
+  "session_end_marker": "[[PICOCLAW_SESSION_END]]",
+  "session_end_marker_detected": false
 }
 ```
 
@@ -186,6 +201,11 @@ Base URL 示例：`http://localhost:9000`
 - `success`
 - `timeout`
 - `error`
+
+会话结束相关字段：
+
+- `session_end_marker`：当前运行时约定的会话结束标记字符串。
+- `session_end_marker_detected`：若结果中检测到结束标记，该值为 `true`。
 
 ### 6.3 SSE 流式对话
 
@@ -206,7 +226,7 @@ event: chunk
 data: {"text":"部分输出"}
 
 event: done
-data: {"status":"success","conversation_id":"conv-..."}
+data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[PICOCLAW_SESSION_END]]","session_end_marker_detected":true}
 ```
 
 ### 6.4 查询会话状态
@@ -347,6 +367,34 @@ data: {"status":"success","conversation_id":"conv-..."}
 }
 ```
 
+### 6.11 主动停止运行时
+
+`POST /control/stop`
+
+请求体（可选）：
+
+```json
+{
+  "reason": "end-of-session"
+}
+```
+
+响应示例：
+
+```json
+{
+  "status": "stopping",
+  "reason": "end-of-session",
+  "message": "Shutdown accepted. The runtime will sync data and exit gracefully."
+}
+```
+
+典型流程：
+
+1. 调用 `/chat` 并检查 `session_end_marker_detected`。
+2. 若为 `true`，调用 `/control/stop` 请求主进程保存并退出。
+3. 若不走 API，也可直接由外部 Serverless 发送 `SIGTERM`，服务同样会执行保存并退出。
+
 ## 7. 部署指南
 
 ### 7.0 一键启动与冒烟测试
@@ -368,6 +416,7 @@ data: {"status":"success","conversation_id":"conv-..."}
 ```bash
 ./picoclaw.sh up
 ./picoclaw.sh test
+./picoclaw.sh stop-api
 ./picoclaw.sh logs
 ./picoclaw.sh down
 ```
@@ -454,7 +503,13 @@ docker build --platform linux/amd64 \
 - 系统内不做常驻调度，必须由外部 Cron（EventBridge/FC 定时触发器）调用 `/task/check`。
 - 由于一次只执行一个到期任务，建议高频触发（例如每 1 分钟）。
 
-### 8.4 备份恢复
+### 8.4 停止策略
+
+- API 停止：`POST /control/stop`（推荐在检测到会话结束标记后调用）。
+- 信号停止：由 Serverless 平台发送 `SIGTERM`，服务会在 signal handler 中持久化并退出。
+- 建议调用方保持幂等：`/control/stop` 可能与平台回收信号接近同时发生。
+
+### 8.5 备份恢复
 
 建议备份目录：
 
@@ -464,7 +519,7 @@ docker build --platform linux/amd64 \
 
 恢复时确保版本兼容并优先恢复 `store + sessions`。
 
-### 8.5 日志
+### 8.6 日志
 
 服务默认使用 `pino` 输出。
 
@@ -520,12 +575,21 @@ npm run build
 - 平台设置合理 timeout 缓冲
 - 关键流程后触发尽快持久化（当前实现已在每次请求结束自动同步）
 
+### 9.6 会话结束与停止
+
+检查点：
+
+- `/chat` 响应中的 `session_end_marker_detected` 是否符合预期
+- 若为 `true`，是否已调用 `/control/stop` 或触发平台 `SIGTERM`
+
 ## 10. 上线检查清单
 
 - [ ] `GET /health` 正常
 - [ ] `POST /chat` 新会话可用
 - [ ] `POST /chat` 多轮续接可用
+- [ ] `session_end_marker_detected` 行为符合预期
 - [ ] `POST /task` / `POST /task/check` 可用
+- [ ] `POST /control/stop` 可用
 - [ ] `/data` 四类卷挂载生效
 - [ ] 外部 Cron 已接入 `/task/check`
 - [ ] 日志/告警/限流已配置

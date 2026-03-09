@@ -5,7 +5,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "180f6e2c-f763-45e0-a071-db584a5dc0d2",
+                    "id": "6106069f-b55b-41a7-805c-8598cafc358c",
                     "name": "Health check",
                     "request": {
                         "name": "Health check",
@@ -35,7 +35,7 @@
                     },
                     "response": [
                         {
-                            "id": "894c7702-af19-4e76-b17f-be26a0a3d2b1",
+                            "id": "387b0960-a769-4808-a34f-244abec39f9b",
                             "name": "Service healthy",
                             "originalRequest": {
                                 "url": {
@@ -90,7 +90,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "89a08d1e-35c8-455a-a5e8-041a54258e49",
+                    "id": "ba74c255-47d2-43a6-8f2b-b79486499c6e",
                     "name": "Start or continue a conversation",
                     "request": {
                         "name": "Start or continue a conversation",
@@ -133,7 +133,7 @@
                     },
                     "response": [
                         {
-                            "id": "8e4b5a23-9ccc-4fb2-9e04-fc38292b69ce",
+                            "id": "809e3e20-00cd-4e07-9b77-f5cdeea03ee7",
                             "name": "Chat processed successfully (JSON or SSE stream)",
                             "originalRequest": {
                                 "url": {
@@ -184,12 +184,12 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"status\": \"timeout\",\n  \"conversation_id\": \"<string>\",\n  \"message_id\": \"<string>\",\n  \"result\": \"<string>\",\n  \"duration_ms\": \"<integer>\",\n  \"outbound_messages\": [\n    {\n      \"id\": \"<integer>\",\n      \"conversation_id\": \"<string>\",\n      \"text\": \"<string>\",\n      \"sender\": \"<string>\",\n      \"created_at\": \"<dateTime>\"\n    },\n    {\n      \"id\": \"<integer>\",\n      \"conversation_id\": \"<string>\",\n      \"text\": \"<string>\",\n      \"sender\": \"<string>\",\n      \"created_at\": \"<dateTime>\"\n    }\n  ],\n  \"session_id\": \"<string>\",\n  \"error\": \"<string>\"\n}",
+                            "body": "{\n  \"status\": \"timeout\",\n  \"conversation_id\": \"<string>\",\n  \"message_id\": \"<string>\",\n  \"result\": \"<string>\",\n  \"duration_ms\": \"<integer>\",\n  \"outbound_messages\": [\n    {\n      \"id\": \"<integer>\",\n      \"conversation_id\": \"<string>\",\n      \"text\": \"<string>\",\n      \"sender\": \"<string>\",\n      \"created_at\": \"<dateTime>\"\n    },\n    {\n      \"id\": \"<integer>\",\n      \"conversation_id\": \"<string>\",\n      \"text\": \"<string>\",\n      \"sender\": \"<string>\",\n      \"created_at\": \"<dateTime>\"\n    }\n  ],\n  \"session_end_marker\": \"<string>\",\n  \"session_end_marker_detected\": \"<boolean>\",\n  \"session_id\": \"<string>\",\n  \"error\": \"<string>\"\n}",
                             "cookie": [],
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "ce578103-b1ac-4463-af62-ea5a15b89d3f",
+                            "id": "2ea3f0bd-8888-48af-acb6-83c5a063db66",
                             "name": "Invalid request body",
                             "originalRequest": {
                                 "url": {
@@ -245,7 +245,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "516d67b3-4158-4874-8cd1-443c80334405",
+                            "id": "79615bfd-0f50-4a56-9584-6bbb0b913982",
                             "name": "Unauthorized (missing or invalid bearer token)",
                             "originalRequest": {
                                 "url": {
@@ -301,7 +301,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "dc12d657-56e1-4a48-bd6c-0b87276d43eb",
+                            "id": "cf0617c0-6843-4600-ba1d-462c4df12e02",
                             "name": "Conversation ID not found when resuming",
                             "originalRequest": {
                                 "url": {
@@ -357,7 +357,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "e84df234-413f-4ec4-b2b7-e46e0f02950d",
+                            "id": "306215a9-2ca7-499d-87df-cdfe05c5903a",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -423,7 +423,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "9030b9ad-2831-40c6-b3f4-de6d8cc2ce9f",
+                            "id": "bdfb216c-63b8-405d-b6ea-5488798227ca",
                             "name": "Get conversation state",
                             "request": {
                                 "name": "Get conversation state",
@@ -462,7 +462,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "5e72f5ac-3a70-4f96-baba-87e448093089",
+                                    "id": "b8f8638a-8e4f-495f-8aa0-51c5e403668f",
                                     "name": "Conversation state",
                                     "originalRequest": {
                                         "url": {
@@ -506,7 +506,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "e278c861-943f-49d9-954f-09aafc9d806c",
+                                    "id": "a9f0ca80-4b9e-4f3b-8eaf-9d755404a351",
                                     "name": "Missing or invalid path parameter",
                                     "originalRequest": {
                                         "url": {
@@ -550,7 +550,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "3f635842-4a65-4ae6-8f40-b792cda2c8f8",
+                                    "id": "3686a0b6-7e68-439d-958f-bf80227ddaa9",
                                     "name": "Unauthorized (missing or invalid bearer token)",
                                     "originalRequest": {
                                         "url": {
@@ -594,7 +594,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "d5c16731-035a-4de8-8384-7cf2aa5db972",
+                                    "id": "991d5866-f484-440a-a4b4-b107bbdd1d96",
                                     "name": "Conversation not found",
                                     "originalRequest": {
                                         "url": {
@@ -652,7 +652,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "61f16a66-aa7b-4825-9d0c-168d0f1cfaa5",
+                    "id": "8c156a21-3d24-49f1-9d7c-9d3b10845e00",
                     "name": "Create a scheduled task",
                     "request": {
                         "name": "Create a scheduled task",
@@ -692,7 +692,7 @@
                     },
                     "response": [
                         {
-                            "id": "6ac40716-8814-4b26-a1d9-e8e03358050b",
+                            "id": "a8744dc7-1c6a-40cb-993d-2c2377d0fd5c",
                             "name": "Task created",
                             "originalRequest": {
                                 "url": {
@@ -743,12 +743,12 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"id\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"interval\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"group\",\n  \"next_run\": \"<dateTime>\",\n  \"status\": \"active\",\n  \"created_at\": \"<dateTime>\",\n  \"last_run\": \"<dateTime>\",\n  \"last_result\": \"<string>\"\n}",
+                            "body": "{\n  \"id\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"cron\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"isolated\",\n  \"next_run\": \"<dateTime>\",\n  \"status\": \"active\",\n  \"created_at\": \"<dateTime>\",\n  \"last_run\": \"<dateTime>\",\n  \"last_result\": \"<string>\"\n}",
                             "cookie": [],
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "006824bc-f33f-41b4-b0d5-6b8fcc24558e",
+                            "id": "e44d5f85-391f-42fc-a467-7619847b854e",
                             "name": "Invalid task payload",
                             "originalRequest": {
                                 "url": {
@@ -804,7 +804,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "d45c6f73-2b1a-4e12-846b-a4c8b82d7abd",
+                            "id": "7bdc0664-cdb0-44cf-9970-ef0cc533825d",
                             "name": "Unauthorized (missing or invalid bearer token)",
                             "originalRequest": {
                                 "url": {
@@ -870,7 +870,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "347e8bbf-7484-4001-b8ef-f69a37d72836",
+                            "id": "70abb3dc-1726-4e16-98cb-9b755982e97c",
                             "name": "Update a task",
                             "request": {
                                 "name": "Update a task",
@@ -910,7 +910,7 @@
                                 "method": "PUT",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"once\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"group\",\n  \"status\": \"active\",\n  \"conversation_id\": \"<string>\"\n}",
+                                    "raw": "{\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"interval\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"group\",\n  \"status\": \"active\",\n  \"conversation_id\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -922,7 +922,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "4c48b44f-949a-4485-8fc9-76f54ff45a00",
+                                    "id": "2020f2ce-b6ae-4823-ac21-5e03a04eff76",
                                     "name": "Updated task",
                                     "originalRequest": {
                                         "url": {
@@ -957,7 +957,7 @@
                                         "method": "PUT",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"once\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"group\",\n  \"status\": \"active\",\n  \"conversation_id\": \"<string>\"\n}",
+                                            "raw": "{\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"interval\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"group\",\n  \"status\": \"active\",\n  \"conversation_id\": \"<string>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -974,12 +974,12 @@
                                             "value": "application/json"
                                         }
                                     ],
-                                    "body": "{\n  \"id\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"interval\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"group\",\n  \"next_run\": \"<dateTime>\",\n  \"status\": \"active\",\n  \"created_at\": \"<dateTime>\",\n  \"last_run\": \"<dateTime>\",\n  \"last_result\": \"<string>\"\n}",
+                                    "body": "{\n  \"id\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"cron\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"isolated\",\n  \"next_run\": \"<dateTime>\",\n  \"status\": \"active\",\n  \"created_at\": \"<dateTime>\",\n  \"last_run\": \"<dateTime>\",\n  \"last_result\": \"<string>\"\n}",
                                     "cookie": [],
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "08b43789-1115-46c7-b732-747c4188b7c1",
+                                    "id": "83817d38-9858-4c0e-b6b1-33f340572adf",
                                     "name": "Invalid request",
                                     "originalRequest": {
                                         "url": {
@@ -1014,7 +1014,7 @@
                                         "method": "PUT",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"once\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"group\",\n  \"status\": \"active\",\n  \"conversation_id\": \"<string>\"\n}",
+                                            "raw": "{\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"interval\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"group\",\n  \"status\": \"active\",\n  \"conversation_id\": \"<string>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -1036,7 +1036,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "8ef02169-083a-4cfb-acc9-00950e76e404",
+                                    "id": "f97556b9-9d39-4fb2-afd4-49e09b1363a1",
                                     "name": "Unauthorized (missing or invalid bearer token)",
                                     "originalRequest": {
                                         "url": {
@@ -1071,7 +1071,7 @@
                                         "method": "PUT",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"once\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"group\",\n  \"status\": \"active\",\n  \"conversation_id\": \"<string>\"\n}",
+                                            "raw": "{\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"interval\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"group\",\n  \"status\": \"active\",\n  \"conversation_id\": \"<string>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -1093,7 +1093,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "0f38e06c-b814-416e-8fc9-839758b3abf5",
+                                    "id": "74e65438-93ff-491a-bee2-75d20759f68d",
                                     "name": "Task not found",
                                     "originalRequest": {
                                         "url": {
@@ -1128,7 +1128,7 @@
                                         "method": "PUT",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"once\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"group\",\n  \"status\": \"active\",\n  \"conversation_id\": \"<string>\"\n}",
+                                            "raw": "{\n  \"prompt\": \"<string>\",\n  \"schedule_type\": \"interval\",\n  \"schedule_value\": \"<string>\",\n  \"context_mode\": \"group\",\n  \"status\": \"active\",\n  \"conversation_id\": \"<string>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -1156,7 +1156,7 @@
                             }
                         },
                         {
-                            "id": "0f62fcba-acd0-490a-b9d2-68d3deb57dae",
+                            "id": "4bb60d52-fb36-478a-80d1-82d678f81953",
                             "name": "Delete a task",
                             "request": {
                                 "name": "Delete a task",
@@ -1195,7 +1195,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "bdabb713-fe52-48cd-b019-9be3efaaec61",
+                                    "id": "7677d77b-788b-4307-9221-8708693fbe2b",
                                     "name": "Task deleted",
                                     "originalRequest": {
                                         "url": {
@@ -1229,7 +1229,7 @@
                                     "_postman_previewlanguage": "text"
                                 },
                                 {
-                                    "id": "646a4af8-484b-41e0-8977-1060fa3fd908",
+                                    "id": "600bfd67-565e-4cfe-90ad-750c98b0a2e6",
                                     "name": "Invalid path parameter",
                                     "originalRequest": {
                                         "url": {
@@ -1273,7 +1273,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "9723cec4-d358-4f51-bb81-45e3f7ca0c36",
+                                    "id": "4e88fba7-7f00-48de-9cb2-45f0e22ad273",
                                     "name": "Unauthorized (missing or invalid bearer token)",
                                     "originalRequest": {
                                         "url": {
@@ -1317,7 +1317,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "0af3cbbd-4ad1-49b0-bd6a-43c4e8a2656e",
+                                    "id": "06d8026c-ee4e-4380-b47e-b5317672b1b7",
                                     "name": "Task not found",
                                     "originalRequest": {
                                         "url": {
@@ -1373,7 +1373,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "e54a7ef8-eb3e-4a08-8a2e-f6cf91fbe639",
+                            "id": "628a0b0a-2ed4-4023-9c6f-a114ac0a5b14",
                             "name": "Trigger one specific task immediately",
                             "request": {
                                 "name": "Trigger one specific task immediately",
@@ -1414,7 +1414,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "05de0f59-9b32-414b-83fd-0b6c5d6951c3",
+                                    "id": "a94bca38-f8b0-4d8c-a08e-4bd9cda86c92",
                                     "name": "Task execution result",
                                     "originalRequest": {
                                         "url": {
@@ -1471,7 +1471,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "866586e9-bbda-45e4-bdd8-c93f4e8fe934",
+                                    "id": "dc98f0ad-348c-48c2-b268-e93e5466663d",
                                     "name": "Invalid request",
                                     "originalRequest": {
                                         "url": {
@@ -1528,7 +1528,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "ba35bf50-e70f-4975-88dd-0afa10a2db7a",
+                                    "id": "7bc254bc-0fd0-4e72-a85b-0f53d7df615b",
                                     "name": "Unauthorized (missing or invalid bearer token)",
                                     "originalRequest": {
                                         "url": {
@@ -1585,7 +1585,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "74542733-17df-4132-8173-d0525fdb521b",
+                                    "id": "7ca7471f-b7c7-4143-a360-8be1c9a01d74",
                                     "name": "Task not found",
                                     "originalRequest": {
                                         "url": {
@@ -1642,7 +1642,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "264347ee-0021-4cf2-8610-bea2f15d5729",
+                                    "id": "1bed73db-f429-4f2b-b84d-aec577a31068",
                                     "name": "Internal trigger failure",
                                     "originalRequest": {
                                         "url": {
@@ -1711,7 +1711,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "5726ce84-dade-4167-9da0-b4e17f1e6da8",
+                            "id": "74b88688-bc16-4416-b7e7-b0b8cbae20b6",
                             "name": "Check due tasks and execute one",
                             "request": {
                                 "name": "Check due tasks and execute one",
@@ -1742,7 +1742,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "ac79140f-d74b-4188-a2ee-b29847786b2b",
+                                    "id": "810dcb6f-dc58-4cec-839b-dd337cbc240e",
                                     "name": "No due task or one task execution completed",
                                     "originalRequest": {
                                         "url": {
@@ -1786,7 +1786,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "90ae70f0-fe42-4600-92d4-e842c3473442",
+                                    "id": "a961df2a-2e1d-430e-9cc1-eca0b3b940f0",
                                     "name": "Unauthorized (missing or invalid bearer token)",
                                     "originalRequest": {
                                         "url": {
@@ -1830,7 +1830,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "eaeaa90f-bcd6-436b-b362-dc1aad5486fe",
+                                    "id": "3ef3d883-b945-4761-9d26-cddc56f0e2a0",
                                     "name": "Unexpected runtime failure while checking/executing",
                                     "originalRequest": {
                                         "url": {
@@ -1888,7 +1888,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "0f0aa04b-3f98-41a8-86d9-88415d0b9e43",
+                    "id": "13b2fce3-91f7-4c6f-b595-be12d1a51eb2",
                     "name": "List tasks",
                     "request": {
                         "name": "List tasks",
@@ -1915,7 +1915,7 @@
                     },
                     "response": [
                         {
-                            "id": "d3533c0e-c542-4796-9f8d-25d74399bae4",
+                            "id": "18ac4814-111d-4adb-b63b-b936ec7b258e",
                             "name": "Task list",
                             "originalRequest": {
                                 "url": {
@@ -1953,12 +1953,12 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"tasks\": [\n    {\n      \"id\": \"<string>\",\n      \"conversation_id\": \"<string>\",\n      \"prompt\": \"<string>\",\n      \"schedule_type\": \"interval\",\n      \"schedule_value\": \"<string>\",\n      \"context_mode\": \"group\",\n      \"next_run\": \"<dateTime>\",\n      \"status\": \"completed\",\n      \"created_at\": \"<dateTime>\",\n      \"last_run\": \"<dateTime>\",\n      \"last_result\": \"<string>\"\n    },\n    {\n      \"id\": \"<string>\",\n      \"conversation_id\": \"<string>\",\n      \"prompt\": \"<string>\",\n      \"schedule_type\": \"cron\",\n      \"schedule_value\": \"<string>\",\n      \"context_mode\": \"group\",\n      \"next_run\": \"<dateTime>\",\n      \"status\": \"completed\",\n      \"created_at\": \"<dateTime>\",\n      \"last_run\": \"<dateTime>\",\n      \"last_result\": \"<string>\"\n    }\n  ]\n}",
+                            "body": "{\n  \"tasks\": [\n    {\n      \"id\": \"<string>\",\n      \"conversation_id\": \"<string>\",\n      \"prompt\": \"<string>\",\n      \"schedule_type\": \"cron\",\n      \"schedule_value\": \"<string>\",\n      \"context_mode\": \"group\",\n      \"next_run\": \"<dateTime>\",\n      \"status\": \"paused\",\n      \"created_at\": \"<dateTime>\",\n      \"last_run\": \"<dateTime>\",\n      \"last_result\": \"<string>\"\n    },\n    {\n      \"id\": \"<string>\",\n      \"conversation_id\": \"<string>\",\n      \"prompt\": \"<string>\",\n      \"schedule_type\": \"interval\",\n      \"schedule_value\": \"<string>\",\n      \"context_mode\": \"isolated\",\n      \"next_run\": \"<dateTime>\",\n      \"status\": \"paused\",\n      \"created_at\": \"<dateTime>\",\n      \"last_run\": \"<dateTime>\",\n      \"last_result\": \"<string>\"\n    }\n  ]\n}",
                             "cookie": [],
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "0ffc0fa6-c761-4320-9983-cdc0dc171eee",
+                            "id": "2f8014c5-54b1-43dc-aca8-0c10f97ad2e8",
                             "name": "Unauthorized (missing or invalid bearer token)",
                             "originalRequest": {
                                 "url": {
@@ -2007,6 +2007,239 @@
                     }
                 }
             ]
+        },
+        {
+            "name": "control",
+            "description": "",
+            "item": [
+                {
+                    "name": "stop",
+                    "description": "",
+                    "item": [
+                        {
+                            "id": "e04de425-1963-4be1-b748-ea53f30c972a",
+                            "name": "Trigger graceful stop and exit",
+                            "request": {
+                                "name": "Trigger graceful stop and exit",
+                                "description": {
+                                    "content": "Requests the main process to persist data and exit gracefully.\nThis endpoint is useful when the caller detects a session-end marker and\nwants to terminate the current runtime instance.\n",
+                                    "type": "text/plain"
+                                },
+                                "url": {
+                                    "path": [
+                                        "control",
+                                        "stop"
+                                    ],
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "query": [],
+                                    "variable": []
+                                },
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "method": "POST",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"reason\": \"<string>\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "headerFamily": "json",
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "auth": null
+                            },
+                            "response": [
+                                {
+                                    "id": "a0e297d9-199e-4ade-9496-f7491f12f608",
+                                    "name": "Stop accepted",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "control",
+                                                "stop"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": []
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Content-Type",
+                                                "value": "application/json"
+                                            },
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            },
+                                            {
+                                                "description": {
+                                                    "content": "Added as a part of security scheme: bearer",
+                                                    "type": "text/plain"
+                                                },
+                                                "key": "Authorization",
+                                                "value": "Bearer <token>"
+                                            }
+                                        ],
+                                        "method": "POST",
+                                        "body": {
+                                            "mode": "raw",
+                                            "raw": "{\n  \"reason\": \"<string>\"\n}",
+                                            "options": {
+                                                "raw": {
+                                                    "headerFamily": "json",
+                                                    "language": "json"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "status": "OK",
+                                    "code": 200,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"status\": \"stopping\",\n  \"reason\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                },
+                                {
+                                    "id": "0d2b3837-e6f3-4c73-9ed1-c14459e187f4",
+                                    "name": "Unauthorized (missing or invalid bearer token)",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "control",
+                                                "stop"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": []
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Content-Type",
+                                                "value": "application/json"
+                                            },
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            },
+                                            {
+                                                "description": {
+                                                    "content": "Added as a part of security scheme: bearer",
+                                                    "type": "text/plain"
+                                                },
+                                                "key": "Authorization",
+                                                "value": "Bearer <token>"
+                                            }
+                                        ],
+                                        "method": "POST",
+                                        "body": {
+                                            "mode": "raw",
+                                            "raw": "{\n  \"reason\": \"<string>\"\n}",
+                                            "options": {
+                                                "raw": {
+                                                    "headerFamily": "json",
+                                                    "language": "json"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "status": "Unauthorized",
+                                    "code": 401,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"error\": \"<string>\"\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                },
+                                {
+                                    "id": "1c05e13b-f289-40f6-9578-3b374742d3cb",
+                                    "name": "Stop callback not configured in current runtime",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "control",
+                                                "stop"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": []
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Content-Type",
+                                                "value": "application/json"
+                                            },
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            },
+                                            {
+                                                "description": {
+                                                    "content": "Added as a part of security scheme: bearer",
+                                                    "type": "text/plain"
+                                                },
+                                                "key": "Authorization",
+                                                "value": "Bearer <token>"
+                                            }
+                                        ],
+                                        "method": "POST",
+                                        "body": {
+                                            "mode": "raw",
+                                            "raw": "{\n  \"reason\": \"<string>\"\n}",
+                                            "options": {
+                                                "raw": {
+                                                    "headerFamily": "json",
+                                                    "language": "json"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "status": "Not Implemented",
+                                    "code": 501,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"error\": \"<string>\"\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                }
+                            ],
+                            "event": [],
+                            "protocolProfileBehavior": {
+                                "disableBodyPruning": true
+                            }
+                        }
+                    ]
+                }
+            ]
         }
     ],
     "auth": {
@@ -2027,11 +2260,11 @@
         }
     ],
     "info": {
-        "_postman_id": "f15af05f-dbec-4753-a432-75eec5909a03",
+        "_postman_id": "e68863a9-e7ec-495d-9d85-d23367bcd5c7",
         "name": "PicoClaw Serverless API",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         "description": {
-            "content": "HTTP API for PicoClaw (serverless-oriented runtime).\n\nNotes:\n- All endpoints except `/health` require Bearer token authentication.\n- `POST /chat` supports both JSON response mode and SSE streaming mode.\n- Scheduled tasks are externally triggered by calling `/task/check`.\n",
+            "content": "HTTP API for PicoClaw (serverless-oriented runtime).\n\nNotes:\n- All endpoints except `/health` require Bearer token authentication.\n- `POST /chat` supports both JSON response mode and SSE streaming mode.\n- Memory and conversation history are persisted via mounted storage and reused across separate requests.\n- Scheduled tasks are externally triggered by calling `/task/check`.\n",
             "type": "text/plain"
         }
     }

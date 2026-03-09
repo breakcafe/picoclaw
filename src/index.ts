@@ -28,12 +28,16 @@ async function main(): Promise<void> {
   ensureClaudeSettings();
   syncSkills();
 
-  const app = createServer();
-  const server = app.listen(PORT, () => {
-    logger.info({ port: PORT }, 'PicoClaw ready');
-  });
+  let isShuttingDown = false;
+  let server: ReturnType<ReturnType<typeof createServer>['listen']>;
 
   const shutdown = (signal: string) => {
+    if (isShuttingDown) {
+      logger.info({ signal }, 'Shutdown already in progress');
+      return;
+    }
+
+    isShuttingDown = true;
     logger.info({ signal }, 'Shutdown signal received');
     try {
       syncDatabaseToVolume();
@@ -42,10 +46,15 @@ async function main(): Promise<void> {
       logger.error({ err }, 'Failed to sync database on shutdown');
     }
 
-    server.close(() => {
-      process.exit(0);
-    });
+    server.close(() => process.exit(0));
   };
+
+  const app = createServer(undefined, {
+    onStop: (reason: string) => shutdown(`API_STOP:${reason}`),
+  });
+  server = app.listen(PORT, () => {
+    logger.info({ port: PORT }, 'PicoClaw ready');
+  });
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));

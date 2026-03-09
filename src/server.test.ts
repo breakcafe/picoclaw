@@ -12,6 +12,7 @@ describe('http server', () => {
   let resetDatabase: (() => void) | undefined;
   let app: import('express').Express;
   let fakeEngine: AgentRunner;
+  let stopSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -33,15 +34,18 @@ describe('http server', () => {
       async run() {
         return {
           status: 'success',
-          result: 'mock-result',
+          result: 'mock-result [[PICOCLAW_SESSION_END]]',
           newSessionId: 'session-abc',
           lastAssistantUuid: 'assistant-abc',
         };
       },
     };
+    stopSpy = vi.fn();
 
     const serverModule = await import('./server.js');
-    app = serverModule.createServer(fakeEngine);
+    app = serverModule.createServer(fakeEngine, {
+      onStop: stopSpy,
+    });
   });
 
   afterEach(() => {
@@ -71,7 +75,9 @@ describe('http server', () => {
     expect(first.status).toBe(200);
     expect(first.body.status).toBe('success');
     expect(first.body.conversation_id).toMatch(/^conv-/);
-    expect(first.body.result).toBe('mock-result');
+    expect(first.body.result).toContain('mock-result');
+    expect(first.body.session_end_marker).toBe('[[PICOCLAW_SESSION_END]]');
+    expect(first.body.session_end_marker_detected).toBe(true);
 
     const conversationId = first.body.conversation_id as string;
 
@@ -116,5 +122,18 @@ describe('http server', () => {
 
     expect(list.status).toBe(200);
     expect(list.body.tasks).toHaveLength(1);
+  });
+
+  it('accepts stop request and invokes shutdown callback', async () => {
+    const response = await request(app)
+      .post('/control/stop')
+      .set('Authorization', 'Bearer test-token')
+      .send({ reason: 'unit-test' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('stopping');
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(stopSpy).toHaveBeenCalledWith('unit-test');
   });
 });

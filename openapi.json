@@ -3,7 +3,7 @@
   "info": {
     "title": "PicoClaw Serverless API",
     "version": "1.0.0",
-    "description": "HTTP API for PicoClaw (serverless-oriented runtime).\n\nNotes:\n- All endpoints except `/health` require Bearer token authentication.\n- `POST /chat` supports both JSON response mode and SSE streaming mode.\n- Scheduled tasks are externally triggered by calling `/task/check`.\n"
+    "description": "HTTP API for PicoClaw (serverless-oriented runtime).\n\nNotes:\n- All endpoints except `/health` require Bearer token authentication.\n- `POST /chat` supports both JSON response mode and SSE streaming mode.\n- Memory and conversation history are persisted via mounted storage and reused across separate requests.\n- Scheduled tasks are externally triggered by calling `/task/check`.\n"
   },
   "servers": [
     {
@@ -124,7 +124,9 @@
                       "session_id": "3e49773a-b4a6-4c53-8cd9-b3f96c5377e3",
                       "duration_ms": 6701,
                       "error": null,
-                      "outbound_messages": []
+                      "outbound_messages": [],
+                      "session_end_marker": "[[PICOCLAW_SESSION_END]]",
+                      "session_end_marker_detected": false
                     }
                   },
                   "timeout": {
@@ -136,7 +138,9 @@
                       "session_id": "session-xxx",
                       "duration_ms": 120000,
                       "error": "Execution aborted after 120000ms. Use conversation_id to continue.",
-                      "outbound_messages": []
+                      "outbound_messages": [],
+                      "session_end_marker": "[[PICOCLAW_SESSION_END]]",
+                      "session_end_marker_detected": false
                     }
                   }
                 }
@@ -147,7 +151,7 @@
                 },
                 "examples": {
                   "sse": {
-                    "value": "event: start\ndata: {\"conversation_id\":\"conv-123\",\"message_id\":\"msg-123\"}\n\nevent: chunk\ndata: {\"text\":\"部分输出\"}\n\nevent: done\ndata: {\"status\":\"success\",\"conversation_id\":\"conv-123\",\"message_id\":\"msg-123\",\"result\":\"最终结果\",\"session_id\":\"session-123\",\"duration_ms\":3210,\"error\":null,\"outbound_messages\":[]}\n"
+                    "value": "event: start\ndata: {\"conversation_id\":\"conv-123\",\"message_id\":\"msg-123\"}\n\nevent: chunk\ndata: {\"text\":\"部分输出\"}\n\nevent: done\ndata: {\"status\":\"success\",\"conversation_id\":\"conv-123\",\"message_id\":\"msg-123\",\"result\":\"最终结果\",\"session_id\":\"session-123\",\"duration_ms\":3210,\"error\":null,\"outbound_messages\":[],\"session_end_marker\":\"[[PICOCLAW_SESSION_END]]\",\"session_end_marker_detected\":true}\n"
                   }
                 }
               }
@@ -594,6 +598,58 @@
           }
         }
       }
+    },
+    "/control/stop": {
+      "post": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Trigger graceful stop and exit",
+        "description": "Requests the main process to persist data and exit gracefully.\nThis endpoint is useful when the caller detects a session-end marker and\nwants to terminate the current runtime instance.\n",
+        "operationId": "stopRuntime",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StopRequest"
+              },
+              "examples": {
+                "stop": {
+                  "value": {
+                    "reason": "end-of-session"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stop accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "501": {
+            "description": "Stop callback not configured in current runtime",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -757,7 +813,9 @@
           "message_id",
           "result",
           "duration_ms",
-          "outbound_messages"
+          "outbound_messages",
+          "session_end_marker",
+          "session_end_marker_detected"
         ],
         "properties": {
           "status": {
@@ -795,6 +853,14 @@
             "items": {
               "$ref": "#/components/schemas/OutboundMessage"
             }
+          },
+          "session_end_marker": {
+            "type": "string",
+            "description": "Marker string that indicates the assistant declared session completion."
+          },
+          "session_end_marker_detected": {
+            "type": "boolean",
+            "description": "True when the marker is found in result or outbound messages."
           }
         }
       },
@@ -861,6 +927,39 @@
               "idle",
               "running"
             ]
+          }
+        }
+      },
+      "StopRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Optional human-readable stop reason."
+          }
+        }
+      },
+      "StopResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "reason",
+          "message"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "stopping"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
           }
         }
       },

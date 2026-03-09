@@ -23,12 +23,15 @@ PicoClaw 是 NanoClaw 的 Serverless 裁剪版本。核心仍然使用 Claude Ag
 - `DELETE /task/:task_id`
 - `POST /task/trigger`
 - `POST /task/check`
+- `POST /control/stop`
 
 除 `/health` 外都需要 Bearer Token：
 
 ```http
 Authorization: Bearer <API_TOKEN>
 ```
+
+在 Serverless 场景下，memory 与 conversation history 是核心能力而不是可选项。需要通过挂载持久化目录（如 OSS/NAS/EFS 对应路径）复用 `/data/memory`、`/data/store`、`/data/sessions` 来实现跨请求的个性化连续体验。
 
 ## 本地开发
 
@@ -49,6 +52,12 @@ make docker-run
 
 ```bash
 ./picoclaw.sh
+```
+
+通过 API 优雅停止：
+
+```bash
+./picoclaw.sh stop-api
 ```
 
 ## 关键环境变量

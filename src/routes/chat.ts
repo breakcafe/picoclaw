@@ -3,7 +3,12 @@ import { randomUUID } from 'crypto';
 import { Request, Response, Router } from 'express';
 
 import { AgentRunner } from '../agent-engine.js';
-import { ASSISTANT_NAME, MAX_EXECUTION_MS, TIMEZONE } from '../config.js';
+import {
+  ASSISTANT_NAME,
+  MAX_EXECUTION_MS,
+  SESSION_END_MARKER,
+  TIMEZONE,
+} from '../config.js';
 import {
   consumeOutboundMessages,
   createConversation,
@@ -48,6 +53,14 @@ function resolveConversation(body: ChatRequestBody): {
   }
 
   return { id: body.conversation_id, isNew: false };
+}
+
+function containsSessionEndMarker(text: string | null | undefined): boolean {
+  if (!SESSION_END_MARKER) {
+    return false;
+  }
+
+  return Boolean(text && text.includes(SESSION_END_MARKER));
 }
 
 export function chatRoutes(agentEngine: AgentRunner): Router {
@@ -158,6 +171,11 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
       setConversationStatus(conversationId, 'idle');
 
       const outboundMessages = consumeOutboundMessages(conversationId);
+      const hasSessionEndMarker =
+        containsSessionEndMarker(finalResult) ||
+        outboundMessages.some((message) =>
+          containsSessionEndMarker(message.text),
+        );
       const durationMs = Date.now() - startedAt;
       const responseBody = {
         status: output.status,
@@ -168,6 +186,8 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
         duration_ms: durationMs,
         error: output.error,
         outbound_messages: outboundMessages,
+        session_end_marker: SESSION_END_MARKER,
+        session_end_marker_detected: hasSessionEndMarker,
       };
 
       if (stream) {

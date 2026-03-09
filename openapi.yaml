@@ -8,6 +8,7 @@ info:
     Notes:
     - All endpoints except `/health` require Bearer token authentication.
     - `POST /chat` supports both JSON response mode and SSE streaming mode.
+    - Memory and conversation history are persisted via mounted storage and reused across separate requests.
     - Scheduled tasks are externally triggered by calling `/task/check`.
 servers:
   - url: http://localhost:9000
@@ -99,6 +100,8 @@ paths:
                     duration_ms: 6701
                     error: null
                     outbound_messages: []
+                    session_end_marker: '[[PICOCLAW_SESSION_END]]'
+                    session_end_marker_detected: false
                 timeout:
                   value:
                     status: timeout
@@ -109,6 +112,8 @@ paths:
                     duration_ms: 120000
                     error: Execution aborted after 120000ms. Use conversation_id to continue.
                     outbound_messages: []
+                    session_end_marker: '[[PICOCLAW_SESSION_END]]'
+                    session_end_marker_detected: false
             text/event-stream:
               schema:
                 type: string
@@ -122,7 +127,7 @@ paths:
                     data: {"text":"部分输出"}
 
                     event: done
-                    data: {"status":"success","conversation_id":"conv-123","message_id":"msg-123","result":"最终结果","session_id":"session-123","duration_ms":3210,"error":null,"outbound_messages":[]}
+                    data: {"status":"success","conversation_id":"conv-123","message_id":"msg-123","result":"最终结果","session_id":"session-123","duration_ms":3210,"error":null,"outbound_messages":[],"session_end_marker":"[[PICOCLAW_SESSION_END]]","session_end_marker_detected":true}
         '400':
           description: Invalid request body
           content:
@@ -403,6 +408,42 @@ paths:
               schema:
                 $ref: '#/components/schemas/TaskCheckErrorResponse'
 
+  /control/stop:
+    post:
+      tags:
+        - System
+      summary: Trigger graceful stop and exit
+      description: |
+        Requests the main process to persist data and exit gracefully.
+        This endpoint is useful when the caller detects a session-end marker and
+        wants to terminate the current runtime instance.
+      operationId: stopRuntime
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StopRequest'
+            examples:
+              stop:
+                value:
+                  reason: end-of-session
+      responses:
+        '200':
+          description: Stop accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StopResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '501':
+          description: Stop callback not configured in current runtime
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -531,6 +572,8 @@ components:
         - result
         - duration_ms
         - outbound_messages
+        - session_end_marker
+        - session_end_marker_detected
       properties:
         status:
           type: string
@@ -558,6 +601,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OutboundMessage'
+        session_end_marker:
+          type: string
+          description: Marker string that indicates the assistant declared session completion.
+        session_end_marker_detected:
+          type: boolean
+          description: True when the marker is found in result or outbound messages.
 
     ChatInternalErrorResponse:
       type: object
@@ -608,6 +657,31 @@ components:
           enum:
             - idle
             - running
+
+    StopRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          description: Optional human-readable stop reason.
+
+    StopResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - reason
+        - message
+      properties:
+        status:
+          type: string
+          enum:
+            - stopping
+        reason:
+          type: string
+        message:
+          type: string
 
     Task:
       type: object

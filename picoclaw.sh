@@ -15,6 +15,7 @@ Usage:
   ./picoclaw.sh            # one-click: prepare env -> build -> run -> smoke test
   ./picoclaw.sh up         # prepare env -> build -> run
   ./picoclaw.sh test       # smoke test current running service
+  ./picoclaw.sh stop-api   # request graceful stop via /control/stop
   ./picoclaw.sh down       # stop container
   ./picoclaw.sh logs       # tail logs
 USAGE
@@ -217,6 +218,21 @@ stop_container() {
   echo "[done] container stopped"
 }
 
+api_stop() {
+  local api_token
+  api_token="$(read_env API_TOKEN)"
+  if [[ -z "$api_token" ]]; then
+    echo "[error] API_TOKEN not found in .env"
+    exit 1
+  fi
+
+  curl -sS -X POST "http://localhost:${API_PORT}/control/stop" \
+    -H "Authorization: Bearer ${api_token}" \
+    -H "Content-Type: application/json" \
+    -d '{"reason":"manual-stop-api"}'
+  echo
+}
+
 show_logs() {
   docker logs -f "$CONTAINER_NAME"
 }
@@ -237,6 +253,9 @@ case "$command" in
     ;;
   test)
     smoke_test
+    ;;
+  stop-api)
+    api_stop
     ;;
   down)
     stop_container

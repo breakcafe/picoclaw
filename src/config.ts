@@ -16,6 +16,8 @@ export const MAX_EXECUTION_MS = parseIntWithDefault(
   process.env.MAX_EXECUTION_MS,
   300_000,
 );
+export const SESSION_END_MARKER =
+  process.env.SESSION_END_MARKER || '[[PICOCLAW_SESSION_END]]';
 
 export const STORE_DIR = process.env.STORE_DIR || '/data/store';
 export const MEMORY_DIR = process.env.MEMORY_DIR || '/data/memory';

@@ -23,12 +23,16 @@ Detailed operations and deployment guide: `docs/SERVERLESS_API_DEPLOYMENT_GUIDE.
 - `DELETE /task/:task_id`
 - `POST /task/trigger`
 - `POST /task/check`
+- `POST /control/stop`
 
 All routes except `/health` require:
 
 ```http
 Authorization: Bearer <API_TOKEN>
 ```
+
+Memory and conversation history are part of the core design in serverless mode.
+Cross-request personalization is achieved by persisting `/data/memory`, `/data/store`, and `/data/sessions` on mounted storage (for example OSS/NAS/EFS-backed paths).
 
 ## Local Development
 
@@ -49,6 +53,12 @@ One-command startup and smoke test script:
 
 ```bash
 ./picoclaw.sh
+```
+
+Graceful stop via API:
+
+```bash
+./picoclaw.sh stop-api
 ```
 
 ## Required Environment Variables
