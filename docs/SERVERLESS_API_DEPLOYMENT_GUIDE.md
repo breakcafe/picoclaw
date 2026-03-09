@@ -12,6 +12,20 @@
 - 运行架构与持久化设计
 - 运维注意事项、常见故障排查、上线检查项
 
+## 1.1 交付产物
+
+本仓库同时提供可直接导入的 API 产物：
+
+- `openapi.yaml`（OpenAPI 3.0.3 源文件）
+- `openapi.json`（OpenAPI JSON 导出版）
+- `postman_collection.json`（Postman Collection）
+
+推荐流程：
+
+1. 先阅读本文档了解运行与运维约束。  
+2. 下游系统直接导入 `openapi.yaml` 或 `openapi.json`。  
+3. 联调阶段使用 `postman_collection.json` 快速验证。  
+
 ## 2. 架构概览
 
 ### 2.1 运行模式变化

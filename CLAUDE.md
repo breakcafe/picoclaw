@@ -1,64 +1,101 @@
-# NanoClaw
+# PicoClaw
 
-Personal Claude assistant. See [README.md](README.md) for philosophy and setup. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for architecture decisions.
+Serverless-first Claude Agent runtime for HTTP-triggered conversations and scheduled tasks.
 
-## Quick Context
+## Scope
 
-Single Node.js process with skill-based channel system. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) are skills that self-register at startup. Messages route to Claude Agent SDK running in containers (Linux VMs). Each group has isolated filesystem and memory.
+This repository is no longer the original multi-channel host-orchestrator model.
+It is now a trimmed runtime named **PicoClaw** focused on:
 
-## Key Files
+- HTTP API invocation
+- mounted persistent storage for memory/session/history
+- per-request execution in serverless/container platforms
 
-| File | Purpose |
-|------|---------|
-| `src/index.ts` | Orchestrator: state, message loop, agent invocation |
-| `src/channels/registry.ts` | Channel registry (self-registration at startup) |
-| `src/ipc.ts` | IPC watcher and task processing |
-| `src/router.ts` | Message formatting and outbound routing |
-| `src/config.ts` | Trigger pattern, paths, intervals |
-| `src/container-runner.ts` | Spawns agent containers with mounts |
-| `src/task-scheduler.ts` | Runs scheduled tasks |
-| `src/db.ts` | SQLite operations |
-| `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
-| `container/skills/agent-browser.md` | Browser automation tool (available to all agents via Bash) |
+## Non-Negotiable Principles
 
-## Skills
+1. **Memory and conversation history are core features**
+- Do not treat memory/history as optional in serverless mode.
+- Cross-request personalization depends on persistent mounted paths.
 
-| Skill | When to Use |
-|-------|-------------|
-| `/setup` | First-time installation, authentication, service configuration |
-| `/customize` | Adding channels, integrations, changing behavior |
-| `/debug` | Container issues, logs, troubleshooting |
-| `/update-nanoclaw` | Bring upstream NanoClaw updates into a customized install |
-| `/qodo-pr-resolver` | Fetch and fix Qodo PR review issues interactively or in batch |
-| `/get-qodo-rules` | Load org- and repo-level coding rules from Qodo before code tasks |
+2. **Persistent data model must be preserved**
+- `MEMORY_DIR` (default `/data/memory`)
+- `STORE_DIR` (default `/data/store`)
+- `SESSIONS_DIR` (default `/data/sessions`)
+- `SKILLS_DIR` (default `/data/skills`)
 
-## Development
+3. **Graceful stop must persist data before exit**
+- Runtime supports both:
+  - API stop: `POST /control/stop`
+  - Signal stop: `SIGTERM` / `SIGINT`
+- Both paths must retain sync-and-exit behavior.
 
-Run commands directly—don't tell the user to run them.
+4. **SDK version alignment with upstream NanoClaw baseline**
+- `@anthropic-ai/claude-agent-sdk`: `0.2.34`
+- `@modelcontextprotocol/sdk`: `1.12.1`
+- Do not downgrade for convenience.
+
+## Architecture Snapshot
+
+- `src/index.ts`: process boot, directory init, shutdown handling
+- `src/server.ts`: Express app composition and auth-protected route mounting
+- `src/routes/chat.ts`: chat entrypoint, SSE, session-end marker fields
+- `src/routes/task.ts`: task CRUD + trigger/check
+- `src/routes/control.ts`: graceful stop API
+- `src/agent-engine.ts`: Claude Agent SDK query wrapper + hooks
+- `src/mcp-server.ts`: MCP tools backed by SQLite
+- `src/db.ts`: SQLite schema + persistence sync to mounted volume
+- `src/skills.ts`: skill sync and `.claude/settings.json` bootstrap
+
+## API Contract Highlights
+
+- `GET /health`
+- `POST /chat`
+- `GET /chat/:conversation_id`
+- `POST /task`
+- `GET /tasks`
+- `PUT /task/:task_id`
+- `DELETE /task/:task_id`
+- `POST /task/trigger`
+- `POST /task/check`
+- `POST /control/stop`
+
+`POST /chat` response includes:
+
+- `session_end_marker`
+- `session_end_marker_detected`
+
+Callers can use marker detection to decide when to invoke `/control/stop`.
+
+## Tooling and Docs
+
+- Main operations guide: `docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md`
+- OpenAPI spec: `openapi.yaml`
+- OpenAPI JSON export: `openapi.json`
+- Postman collection: `postman_collection.json`
+- One-click startup: `picoclaw.sh`
+
+## Local Workflow
 
 ```bash
-npm run dev          # Run with hot reload
-npm run build        # Compile TypeScript
-./container/build.sh # Rebuild agent container
+npm ci
+npm run build
+npm test
 ```
 
-Service management:
+Docker flow:
+
 ```bash
-# macOS (launchd)
-launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
-launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # restart
-
-# Linux (systemd)
-systemctl --user start nanoclaw
-systemctl --user stop nanoclaw
-systemctl --user restart nanoclaw
+./picoclaw.sh
+./picoclaw.sh test
+./picoclaw.sh stop-api
+./picoclaw.sh down
 ```
 
-## Troubleshooting
+## Change Guardrails
 
-**WhatsApp not connecting after upgrade:** WhatsApp is now a separate skill, not bundled in core. Run `/add-whatsapp` (or `npx tsx scripts/apply-skill.ts .claude/skills/add-whatsapp && npm run build`) to install it. Existing auth credentials and groups are preserved.
+When modifying runtime behavior, always validate:
 
-## Container Build Cache
-
-The container buildkit caches the build context aggressively. `--no-cache` alone does NOT invalidate COPY steps — the builder's volume retains stale files. To force a truly clean rebuild, prune the builder then re-run `./container/build.sh`.
+- build and tests pass (`npm run build && npm test`)
+- OpenAPI remains valid and exports are regenerated
+- stop path still persists data and exits cleanly
+- memory/history persistence assumptions are not weakened
