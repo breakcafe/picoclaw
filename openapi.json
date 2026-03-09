@@ -3,7 +3,7 @@
   "info": {
     "title": "PicoClaw Serverless API",
     "version": "1.0.0",
-    "description": "HTTP API for PicoClaw (serverless-oriented runtime).\n\nNotes:\n- All endpoints except `/health` require Bearer token authentication.\n- `POST /chat` supports both JSON response mode and SSE streaming mode.\n- Memory and conversation history are persisted via mounted storage and reused across separate requests.\n- Scheduled tasks are externally triggered by calling `/task/check`.\n"
+    "description": "HTTP API for PicoClaw (serverless-oriented runtime).\n\nNotes:\n- All endpoints except `/health` require Bearer token authentication.\n- `POST /chat` supports both JSON response mode and SSE streaming mode.\n- Memory and conversation history are persisted via mounted storage and reused across separate requests.\n- Scheduled tasks are externally triggered by calling `/task/check`.\n- `POST /control/stop` can be used to request graceful save-and-exit.\n"
   },
   "servers": [
     {

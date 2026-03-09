@@ -10,6 +10,7 @@ info:
     - `POST /chat` supports both JSON response mode and SSE streaming mode.
     - Memory and conversation history are persisted via mounted storage and reused across separate requests.
     - Scheduled tasks are externally triggered by calling `/task/check`.
+    - `POST /control/stop` can be used to request graceful save-and-exit.
 servers:
   - url: http://localhost:9000
     description: Local development

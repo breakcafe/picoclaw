@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { PORT } from './config.js';
+import { MEMORY_DIR, PORT, SESSIONS_DIR, SKILLS_DIR, STORE_DIR } from './config.js';
 import { closeDatabase, initDatabase, syncDatabaseToVolume } from './db.js';
 import { logger } from './logger.js';
 import { createServer } from './server.js';
@@ -9,12 +9,12 @@ import { ensureClaudeSettings, syncSkills } from './skills.js';
 
 function ensureDataDirectories(): void {
   const directories = [
-    '/data/memory',
-    '/data/memory/global',
-    '/data/memory/conversations',
-    '/data/skills',
-    '/data/store',
-    '/data/sessions/.claude',
+    MEMORY_DIR,
+    path.join(MEMORY_DIR, 'global'),
+    path.join(MEMORY_DIR, 'conversations'),
+    SKILLS_DIR,
+    STORE_DIR,
+    path.join(SESSIONS_DIR, '.claude'),
   ];
 
   for (const directory of directories) {

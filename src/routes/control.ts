@@ -1,5 +1,7 @@
 import { Request, Response, Router } from 'express';
 
+import { logger } from '../logger.js';
+
 export interface ControlRouteOptions {
   onStop?: (reason: string) => Promise<void> | void;
 }
@@ -30,7 +32,11 @@ export function controlRoutes(options: ControlRouteOptions = {}): Router {
     });
 
     setImmediate(async () => {
-      await options.onStop?.(reason);
+      try {
+        await options.onStop?.(reason);
+      } catch (err) {
+        logger.error({ err, reason }, 'Failed to complete stop callback');
+      }
     });
   });
 
