@@ -103,8 +103,8 @@ HTTP Client / API Gateway / Cron Trigger
 
 - Claude Agent SDK 与 MCP SDK 版本以原版 NanoClaw 的稳定基线为准。
 - 当前实现对齐：
-  - `@anthropic-ai/claude-agent-sdk`: `^0.2.34`
-  - `@modelcontextprotocol/sdk`: `^1.12.1`
+  - `@anthropic-ai/claude-agent-sdk`: `0.2.34`
+  - `@modelcontextprotocol/sdk`: `1.12.1`
 - 后续升级应做兼容回归，不建议“为了裁剪而降级”。
 
 ## 4. 环境变量
