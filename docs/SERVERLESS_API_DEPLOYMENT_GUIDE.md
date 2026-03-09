@@ -121,6 +121,16 @@ HTTP Client / API Gateway / Cron Trigger
   - `@modelcontextprotocol/sdk`: `1.12.1`
 - 后续升级应做兼容回归，不建议“为了裁剪而降级”。
 
+### 3.5 与 `nanoclaw-latest` 的对齐结论
+
+针对 `/home/dev/kapi/gpt/nanoclaw-latest`（`main`）最近更新已做比对，结论如下：
+
+- 已对齐并吸收：SDK 基线版本与相关兼容约束。
+- 不直接迁移（架构不适用）：
+  - 容器凭据代理与容器隔离增强（原版 `src/container-*` 路径），PicoClaw 已改为同进程本地目录执行，不再走子容器调度链路。
+  - `/compact` 技能注入（技能扩展脚手架），PicoClaw 保留外挂 skills 卷能力，但不强绑该技能到核心运行时。
+  - 任务容器关闭时序修复（依赖原版容器生命周期回收逻辑），在 PicoClaw 中由请求级执行与进程级 stop API 替代。
+
 ## 4. 环境变量
 
 ### 4.1 必需项
