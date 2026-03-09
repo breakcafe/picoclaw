@@ -1,7 +1,7 @@
 {
-  "name": "nanoclaw",
-  "version": "1.2.10",
-  "description": "Personal Claude assistant. Lightweight, secure, customizable.",
+  "name": "picoclaw",
+  "version": "1.2.12",
+  "description": "Serverless-first Claude Agent runtime with persistent memory mounts.",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
