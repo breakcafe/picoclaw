@@ -1,7 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 
-import { MEMORY_DIR, PORT, SESSIONS_DIR, SKILLS_DIR, STORE_DIR } from './config.js';
+import {
+  MEMORY_DIR,
+  PORT,
+  SESSIONS_DIR,
+  SKILLS_DIR,
+  STORE_DIR,
+} from './config.js';
 import { closeDatabase, initDatabase, syncDatabaseToVolume } from './db.js';
 import { logger } from './logger.js';
 import { createServer } from './server.js';
