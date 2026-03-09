@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  nanoclaw-lite:
+  picoclaw:
     build: .
     ports:
       - '9000:9000'
@@ -13,7 +13,7 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - API_TOKEN=${API_TOKEN:-dev-token-123}
-      - ASSISTANT_NAME=${ASSISTANT_NAME:-Andy}
+      - ASSISTANT_NAME=${ASSISTANT_NAME:-Pico}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_EXECUTION_MS=${MAX_EXECUTION_MS:-300000}
       - TZ=${TZ:-Asia/Shanghai}

@@ -1,6 +1,6 @@
-IMAGE_NAME := nanoclaw-lite
+IMAGE_NAME := picoclaw
 IMAGE_TAG := latest
-CONTAINER_NAME := nanoclaw-lite-dev
+CONTAINER_NAME := picoclaw-dev
 PORT := 9000
 
 ifneq (,$(wildcard .env))
@@ -109,7 +109,7 @@ _wait-ready:
 
 .DEFAULT_GOAL := help
 help:
-	@echo "NanoClaw Lite commands"
+	@echo "PicoClaw commands"
 	@echo "  make build-ts"
 	@echo "  make dev"
 	@echo "  make docker-build"

@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
-  title: NanoClaw Lite Serverless API
+  title: PicoClaw Serverless API
   version: 1.0.0
   description: |
-    HTTP API for NanoClaw Lite (serverless-oriented runtime).
+    HTTP API for PicoClaw (serverless-oriented runtime).
 
     Notes:
     - All endpoints except `/health` require Bearer token authentication.

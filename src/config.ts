@@ -8,7 +8,7 @@ const parseIntWithDefault = (
 };
 
 export const APP_VERSION = process.env.APP_VERSION || '1.0.0';
-export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || 'Andy';
+export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || 'Pico';
 export const API_TOKEN = process.env.API_TOKEN || '';
 
 export const PORT = parseIntWithDefault(process.env.PORT, 9000);

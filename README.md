@@ -1,10 +1,10 @@
-# NanoClaw Lite (Serverless)
+# PicoClaw (Serverless)
 
-NanoClaw Lite is a serverless-friendly variant of NanoClaw. It keeps Claude Agent SDK as the execution core, but switches from long-running multi-channel orchestration to request-driven HTTP APIs.
+PicoClaw is a serverless-friendly variant of NanoClaw. It keeps Claude Agent SDK as the execution core, but switches from long-running multi-channel orchestration to request-driven HTTP APIs.
 
 ## What Changed
 
-- Agent execution now runs in the same container/process as NanoClaw (no per-request `docker run` child container).
+- Agent execution now runs in the same container/process as PicoClaw (no per-request `docker run` child container).
 - Skills and memory are mounted from volumes (`/data/skills`, `/data/memory`, `/data/sessions`, `/data/store`).
 - HTTP API replaces Telegram/WhatsApp/Slack channel adapters.
 - Multi-turn state is persisted in SQLite + Claude session resume metadata.
@@ -45,6 +45,12 @@ make docker-build
 make docker-run
 ```
 
+One-command startup and smoke test script:
+
+```bash
+./picoclaw.sh
+```
+
 ## Required Environment Variables
 
 - `ANTHROPIC_API_KEY` (or Claude Code OAuth token equivalent)
@@ -54,13 +60,13 @@ Optional:
 
 - `PORT` (default `9000`)
 - `MAX_EXECUTION_MS` (default `300000`)
-- `ASSISTANT_NAME` (default `Andy`)
+- `ASSISTANT_NAME` (default `Pico`)
 - `TZ` (default system timezone)
 
 ## Build Image
 
 ```bash
-docker build --platform linux/amd64 -t nanoclaw-lite:latest .
+docker build --platform linux/amd64 -t picoclaw:latest .
 ```
 
 For AWS Lambda Web Adapter:
@@ -68,5 +74,5 @@ For AWS Lambda Web Adapter:
 ```bash
 docker build --platform linux/amd64 \
   --build-arg ENABLE_LAMBDA_ADAPTER=true \
-  -t nanoclaw-lite:lambda .
+  -t picoclaw:lambda .
 ```

@@ -30,7 +30,7 @@ async function main(): Promise<void> {
 
   const app = createServer();
   const server = app.listen(PORT, () => {
-    logger.info({ port: PORT }, 'NanoClaw Lite ready');
+    logger.info({ port: PORT }, 'PicoClaw ready');
   });
 
   const shutdown = (signal: string) => {
@@ -52,6 +52,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  logger.fatal({ err }, 'Failed to start NanoClaw Lite');
+  logger.fatal({ err }, 'Failed to start PicoClaw');
   process.exit(1);
 });

@@ -334,14 +334,14 @@ export class AgentEngine implements AgentRunner {
             'ToolSearch',
             'Skill',
             'NotebookEdit',
-            'mcp__nanoclaw__*',
+            'mcp__picoclaw__*',
           ],
           env: sdkEnv,
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
           settingSources: ['project', 'user'],
           mcpServers: {
-            nanoclaw: {
+            picoclaw: {
               command: 'node',
               args: [mcpServerPath],
               env: {

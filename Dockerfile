@@ -1,5 +1,5 @@
 # ================================================================
-# NanoClaw Lite — Single Container Serverless Agent
+# PicoClaw — Single Container Serverless Agent
 # ================================================================
 
 FROM node:22-slim

@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "NanoClaw Lite Serverless API",
+    "title": "PicoClaw Serverless API",
     "version": "1.0.0",
-    "description": "HTTP API for NanoClaw Lite (serverless-oriented runtime).\n\nNotes:\n- All endpoints except `/health` require Bearer token authentication.\n- `POST /chat` supports both JSON response mode and SSE streaming mode.\n- Scheduled tasks are externally triggered by calling `/task/check`.\n"
+    "description": "HTTP API for PicoClaw (serverless-oriented runtime).\n\nNotes:\n- All endpoints except `/health` require Bearer token authentication.\n- `POST /chat` supports both JSON response mode and SSE streaming mode.\n- Scheduled tasks are externally triggered by calling `/task/check`.\n"
   },
   "servers": [
     {

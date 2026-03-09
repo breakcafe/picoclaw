@@ -1,11 +1,11 @@
-# NanoClaw Lite Serverless API 与部署手册
+# PicoClaw Serverless API 与部署手册
 
 > 适用版本：`feat/serverless-lambda-lite` 分支
 > 目标读者：运维团队、平台团队、下游调用方
 
 ## 1. 文档目标
 
-本文档用于说明改造后的 NanoClaw Lite 在以下方面的落地细节：
+本文档用于说明改造后的 PicoClaw 在以下方面的落地细节：
 
 - API 调用方式（含鉴权、SSE、多轮对话、任务调度）
 - 容器化部署方式（本地、AWS Lambda、阿里云 FC）
@@ -29,7 +29,7 @@
 HTTP Client / API Gateway / Cron Trigger
                 |
                 v
-        NanoClaw Lite (Node.js)
+        PicoClaw (Node.js)
         - Express HTTP API
         - AgentEngine (Claude Agent SDK query)
         - SQLite (/tmp/messages.db)
@@ -106,7 +106,7 @@ HTTP Client / API Gateway / Cron Trigger
 - `ANTHROPIC_BASE_URL`：兼容第三方代理网关
 - `PORT`：默认 `9000`
 - `MAX_EXECUTION_MS`：默认 `300000`（5 分钟）
-- `ASSISTANT_NAME`：默认 `Andy`
+- `ASSISTANT_NAME`：默认 `Pico`
 - `TZ`：时区（影响 cron 解析）
 - `LOG_LEVEL`：日志级别
 - `STORE_DIR` / `MEMORY_DIR` / `SKILLS_DIR` / `SESSIONS_DIR` / `LOCAL_DB_PATH`
@@ -349,6 +349,29 @@ data: {"status":"success","conversation_id":"conv-..."}
 
 ## 7. 部署指南
 
+### 7.0 一键启动与冒烟测试
+
+仓库根目录提供脚本 `picoclaw.sh`，用于填入 Key 后一键完成：
+
+- 生成/更新 `.env`
+- 构建 TypeScript
+- 构建 Docker 镜像
+- 启动容器
+- 执行健康检查与 `/chat` 冒烟测试
+
+```bash
+./picoclaw.sh
+```
+
+常用子命令：
+
+```bash
+./picoclaw.sh up
+./picoclaw.sh test
+./picoclaw.sh logs
+./picoclaw.sh down
+```
+
 ### 7.1 本地 Node 运行
 
 ```bash
@@ -362,7 +385,7 @@ API_TOKEN=dev-token ANTHROPIC_API_KEY=xxx npm start
 构建：
 
 ```bash
-docker build --platform linux/amd64 -t nanoclaw-lite:latest .
+docker build --platform linux/amd64 -t picoclaw:latest .
 ```
 
 运行：
@@ -376,7 +399,7 @@ docker run --rm -it \
   -v $(pwd)/dev-data/skills:/data/skills \
   -v $(pwd)/dev-data/store:/data/store \
   -v $(pwd)/dev-data/sessions:/data/sessions \
-  nanoclaw-lite:latest
+  picoclaw:latest
 ```
 
 也可直接使用：
@@ -400,7 +423,7 @@ make docker-run
 ```bash
 docker build --platform linux/amd64 \
   --build-arg ENABLE_LAMBDA_ADAPTER=true \
-  -t nanoclaw-lite:lambda .
+  -t picoclaw:lambda .
 ```
 
 ### 7.4 阿里云 FC（自定义容器）

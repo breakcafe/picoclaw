@@ -1,6 +1,6 @@
-# NanoClaw Lite（Serverless 版）
+# PicoClaw（Serverless 版）
 
-NanoClaw Lite 是 NanoClaw 的 Serverless 裁剪版本。核心仍然使用 Claude Agent SDK，但把原来的常驻多渠道架构改成 HTTP 按需触发。
+PicoClaw 是 NanoClaw 的 Serverless 裁剪版本。核心仍然使用 Claude Agent SDK，但把原来的常驻多渠道架构改成 HTTP 按需触发。
 
 ## 主要变化
 
@@ -45,6 +45,12 @@ make docker-build
 make docker-run
 ```
 
+一键启动并冒烟测试：
+
+```bash
+./picoclaw.sh
+```
+
 ## 关键环境变量
 
 必填：
@@ -56,13 +62,13 @@ make docker-run
 
 - `PORT`（默认 `9000`）
 - `MAX_EXECUTION_MS`（默认 `300000`）
-- `ASSISTANT_NAME`（默认 `Andy`）
+- `ASSISTANT_NAME`（默认 `Pico`）
 - `TZ`（默认系统时区）
 
 ## 镜像构建
 
 ```bash
-docker build --platform linux/amd64 -t nanoclaw-lite:latest .
+docker build --platform linux/amd64 -t picoclaw:latest .
 ```
 
 AWS Lambda 版（含 Lambda Web Adapter）：
@@ -70,5 +76,5 @@ AWS Lambda 版（含 Lambda Web Adapter）：
 ```bash
 docker build --platform linux/amd64 \
   --build-arg ENABLE_LAMBDA_ADAPTER=true \
-  -t nanoclaw-lite:lambda .
+  -t picoclaw:lambda .
 ```

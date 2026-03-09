@@ -79,7 +79,7 @@ function computeNextRun(
 }
 
 const server = new McpServer({
-  name: 'nanoclaw',
+  name: 'picoclaw',
   version: '1.0.0',
 });
 
