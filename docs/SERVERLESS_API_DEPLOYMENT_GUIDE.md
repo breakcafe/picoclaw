@@ -131,6 +131,13 @@ HTTP Client / API Gateway / Cron Trigger
   - `/compact` 技能注入（技能扩展脚手架），PicoClaw 保留外挂 skills 卷能力，但不强绑该技能到核心运行时。
   - 任务容器关闭时序修复（依赖原版容器生命周期回收逻辑），在 PicoClaw 中由请求级执行与进程级 stop API 替代。
 
+### 3.6 吸收 `opus` 方案后的增强点
+
+本仓库已吸收并落地以下改进：
+
+- Agent 执行输入采用 `MessageStream`（异步可迭代 prompt 流），提升 Agent Teams 场景兼容性。
+- `isolated` 任务执行前会显式创建运行期临时 conversation 行，避免任务中 `send_message` 导致外键写入失败。
+
 ## 4. 环境变量
 
 ### 4.1 必需项

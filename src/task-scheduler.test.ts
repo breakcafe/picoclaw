@@ -8,11 +8,13 @@ import { AgentRunner } from './agent-engine.js';
 import {
   _resetDatabaseForTests,
   closeDatabase,
+  consumeOutboundMessages,
   createConversation,
   createTask,
   getConversation,
   getTaskById,
   initDatabase,
+  queueOutboundMessage,
 } from './db.js';
 import {
   computeInitialNextRun,
@@ -104,5 +106,50 @@ describe('task scheduler', () => {
     const conversation = getConversation('conv-123');
     expect(conversation?.session_id).toBe('session-1');
     expect(conversation?.last_assistant_uuid).toBe('assistant-1');
+  });
+
+  it('creates isolated runtime conversation for MCP outbound messages', async () => {
+    setupDb();
+    createConversation('conv-root');
+
+    createTask({
+      id: 'task-isolated',
+      conversation_id: 'conv-root',
+      prompt: 'do isolated work',
+      schedule_type: 'once',
+      schedule_value: '2026-03-09T10:00:00',
+      context_mode: 'isolated',
+      next_run: '2026-03-09T02:00:00.000Z',
+      status: 'active',
+      created_at: '2026-03-08T00:00:00.000Z',
+    });
+
+    let runtimeConversationId: string | undefined;
+    const fakeEngine: AgentRunner = {
+      async run(input) {
+        runtimeConversationId = input.conversationId;
+        queueOutboundMessage(input.conversationId, 'task ping', 'task-agent');
+        return {
+          status: 'success',
+          result: null,
+        };
+      },
+    };
+
+    const task = getTaskById('task-isolated');
+    if (!task) {
+      throw new Error('task not found');
+    }
+
+    const result = await runTask(task, fakeEngine);
+    expect(result.status).toBe('success');
+    expect(runtimeConversationId).toMatch(/^task-task-isolated-/);
+
+    const conversation = getConversation(runtimeConversationId!);
+    expect(conversation?.id).toBe(runtimeConversationId);
+
+    const outbound = consumeOutboundMessages(runtimeConversationId!);
+    expect(outbound).toHaveLength(1);
+    expect(outbound[0]?.text).toBe('task ping');
   });
 });

@@ -119,6 +119,12 @@ export async function runTask(
       ? task.conversation_id
       : `task-${task.id}-${randomUUID()}`;
 
+  if (task.context_mode === 'isolated') {
+    // Isolated runs still need a concrete conversation row so MCP send_message
+    // can insert outbound_messages without foreign-key violations.
+    ensureConversation(conversationId);
+  }
+
   try {
     const agentOutput = await agentEngine.run({
       prompt: task.prompt,
