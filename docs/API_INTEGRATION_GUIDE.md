@@ -246,6 +246,53 @@ The server will:
 
 Alternatively, send `SIGTERM` to the container (the default serverless platform behavior). Both paths execute the same sync-and-exit sequence.
 
+### List all conversations
+
+```bash
+curl http://localhost:9000/chat \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns all conversations ordered by last activity (most recent first).
+
+### Get conversation messages
+
+```bash
+curl http://localhost:9000/chat/conv-a1b2c3d4/messages \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns the full message history for a conversation.
+
+### Delete a conversation
+
+```bash
+curl -X DELETE http://localhost:9000/chat/conv-a1b2c3d4 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns `204 No Content` on success. Returns `409` if the conversation is currently running.
+
+## Skills Management
+
+### Reload skills
+
+```bash
+curl -X POST http://localhost:9000/admin/reload-skills \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Re-syncs skills from all three tiers (built-in, shared, user) to `.claude/skills/`.
+
+### Get skills summary
+
+```bash
+curl http://localhost:9000/admin/skills \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns the current skills from all three tiers and the effective (merged) list.
+
 ## Error Handling
 
 ### HTTP Status Codes
@@ -257,6 +304,7 @@ Alternatively, send `SIGTERM` to the container (the default serverless platform 
 | 400 | Invalid request (missing fields, bad schedule) |
 | 401 | Missing or invalid Bearer token |
 | 404 | Conversation or task not found |
+| 409 | Conflict (conversation busy or currently running) |
 | 500 | Server error |
 
 ### Response status field

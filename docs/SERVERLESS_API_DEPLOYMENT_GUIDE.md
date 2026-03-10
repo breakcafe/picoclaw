@@ -274,7 +274,56 @@ event: done
 data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[PICOCLAW_SESSION_END]]","session_end_marker_detected":false}
 ```
 
-### 6.4 Get Conversation Metadata
+### 6.4 List All Conversations
+
+`GET /chat`
+
+```json
+{
+  "conversations": [
+    {
+      "conversation_id": "conv-0df6...",
+      "session_id": "3e49...",
+      "message_count": 4,
+      "last_activity": "2026-03-08T01:57:18.082Z",
+      "status": "idle"
+    }
+  ]
+}
+```
+
+### 6.5 Get Conversation Messages
+
+`GET /chat/:conversation_id/messages`
+
+```json
+{
+  "conversation_id": "conv-0df6...",
+  "messages": [
+    {
+      "id": "msg-abc",
+      "conversation_id": "conv-0df6...",
+      "role": "user",
+      "sender": "user",
+      "sender_name": "Alice",
+      "content": "Hello",
+      "created_at": "2026-03-08T01:57:18.082Z"
+    }
+  ]
+}
+```
+
+Returns `404` if the conversation does not exist.
+
+### 6.6 Delete a Conversation
+
+`DELETE /chat/:conversation_id`
+
+Returns `204 No Content` on success. Deletes all associated messages, outbound messages, and tasks (CASCADE).
+
+Returns `404` if the conversation does not exist. Returns `409` if the conversation is currently running.
+
+### 6.8 Get Conversation Metadata
 
 `GET /chat/:conversation_id`
 
@@ -290,7 +339,7 @@ data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[P
 
 Returns `404` if the conversation does not exist.
 
-### 6.5 Create a Scheduled Task
+### 6.9 Create a Scheduled Task
 
 `POST /task`
 
@@ -322,7 +371,7 @@ Schedule value formats:
 | `interval` | Milliseconds as string | `3600000` (every hour) |
 | `once` | Local time string (no `Z` or timezone offset) | `2026-03-15T14:00:00` |
 
-### 6.6 List All Tasks
+### 6.10 List All Tasks
 
 `GET /tasks`
 
@@ -346,7 +395,7 @@ Schedule value formats:
 }
 ```
 
-### 6.7 Update a Task
+### 6.11 Update a Task
 
 `PUT /task/:task_id`
 
@@ -354,13 +403,13 @@ Supports partial updates of: `prompt`, `schedule_type`, `schedule_value`, `conte
 
 If `schedule_type` or `schedule_value` changes, `next_run` is recalculated automatically.
 
-### 6.8 Delete a Task
+### 6.12 Delete a Task
 
 `DELETE /task/:task_id`
 
 Returns `204 No Content` on success.
 
-### 6.9 Manually Trigger a Task
+### 6.13 Manually Trigger a Task
 
 `POST /task/trigger`
 
@@ -382,7 +431,7 @@ Response:
 }
 ```
 
-### 6.10 Check and Execute Due Tasks
+### 6.14 Check and Execute Due Tasks
 
 `POST /task/check`
 
@@ -413,7 +462,31 @@ With due tasks:
 
 Each call executes at most **one** due task. Call repeatedly or increase external cron frequency for backlogs.
 
-### 6.11 Graceful Shutdown
+### 6.15 Reload Skills
+
+`POST /admin/reload-skills`
+
+Re-syncs skills from all three tiers (built-in, shared, user) to `.claude/skills/`.
+
+```json
+{
+  "status": "reloaded",
+  "skills": {
+    "builtIn": ["agent-browser"],
+    "shared": ["math-skill"],
+    "user": ["custom-skill"],
+    "effective": ["agent-browser", "custom-skill", "math-skill"]
+  }
+}
+```
+
+### 6.16 Get Skills Summary
+
+`GET /admin/skills`
+
+Returns the current skills from all three tiers.
+
+### 6.17 Graceful Shutdown
 
 `POST /control/stop`
 
@@ -647,8 +720,13 @@ Mitigations:
 - [ ] `GET /health` returns `200`
 - [ ] `POST /chat` creates a new conversation successfully
 - [ ] `POST /chat` with `conversation_id` resumes correctly (multi-turn)
+- [ ] `GET /chat` lists conversations
+- [ ] `GET /chat/:id/messages` returns message history
+- [ ] `DELETE /chat/:id` deletes conversation (204)
 - [ ] `session_end_marker_detected` triggers as expected
 - [ ] `POST /task` + `POST /task/check` execute scheduled tasks
+- [ ] `POST /admin/reload-skills` reloads skills from all tiers
+- [ ] `GET /admin/skills` returns skills summary
 - [ ] `POST /control/stop` syncs data and exits cleanly
 - [ ] All four `/data/*` volumes are mounted and writable
 - [ ] External cron is configured to call `POST /task/check`
