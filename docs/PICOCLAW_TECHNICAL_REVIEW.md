@@ -152,15 +152,15 @@ PicoClaw (HTTP API + 单进程):
 | 6 | **outbound_messages 未自动清理** | `cleanupStaleData()` 在 `syncDatabaseToVolume()` 前执行，删除已投递的过期消息（`OUTBOUND_TTL_DAYS`，默认 7 天） | **已修复** (Phase 2) |
 | 7 | **task_run_logs 未限制** | `cleanupStaleData()` 每个 task 保留最近 N 条日志（`TASK_LOG_RETENTION`，默认 100 条） | **已修复** (Phase 2) |
 
-#### P2 - 优化建议（2/5 已修复）
+#### P2 - 优化建议（5/5 已全部修复）
 
 | # | 问题 | 修复方案 | 状态 |
 |---|------|---------|------|
 | 8 | **命名遗留** | MCP 环境变量从 `NANOCLAW_*` 重命名为 `PICOCLAW_*`，保留向后兼容 fallback | **已修复** |
 | 9 | **API_TOKEN 泄露风险** | `API_TOKEN` 加入 `SECRET_ENV_VARS`，PreToolUse hook 从 Bash 环境中清除 | **已修复** |
-| 10 | **SSE 流式输出粒度** | 当前只在 `result` 消息到达时发送 chunk，而非逐 token 流式 | 待优化 — 需启用 SDK `includePartialMessages` |
-| 11 | **无请求 ID / 追踪** | HTTP 请求没有生成 request-id 用于日志追踪 | 待优化 |
-| 12 | **健康检查不含深度信息** | `/health` 不检查 SQLite 连通性或 disk 可用空间 | 待优化 |
+| 10 | **SSE 流式输出粒度** | 启用 SDK `includePartialMessages: true`，处理 `stream_event` 的 `content_block_delta` 事件，逐 token 发送 SSE chunk | **已修复** (Phase 3) |
+| 11 | **无请求 ID / 追踪** | 新增 `src/middleware/request-id.ts`：每个请求生成/回显 `X-Request-ID` 响应头，支持调用方传入自定义 ID | **已修复** (Phase 3) |
+| 12 | **健康检查不含深度信息** | `/health` 增加 `database` 字段（连通性、对话/���务计数）和 `volumes` 字段（各挂载目录可写性），异常时 status 为 `degraded` | **已修复** (Phase 3) |
 
 ## 5. OSS 挂载方案设计
 
@@ -401,12 +401,13 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 - [x] E2E 测试新增动态 skill 创建与重载测试
 - [x] 单元测试 28/28 全部通过
 
-### Phase 3：可观测性增强 (低优先级)
+### Phase 3：可观测性增强 — 已完成
 
-- 增强 Health Check（database 连通性、目录可用性、skills 数量）
-- Usage 统计（从 SDK result 提取 `total_cost_usd`、`num_turns`）
-- SSE 逐 token 流式（启用 SDK `includePartialMessages`）
-- Request-ID 中间件
+- [x] 增强 Health Check：database 连通性（对话/任务计数）+ volumes 可写性检查，异常返回 `status: "degraded"`
+- [x] Request-ID 中间件（`X-Request-ID` 响应头，支持调用方传入自定义 ID 或自动生成 `req-UUID`）
+- [x] SSE 逐 token 流式（启用 SDK `includePartialMessages`，处理 `content_block_delta` 事件）
+- [x] 单元测试 30/30 全部通过
+- [ ] Usage 统计（从 SDK result 提取 `total_cost_usd`、`num_turns`）— 留待后续
 
 ### Phase 4：部署与运维 (按需)
 
@@ -420,7 +421,7 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 
 | 测试文件 | 覆盖范围 | 测试数 |
 |---------|---------|--------|
-| `server.test.ts` | HTTP 端点、认证、多轮对话、任务 CRUD、关停、对话列表、消息历史、409 并发、DELETE 对话 | 10 |
+| `server.test.ts` | HTTP 端点、认证、多轮对话、任务 CRUD、关停、对话列表、消息历史、409 并发、DELETE 对话、X-Request-ID 生成/回显、深度健康检查 | 12 |
 | `conversation-lock.test.ts` | 顺序访问、并发不同对话、ConversationBusyError、队列等待 | 4 |
 | `db.test.ts` | 数据库 CRUD、outbound 清理、task_run_logs 保留、对话删除 | 6 |
 | `router.test.ts` | XML 格式化 | 2 |
@@ -432,7 +433,6 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 | 测试场景 | 优先级 | 说明 |
 |---------|--------|------|
 | MCP Server 工具单元测试 | 高 | 当前无 mcp-server.ts 测试 |
-| SSE 流式响应 | 中 | 验证事件顺序和格式 |
 | Database sync 可靠性 | 中 | 验证 shutdown 场景下的数据完整性 |
 | Auth middleware 边界 | 低 | 空 token、超长 token 等 |
 | Task 调度准确性 | 低 | 验证 cron 时区处理 |
@@ -441,7 +441,7 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 
 ### 12.1 核心结论
 
-1. **PicoClaw 满足描述的所有核心使用场景，关键边界已补齐**。它是一个设计精良的单用户容器化 Agent 运行时，通过 HTTP API 暴露完整的对话和任务管理能力。两轮评审中发现的并发安全、API 完整性、skills 生命周期、数据生命周期问题已全部修复，清理策略可通过环境变量配置。
+1. **PicoClaw 满足描述的所有核心使用场景，关键边界已补齐**。它是一个设计精良的单用户容器化 Agent 运行时，通过 HTTP API 暴露完整的对话和任务管理能力。三轮评审中发现的并发安全、API 完整性、skills 生命周期、数据生命周期、可观测性问题已全部修复。
 
 2. **相对 NanoClaw 的改动确实不大**——保留了 Agent SDK 集成的核心（MessageStream、Hooks、Session Resume），移除了多 channel 和 Docker-in-Docker，添加了 HTTP API 层和三级 skills 体系。代码量从 NanoClaw 的 ~3,000 行核心代码减少到 ~2,000 行（不含新增的修复和增强代码）。
 
@@ -456,12 +456,12 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 1. **配置** OSS 挂载方案并进行端到端联调
 2. **部署** 到目标云平台（Alibaba Cloud FC / AWS Lambda）并验证
 3. **补充** MCP Server 单元测试（当前测试盲区）
-4. **实现** Phase 3 可观测性增强（Health Check 深度信息、Request-ID、SSE 逐 token 流式）
+4. **实现** Usage 统计（从 SDK result 提取 `total_cost_usd`、`num_turns`）
 
 ---
 
-*文档版本: 3.1*
+*文档版本: 3.2*
 *评审日期: 2026-03-10*
-*更新日期: 2026-03-11*
+*更新日期: 2026-03-12*
 *基于 picoclaw v1.2.14, nanoclaw latest (commit on disk)*
-*变更 v3.1：修正文档中的遗留问题——并发控制描述更新、P2 计数修正、OSS memory 结构简化对齐、GroupQueue 状态更新、三级 skills 描述补全、GPT 对照表数据清理状态更新、后续步骤更新。*
+*变更 v3.2：Phase 3 可观测性增强完成——SSE 逐 token 流式（includePartialMessages + content_block_delta）、X-Request-ID 中间件、深度健康检查（database 连通性 + volumes 可写性）。P2 优化建议 5/5 全部修复。30 个单元测试全部通过。*

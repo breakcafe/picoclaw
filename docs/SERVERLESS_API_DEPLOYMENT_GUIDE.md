@@ -190,7 +190,7 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before automatic cleanup |
 | `TASK_LOG_RETENTION` | `100` | Maximum task run log entries retained per task (oldest pruned) |
 
-## 5. Authentication
+## 5. Authentication & Request Tracking
 
 All endpoints except `GET /health` require:
 
@@ -204,6 +204,16 @@ Error responses:
 |------|-----------|
 | `401 Unauthorized` | Token missing or invalid |
 | `500 Internal Server Error` | Server-side `API_TOKEN` not configured |
+
+### 5.1 Request ID
+
+Every response includes an `X-Request-ID` header for log correlation:
+
+```http
+X-Request-ID: req-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+If the caller sends an `X-Request-ID` header, the same value is echoed back. Otherwise, a new `req-<UUID>` is generated. Use this to correlate API requests with server-side logs.
 
 ## 6. API Reference
 
@@ -219,9 +229,29 @@ No authentication required.
 {
   "status": "ok",
   "version": "1.0.0",
-  "max_execution_ms": 300000
+  "max_execution_ms": 300000,
+  "database": {
+    "ok": true,
+    "conversations": 5,
+    "tasks": 2
+  },
+  "volumes": {
+    "memory": true,
+    "skills": true,
+    "sessions": true,
+    "store": true
+  }
 }
 ```
+
+`status` values:
+
+| Value | Meaning |
+|-------|---------|
+| `ok` | All backing resources healthy |
+| `degraded` | HTTP server is running but database or volumes are unhealthy |
+
+The `database` field verifies SQLite connectivity and returns conversation/task counts. The `volumes` field checks writability of each `/data/*` mount directory (`skills` only checks existence since it may be read-only).
 
 ### 6.2 Send / Continue a Conversation
 
@@ -280,12 +310,12 @@ Session end fields:
 
 ### 6.3 SSE Streaming
 
-When `stream: true`, the response uses `Content-Type: text/event-stream`:
+When `stream: true`, the response uses `Content-Type: text/event-stream`. Text is streamed per-token as the model generates it (via SDK `includePartialMessages`):
 
 | Event | Data | When |
 |-------|------|------|
 | `start` | `{"conversation_id", "message_id"}` | Agent begins processing |
-| `chunk` | `{"text": "..."}` | Incremental text output |
+| `chunk` | `{"text": "..."}` | Incremental text output (per-token granularity) |
 | `done` | Full response object | Agent finished |
 | `error` | `{"error": "..."}` | Processing failed |
 

@@ -43,6 +43,15 @@ paths:
                     status: ok
                     version: 1.0.0
                     max_execution_ms: 300000
+                    database:
+                      ok: true
+                      conversations: 5
+                      tasks: 2
+                    volumes:
+                      memory: true
+                      skills: true
+                      sessions: true
+                      store: true
 
   /chat:
     post:
@@ -608,21 +617,52 @@ components:
 
     HealthResponse:
       type: object
-      additionalProperties: false
       required:
         - status
         - version
         - max_execution_ms
+        - database
+        - volumes
       properties:
         status:
           type: string
           enum:
             - ok
+            - degraded
         version:
           type: string
         max_execution_ms:
           type: integer
           minimum: 1
+        database:
+          type: object
+          required:
+            - ok
+            - conversations
+            - tasks
+          properties:
+            ok:
+              type: boolean
+            conversations:
+              type: integer
+            tasks:
+              type: integer
+        volumes:
+          type: object
+          required:
+            - memory
+            - skills
+            - sessions
+            - store
+          properties:
+            memory:
+              type: boolean
+            skills:
+              type: boolean
+            sessions:
+              type: boolean
+            store:
+              type: boolean
 
     ChatRequest:
       type: object
