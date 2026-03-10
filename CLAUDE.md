@@ -56,6 +56,46 @@ src/config.ts         → all env var defaults
 src/types.ts          → shared interfaces (Conversation, ScheduledTask, etc.)
 ```
 
+### Request lifecycle
+
+1. HTTP hits Express router → `authMiddleware` validates Bearer token
+2. Route handler resolves/creates conversation in SQLite
+3. `AgentEngine.run()` wraps prompt in `MessageStream`, calls `query()`
+4. SDK spawns CLI subprocess → CLI spawns MCP Server (stdio)
+5. Agent executes tools; MCP tools read/write same SQLite via `NANOCLAW_DB_PATH`
+6. `query()` yields `system/init` (session_id), `assistant` (uuid), `result` messages
+7. Route stores `session_id` + `last_assistant_uuid` for next resume
+8. `syncDatabaseToVolume()` runs after response completes
+
+### Database schema (5 tables in `src/db.ts`)
+
+- `conversations` — id, session_id, last_assistant_uuid, status (idle/running), message_count
+- `messages` — id, conversation_id (FK), role, sender, content, created_at
+- `outbound_messages` — queued messages from MCP `send_message`, delivered flag
+- `scheduled_tasks` — id, conversation_id (FK), prompt, schedule_type/value, context_mode, next_run, status
+- `task_run_logs` — task_id (FK), run_at, duration_ms, status, result, error
+
+### MCP tools (defined in `src/mcp-server.ts`)
+
+The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
+
+- `send_message` — queue message for HTTP caller during agent execution
+- `schedule_task` — create cron/interval/once task
+- `list_tasks` — list tasks (main session: all; non-main: own conversation only)
+- `pause_task` / `resume_task` — pause/resume with ownership check
+- `cancel_task` — delete task with ownership check
+- `update_task` — modify prompt, schedule, context_mode
+
+### Volume mount semantics
+
+| Mount | Runtime access | Agent `cwd` | Purpose |
+|-------|---------------|-------------|---------|
+| `/data/memory` | Read/Write | **Yes** (set as cwd) | CLAUDE.md persona, conversation archives, global memory |
+| `/data/skills` | Read-only sync | No | SKILL.md definitions → synced to `.claude/skills/` at startup |
+| `/data/sessions` | Read/Write | No | `.claude/` session state for SDK resume |
+| `/data/store` | Write (sync target) | No | Persistent copy of SQLite DB |
+| `/tmp` | Read/Write | No | Local runtime DB (ephemeral, fast) |
+
 ### Adding a new route
 
 1. Create `src/routes/myroute.ts` with `export function myRoutes(): Router`
@@ -67,6 +107,7 @@ src/types.ts          → shared interfaces (Conversation, ScheduledTask, etc.)
 1. Add tool definition in `src/mcp-server.ts` under the `server.tool()` section
 2. Use `z` (zod) for input validation
 3. Read/write via the shared SQLite `db` instance
+4. Tool is auto-discovered by agent as `mcp__picoclaw__<tool_name>`
 
 ## Non-Negotiable Principles
 
@@ -78,6 +119,21 @@ src/types.ts          → shared interfaces (Conversation, ScheduledTask, etc.)
    trigger `syncDatabaseToVolume()` → `closeDatabase()` → exit.
 4. **SDK version alignment** — `@anthropic-ai/claude-agent-sdk`: `0.2.34`,
    `@modelcontextprotocol/sdk`: `1.12.1`. Do not downgrade.
+5. **Dual-DB sync is the only safe write path** — never write directly to
+   `/data/store/messages.db`. Always operate on `/tmp/messages.db` and let sync copy it.
+
+## Key Environment Variables
+
+| Variable | Default | Code location |
+|----------|---------|---------------|
+| `ANTHROPIC_API_KEY` | (required) | Used by SDK internally |
+| `API_TOKEN` | (required) | `src/config.ts` → auth middleware |
+| `PORT` | `9000` | `src/config.ts` |
+| `MAX_EXECUTION_MS` | `300000` | `src/config.ts` → AbortController timeout |
+| `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | `src/config.ts` → chat response |
+| `NANOCLAW_DB_PATH` | `/tmp/messages.db` | MCP server env var (set by agent-engine) |
+| `NANOCLAW_CONVERSATION_ID` | per-request | MCP server env var (set by agent-engine) |
+| `NANOCLAW_IS_MAIN` | `1` | MCP server env var — enables cross-conversation task management |
 
 ## Common Gotchas
 
@@ -85,13 +141,18 @@ src/types.ts          → shared interfaces (Conversation, ScheduledTask, etc.)
   say `.js`. Forgetting this causes runtime `ERR_MODULE_NOT_FOUND`.
 - **MCP server is a subprocess**: `src/mcp-server.ts` runs as a stdio child process spawned
   by the SDK, not as part of the main Express server. It shares the SQLite DB via
-  `NANOCLAW_DB_PATH` env var.
+  `NANOCLAW_DB_PATH` env var. You cannot import it directly.
 - **Dual-DB sync**: Runtime operates on `/tmp/messages.db` (fast local). Every HTTP response
   triggers `syncDatabaseToVolume()` which does `wal_checkpoint(TRUNCATE)` + file copy to
   `STORE_DIR`. Never write directly to the volume path.
 - **Pre-compact hook**: `agent-engine.ts` archives transcripts to
   `/data/memory/conversations/` when Claude compacts context. This creates markdown files
   from NDJSON session data.
+- **MessageStream wrapping**: Prompts are wrapped in an `AsyncIterable` (not passed as strings)
+  to prevent the SDK from prematurely closing stdin and killing subagents. See
+  `MessageStream` class in `agent-engine.ts`.
+- **Isolated task conversations**: When `context_mode=isolated`, the MCP server calls
+  `ensureConversationExists()` before creating a task to avoid FK constraint violations.
 - **`format` vs `format:fix`**: Both run Prettier write. The pre-commit hook calls `format:fix`.
   Use `format:check` to verify without modifying.
 
@@ -115,6 +176,7 @@ Also check:
 - @docs/API_INTEGRATION_GUIDE.md — downstream HTTP API integration guide
 - @docs/SKILLS_AND_PERSONA_GUIDE.md — skill authoring and persona configuration
 - @docs/SECURITY.md — HTTP API trust model and deployment hardening
+- @docs/DESIGN_RATIONALE.md — architectural decisions and first-principles reasoning
 - @docs/SDK_DEEP_DIVE.md — Claude Agent SDK internals (query, session resume, hooks)
 - `openapi.yaml` / `openapi.json` — API specification
 - `postman_collection.json` — API smoke testing collection

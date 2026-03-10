@@ -1,183 +1,190 @@
-# PicoClaw Serverless API 与部署手册
+# PicoClaw Serverless API & Deployment Guide
 
-> 适用版本：`feat/serverless-lambda-lite` 分支
-> 目标读者：运维团队、平台团队、下游调用方
+> Target audience: Operations teams, platform engineers, downstream API consumers
 
-## 1. 文档目标
+## 1. Document Purpose
 
-本文档用于说明改造后的 PicoClaw 在以下方面的落地细节：
+This guide covers:
 
-- API 调用方式（含鉴权、SSE、多轮对话、任务调度）
-- 容器化部署方式（本地、AWS Lambda、阿里云 FC）
-- 运行架构与持久化设计
-- 运维注意事项、常见故障排查、上线检查项
+- API usage (authentication, SSE streaming, multi-turn conversations, task scheduling)
+- Container deployment (local, AWS Lambda, Alibaba Cloud FC)
+- Runtime architecture and data persistence
+- Operations, troubleshooting, and go-live checklist
 
-## 1.1 交付产物
+### 1.1 API Artifacts
 
-本仓库同时提供可直接导入的 API 产物：
+The repository includes importable API artifacts:
 
-- `openapi.yaml`（OpenAPI 3.0.3 源文件）
-- `openapi.json`（OpenAPI JSON 导出版）
-- `postman_collection.json`（Postman Collection）
+- `openapi.yaml` (OpenAPI 3.0.3 source)
+- `openapi.json` (OpenAPI JSON export)
+- `postman_collection.json` (Postman Collection)
 
-推荐流程：
+Recommended workflow:
 
-1. 先阅读本文档了解运行与运维约束。  
-2. 下游系统直接导入 `openapi.yaml` 或 `openapi.json`。  
-3. 联调阶段使用 `postman_collection.json` 快速验证。  
+1. Read this document to understand runtime and operational constraints.
+2. Import `openapi.yaml` or `openapi.json` into your API tooling.
+3. Use `postman_collection.json` for integration smoke testing.
 
-## 2. 架构概览
+## 2. Architecture Overview
 
-### 2.1 运行模式变化
+### 2.1 Execution Model
 
-当前版本采用 **单容器 + HTTP 请求驱动**：
+PicoClaw uses a **single-container, request-driven** model:
 
-- 进程不做消息轮询，不做内建长期调度循环。
-- 每次请求触发一次处理（chat/task）。
-- Claude Agent SDK 作为核心执行引擎保留。
-- MCP Server 仍是 SDK 管理的 stdio 子进程，但不再依赖 IPC 文件。
+- No message polling or internal long-running scheduler loops.
+- Each HTTP request triggers one processing cycle (chat or task).
+- Claude Agent SDK `query()` is the core execution engine.
+- MCP Server runs as a stdio child process managed by the SDK (not an in-process module).
 
-### 2.2 逻辑拓扑
+### 2.2 Request Lifecycle
 
-```text
-HTTP Client / API Gateway / Cron Trigger
-                |
-                v
-        PicoClaw (Node.js)
-        - Express HTTP API
-        - AgentEngine (Claude Agent SDK query)
-        - SQLite (/tmp/messages.db)
-        - DB sync to /data/store/messages.db
-                |
-                +--> MCP Server (stdio child process)
-                      - 直接读写同一 SQLite
+```
+HTTP Request
+      |
+      v
+  Express Router + Auth Middleware
+      |
+      |  1. Resolve/create conversation
+      v
+    SQLite (/tmp/messages.db)  <----+
+      |                             |
+      |  2. Invoke agent            |  4. MCP tools write back
+      v                             |
+  AgentEngine                       |
+  (Claude Agent SDK query())        |
+      |                             |
+      |  3. Spawns subprocess       |
+      v                             |
+  MCP Server (stdio) -------->-----+
+  - send_message
+  - schedule_task
+  - list/pause/cancel_task
+      .
+      .  5. After response
+      v
+  syncDatabaseToVolume()
+  /tmp/messages.db  -->  /data/store/messages.db
 ```
 
-### 2.3 数据与外挂卷
+### 2.3 Mounted Volumes
 
-默认目录（可由环境变量覆盖）：
+Default paths (overridable via environment variables):
 
-- `MEMORY_DIR=/data/memory`
-- `SKILLS_DIR=/data/skills`
-- `SESSIONS_DIR=/data/sessions`
-- `STORE_DIR=/data/store`
-- 本地执行数据库：`LOCAL_DB_PATH=/tmp/messages.db`
+| Path | Env Var | Purpose |
+|------|---------|---------|
+| `/data/memory` | `MEMORY_DIR` | CLAUDE.md persona, conversation archives, working directory |
+| `/data/skills` | `SKILLS_DIR` | SKILL.md skill definitions |
+| `/data/sessions` | `SESSIONS_DIR` | `.claude/` session state |
+| `/data/store` | `STORE_DIR` | Persistent SQLite database |
+| `/tmp/messages.db` | `LOCAL_DB_PATH` | Local runtime database (ephemeral) |
 
-推荐挂载：
+All four `/data/*` paths must be on persistent storage (EFS, NAS, or local volumes) for cross-request state to survive.
 
-```text
-/data/memory    # CLAUDE.md、对话归档、工作目录
-/data/skills    # SKILL.md 技能目录
-/data/sessions  # .claude 会话数据
-/data/store     # 持久化 SQLite
-```
+## 3. Lifecycle & State
 
-关键提醒（避免误区）：
+### 3.1 Conversation State
 
-- 在 Serverless 模式下，`memory` 与 `conversation history` 依然是核心能力。
-- 业务侧“同一用户的间隔请求”需要复用历史上下文时，必须保证上述目录持久化（如 OSS/NAS/EFS 挂载）持续可用。
+Conversations are tracked in the SQLite `conversations` table:
 
-## 3. 生命周期与状态
+| Column | Purpose |
+|--------|---------|
+| `id` | Conversation identifier (e.g., `conv-abc123`) |
+| `session_id` | Claude SDK session ID (for resume) |
+| `last_assistant_uuid` | Last assistant message UUID (for `resumeSessionAt`) |
+| `status` | `idle` or `running` |
+| `message_count` | Total messages in conversation |
 
-### 3.1 对话状态
+Behavior:
 
-对话状态在 SQLite `conversations` 表维护：
+- `POST /chat` without `conversation_id`: creates a new conversation.
+- `POST /chat` with `conversation_id`: resumes the existing conversation. Returns `404` if not found.
+- Session resume uses `session_id` + `last_assistant_uuid` to restore SDK state across requests.
 
-- `session_id`：Claude 会话 ID
-- `last_assistant_uuid`：用于 resumeSessionAt
-- `status`：`idle` / `running`
+### 3.2 Task State
 
-行为规则：
+Scheduled tasks are tracked in the `scheduled_tasks` table:
 
-- `POST /chat` 不带 `conversation_id`：创建新会话。
-- `POST /chat` 带 `conversation_id`：续接会话；若不存在返回 `404`。
+| Field | Values |
+|-------|--------|
+| `schedule_type` | `cron`, `interval`, `once` |
+| `context_mode` | `group` (shared conversation) or `isolated` (fresh each run) |
+| `status` | `active`, `paused`, `completed` |
 
-### 3.2 任务状态
+Key rules:
 
-任务在 `scheduled_tasks` 表维护：
+- `POST /task/check` executes at most **one** due task per call.
+- `once` tasks set `next_run = null` and transition to `completed` after execution.
+- `isolated` tasks create a temporary conversation per run to avoid foreign key violations.
 
-- `schedule_type`：`cron` / `interval` / `once`
-- `context_mode`：`group` / `isolated`
-- `status`：`active` / `paused` / `completed`
+### 3.3 Database Sync
 
-关键规则：
+The dual-database strategy optimizes for both performance and durability:
 
-- `POST /task/check` 每次只执行 **1 个**到期任务。
-- `once` 任务执行后 `next_run = null`，状态转为 `completed`。
+- **Runtime**: all reads/writes go to `/tmp/messages.db` (local filesystem, fast I/O).
+- **After each HTTP response**: `wal_checkpoint(TRUNCATE)` flushes WAL, then file copy to `/data/store/messages.db`.
+- **On shutdown** (`SIGTERM`, `SIGINT`, or `POST /control/stop`): final sync before process exit.
 
-### 3.3 数据同步
+This avoids SQLite-on-NFS corruption risks while ensuring data survives container recycling.
 
-数据库策略：
+### 3.4 SDK Version Alignment
 
-- 运行中操作 `/tmp/messages.db`（高性能本地路径）。
-- 每次请求结束时自动 `wal_checkpoint + copy` 到 `/data/store/messages.db`。
-- 收到 `SIGTERM/SIGINT` 时再次同步并关闭 DB。
+| Package | Version | Notes |
+|---------|---------|-------|
+| `@anthropic-ai/claude-agent-sdk` | `0.2.34` | Core agent runtime |
+| `@modelcontextprotocol/sdk` | `1.12.1` | MCP server framework |
 
-### 3.4 版本对齐原则
+Do not downgrade these packages. Upgrades should include compatibility regression testing.
 
-- Claude Agent SDK 与 MCP SDK 版本以原版 NanoClaw 的稳定基线为准。
-- 当前实现对齐：
-  - `@anthropic-ai/claude-agent-sdk`: `0.2.34`
-  - `@modelcontextprotocol/sdk`: `1.12.1`
-- 后续升级应做兼容回归，不建议“为了裁剪而降级”。
+## 4. Environment Variables
 
-### 3.5 与 `nanoclaw-latest` 的对齐结论
+### 4.1 Required
 
-针对 `/home/dev/kapi/gpt/nanoclaw-latest`（`main`）最近更新已做比对，结论如下：
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Claude API key (or equivalent OAuth token) |
+| `API_TOKEN` | Bearer token for HTTP API authentication |
 
-- 已对齐并吸收：SDK 基线版本与相关兼容约束。
-- 不直接迁移（架构不适用）：
-  - 容器凭据代理与容器隔离增强（原版 `src/container-*` 路径），PicoClaw 已改为同进程本地目录执行，不再走子容器调度链路。
-  - `/compact` 技能注入（技能扩展脚手架），PicoClaw 保留外挂 skills 卷能力，但不强绑该技能到核心运行时。
-  - 任务容器关闭时序修复（依赖原版容器生命周期回收逻辑），在 PicoClaw 中由请求级执行与进程级 stop API 替代。
+### 4.2 Optional
 
-### 3.6 吸收 `opus` 方案后的增强点
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `9000` | HTTP server port |
+| `MAX_EXECUTION_MS` | `300000` | Agent execution timeout in ms (5 minutes) |
+| `ASSISTANT_NAME` | `Pico` | Agent display name |
+| `TZ` | System timezone | Timezone for cron expression parsing |
+| `LOG_LEVEL` | `info` | Pino log level (`debug`, `info`, `warn`, `error`) |
+| `STORE_DIR` | `/data/store` | Persistent database volume |
+| `MEMORY_DIR` | `/data/memory` | Memory and persona volume |
+| `SKILLS_DIR` | `/data/skills` | Skills volume |
+| `SESSIONS_DIR` | `/data/sessions` | Session state volume |
+| `LOCAL_DB_PATH` | `/tmp/messages.db` | Local runtime database path |
+| `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | Marker string for session completion |
+| `NANOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable path |
 
-本仓库已吸收并落地以下改进：
+## 5. Authentication
 
-- Agent 执行输入采用 `MessageStream`（异步可迭代 prompt 流），提升 Agent Teams 场景兼容性。
-- `isolated` 任务执行前会显式创建运行期临时 conversation 行，避免任务中 `send_message` 导致外键写入失败。
-
-## 4. 环境变量
-
-### 4.1 必需项
-
-- `API_TOKEN`：API Bearer Token
-- `ANTHROPIC_API_KEY` 或 Claude Code 认证环境变量
-
-### 4.2 常用可选项
-
-- `ANTHROPIC_BASE_URL`：兼容第三方代理网关
-- `PORT`：默认 `9000`
-- `MAX_EXECUTION_MS`：默认 `300000`（5 分钟）
-- `ASSISTANT_NAME`：默认 `Pico`
-- `TZ`：时区（影响 cron 解析）
-- `LOG_LEVEL`：日志级别
-- `STORE_DIR` / `MEMORY_DIR` / `SKILLS_DIR` / `SESSIONS_DIR` / `LOCAL_DB_PATH`
-- `NANOCLAW_MCP_SERVER_PATH`：自定义 MCP server 可执行路径
-
-## 5. 鉴权
-
-除 `/health` 外，全部 API 需要：
+All endpoints except `GET /health` require:
 
 ```http
 Authorization: Bearer <API_TOKEN>
 ```
 
-错误码：
+Error responses:
 
-- `401 Unauthorized`：token 缺失或错误
-- `500`：服务端未配置 `API_TOKEN`
+| Code | Condition |
+|------|-----------|
+| `401 Unauthorized` | Token missing or invalid |
+| `500 Internal Server Error` | Server-side `API_TOKEN` not configured |
 
-## 6. API 详细说明
+## 6. API Reference
 
-Base URL 示例：`http://localhost:9000`
+Base URL: `http://localhost:9000` (or your deployment URL)
 
-### 6.1 健康检查
+### 6.1 Health Check
 
 `GET /health`
 
-响应示例：
+No authentication required.
 
 ```json
 {
@@ -187,15 +194,15 @@ Base URL 示例：`http://localhost:9000`
 }
 ```
 
-### 6.2 发起/续接对话
+### 6.2 Send / Continue a Conversation
 
 `POST /chat`
 
-请求体：
+Request body:
 
 ```json
 {
-  "message": "请只回答数字：1+1 等于几？",
+  "message": "What is 1 + 1?",
   "conversation_id": "conv-xxx",
   "sender": "user-1",
   "sender_name": "Alice",
@@ -204,14 +211,16 @@ Base URL 示例：`http://localhost:9000`
 }
 ```
 
-字段说明：
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `message` | string | Yes | User message text |
+| `conversation_id` | string | No | Existing conversation ID (creates new if omitted) |
+| `sender` | string | No | Sender identifier (default: `user`) |
+| `sender_name` | string | No | Display name (default: same as sender) |
+| `stream` | boolean | No | Enable SSE streaming (default: `false`) |
+| `max_execution_ms` | number | No | Per-request timeout, capped at server `MAX_EXECUTION_MS` |
 
-- `message`：必填
-- `conversation_id`：可选，不传则新建
-- `stream=true`：SSE 流式返回
-- `max_execution_ms`：请求级超时，实际上限为环境变量 `MAX_EXECUTION_MS`
-
-非流式响应：
+Non-streaming response:
 
 ```json
 {
@@ -227,44 +236,46 @@ Base URL 示例：`http://localhost:9000`
 }
 ```
 
-`status` 可能值：
+`status` values:
 
-- `success`
-- `timeout`
-- `error`
+| Value | Meaning |
+|-------|---------|
+| `success` | Agent completed normally |
+| `timeout` | Agent hit execution time limit (partial result may be available) |
+| `error` | Agent encountered an error |
 
-会话结束相关字段：
+Session end fields:
 
-- `session_end_marker`：当前运行时约定的会话结束标记字符串。
-- `session_end_marker_detected`：若结果中检测到结束标记，该值为 `true`。
+- `session_end_marker`: the configured marker string the runtime looks for.
+- `session_end_marker_detected`: `true` if the agent's response contains the marker, signaling the conversation is complete.
 
-### 6.3 SSE 流式对话
+### 6.3 SSE Streaming
 
-当 `stream=true` 时，响应头为 `text/event-stream`，事件类型：
+When `stream: true`, the response uses `Content-Type: text/event-stream`:
 
-- `start`：开始（含 `conversation_id`）
-- `chunk`：增量文本
-- `done`：最终结果（完整结果结构）
-- `error`：处理失败
+| Event | Data | When |
+|-------|------|------|
+| `start` | `{"conversation_id", "message_id"}` | Agent begins processing |
+| `chunk` | `{"text": "..."}` | Incremental text output |
+| `done` | Full response object | Agent finished |
+| `error` | `{"error": "..."}` | Processing failed |
 
-示例：
+Example stream:
 
 ```text
 event: start
 data: {"conversation_id":"conv-...","message_id":"msg-..."}
 
 event: chunk
-data: {"text":"部分输出"}
+data: {"text":"partial output"}
 
 event: done
-data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[PICOCLAW_SESSION_END]]","session_end_marker_detected":true}
+data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[PICOCLAW_SESSION_END]]","session_end_marker_detected":false}
 ```
 
-### 6.4 查询会话状态
+### 6.4 Get Conversation Metadata
 
 `GET /chat/:conversation_id`
-
-响应示例：
 
 ```json
 {
@@ -276,16 +287,16 @@ data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[P
 }
 ```
 
-### 6.5 创建任务
+Returns `404` if the conversation does not exist.
+
+### 6.5 Create a Scheduled Task
 
 `POST /task`
-
-请求示例：
 
 ```json
 {
   "id": "daily-report",
-  "prompt": "请输出今天日报",
+  "prompt": "Generate the daily report",
   "schedule_type": "cron",
   "schedule_value": "0 9 * * 1-5",
   "context_mode": "isolated",
@@ -293,16 +304,26 @@ data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[P
 }
 ```
 
-注意：
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | No | Custom task ID (auto-generated if omitted) |
+| `prompt` | string | Yes | Instruction for the agent |
+| `schedule_type` | string | Yes | `cron`, `interval`, or `once` |
+| `schedule_value` | string | Yes | Schedule expression (see below) |
+| `context_mode` | string | No | `group` or `isolated` (default: `isolated`) |
+| `conversation_id` | string | No | Target conversation (auto-created if omitted) |
 
-- `schedule_type=once` 时，`schedule_value` 必须为**本地时间字符串**，不要带 `Z` 或时区偏移。
-- 未提供 `conversation_id` 会自动创建一个。
+Schedule value formats:
 
-### 6.6 任务列表
+| Type | Format | Example |
+|------|--------|---------|
+| `cron` | 5-field cron expression | `0 9 * * 1-5` (weekdays at 9am) |
+| `interval` | Milliseconds as string | `3600000` (every hour) |
+| `once` | Local time string (no `Z` or timezone offset) | `2026-03-15T14:00:00` |
+
+### 6.6 List All Tasks
 
 `GET /tasks`
-
-响应：
 
 ```json
 {
@@ -324,32 +345,23 @@ data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[P
 }
 ```
 
-### 6.7 更新任务
+### 6.7 Update a Task
 
 `PUT /task/:task_id`
 
-支持局部更新：
+Supports partial updates of: `prompt`, `schedule_type`, `schedule_value`, `context_mode`, `status`, `conversation_id`.
 
-- `prompt`
-- `schedule_type`
-- `schedule_value`
-- `context_mode`
-- `status`
-- `conversation_id`
+If `schedule_type` or `schedule_value` changes, `next_run` is recalculated automatically.
 
-如更新 `schedule_type` 或 `schedule_value`，系统会重新计算 `next_run`。
-
-### 6.8 删除任务
+### 6.8 Delete a Task
 
 `DELETE /task/:task_id`
 
-成功返回 `204 No Content`。
+Returns `204 No Content` on success.
 
-### 6.9 手动触发指定任务
+### 6.9 Manually Trigger a Task
 
 `POST /task/trigger`
-
-请求体：
 
 ```json
 {
@@ -357,23 +369,23 @@ data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[P
 }
 ```
 
-响应示例：
+Response:
 
 ```json
 {
   "status": "success",
   "task_id": "daily-report",
-  "result": "ok",
+  "result": "Report generated successfully.",
   "duration_ms": 4874,
   "next_run": null
 }
 ```
 
-### 6.10 检查并执行到期任务
+### 6.10 Check and Execute Due Tasks
 
 `POST /task/check`
 
-无到期任务：
+No due tasks:
 
 ```json
 {
@@ -382,7 +394,7 @@ data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[P
 }
 ```
 
-有到期任务：
+With due tasks:
 
 ```json
 {
@@ -398,11 +410,13 @@ data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[P
 }
 ```
 
-### 6.11 主动停止运行时
+Each call executes at most **one** due task. Call repeatedly or increase external cron frequency for backlogs.
+
+### 6.11 Graceful Shutdown
 
 `POST /control/stop`
 
-请求体（可选）：
+Request body (optional):
 
 ```json
 {
@@ -410,7 +424,7 @@ data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[P
 }
 ```
 
-响应示例：
+Response:
 
 ```json
 {
@@ -420,61 +434,53 @@ data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[P
 }
 ```
 
-典型流程：
+Typical caller flow:
 
-1. 调用 `/chat` 并检查 `session_end_marker_detected`。
-2. 若为 `true`，调用 `/control/stop` 请求主进程保存并退出。
-3. 若不走 API，也可直接由外部 Serverless 发送 `SIGTERM`，服务同样会执行保存并退出。
+1. Send messages via `POST /chat`.
+2. Check `session_end_marker_detected` in each response.
+3. If `true`, call `POST /control/stop` to trigger graceful shutdown (sync + exit).
+4. Alternatively, the serverless platform sends `SIGTERM` — the same sync-and-exit sequence runs.
 
-## 7. 部署指南
+## 7. Deployment Guide
 
-### 7.0 一键启动与冒烟测试
+### 7.1 One-Click Script
 
-仓库根目录提供脚本 `picoclaw.sh`，用于填入 Key 后一键完成：
-
-- 生成/更新 `.env`
-- 构建 TypeScript
-- 构建 Docker 镜像
-- 启动容器
-- 执行健康检查与 `/chat` 冒烟测试
+The repository includes `picoclaw.sh` for automated setup:
 
 ```bash
-./picoclaw.sh
+./picoclaw.sh          # Full: env setup → build → docker run → smoke test
+./picoclaw.sh up       # Build and start (skip smoke test)
+./picoclaw.sh test     # Smoke test a running instance
+./picoclaw.sh stop-api # Graceful stop via POST /control/stop
+./picoclaw.sh logs     # Tail container logs
+./picoclaw.sh down     # Docker stop
 ```
 
-常用子命令：
+The script prompts for `ANTHROPIC_API_KEY`, generates an `API_TOKEN`, and writes `.env`.
 
-```bash
-./picoclaw.sh up
-./picoclaw.sh test
-./picoclaw.sh stop-api
-./picoclaw.sh logs
-./picoclaw.sh down
-```
-
-### 7.1 本地 Node 运行
+### 7.2 Local Node.js
 
 ```bash
 npm ci
 npm run build
-API_TOKEN=dev-token ANTHROPIC_API_KEY=xxx npm start
+API_TOKEN=dev-token ANTHROPIC_API_KEY=sk-ant-xxx npm start
 ```
 
-### 7.2 本地 Docker 运行
+### 7.3 Local Docker
 
-构建：
+Build:
 
 ```bash
 docker build --platform linux/amd64 -t picoclaw:latest .
 ```
 
-运行：
+Run:
 
 ```bash
 docker run --rm -it \
   -p 9000:9000 \
   -e API_TOKEN=dev-token \
-  -e ANTHROPIC_API_KEY=xxx \
+  -e ANTHROPIC_API_KEY=sk-ant-xxx \
   -v $(pwd)/dev-data/memory:/data/memory \
   -v $(pwd)/dev-data/skills:/data/skills \
   -v $(pwd)/dev-data/store:/data/store \
@@ -482,23 +488,32 @@ docker run --rm -it \
   picoclaw:latest
 ```
 
-也可直接使用：
+Or use the Makefile:
 
 ```bash
 make docker-build
 make docker-run
 ```
 
-### 7.3 AWS Lambda（容器镜像）
+### 7.4 Docker Compose
 
-建议配置：
+```bash
+# Copy .env.example or create .env with ANTHROPIC_API_KEY and API_TOKEN
+docker compose up --build
+```
 
-- Runtime: Container Image
-- Memory: 4096MB 起
-- Timeout: `MAX_EXECUTION_MS + 30s`（例如 330s）
-- 挂载 EFS 到 `/data`
+### 7.5 AWS Lambda (Container Image)
 
-构建 Lambda 适配镜像：
+**Recommended configuration:**
+
+| Setting | Value |
+|---------|-------|
+| Runtime | Container Image |
+| Memory | 4096 MB minimum |
+| Timeout | `MAX_EXECUTION_MS + 30s` (e.g., 330s for 5-min agent) |
+| Storage | EFS mounted at `/data` |
+
+Build the Lambda-adapted image:
 
 ```bash
 docker build --platform linux/amd64 \
@@ -506,126 +521,133 @@ docker build --platform linux/amd64 \
   -t picoclaw:lambda .
 ```
 
-### 7.4 阿里云 FC（自定义容器）
+The `ENABLE_LAMBDA_ADAPTER=true` build arg installs the [AWS Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) which proxies Lambda invoke events to the Express HTTP server.
 
-建议配置：
+**Task scheduling:** Use Amazon EventBridge Scheduler to invoke `POST /task/check` every minute via the Lambda function URL or API Gateway.
 
-- Runtime: custom-container
-- 监听端口：`9000`
-- NAS 挂载到 `/data`
-- Timeout 同样建议大于 `MAX_EXECUTION_MS`
+**Environment variables:** Inject `ANTHROPIC_API_KEY` and `API_TOKEN` via Lambda environment variables or AWS Secrets Manager.
 
-## 8. 运维注意事项
+### 7.6 Alibaba Cloud Function Compute (FC)
 
-### 8.1 安全
+**Recommended configuration:**
 
-- `API_TOKEN` 与模型凭据必须由密钥系统注入，不要写入镜像层。
-- 建议将服务放在私有网络后，由 API Gateway/WAF 提供边界防护。
-- 建议启用调用方级别的访问审计与限流。
+| Setting | Value |
+|---------|-------|
+| Runtime | Custom Container |
+| Listening port | `9000` |
+| Storage | NAS mounted at `/data` |
+| Timeout | Greater than `MAX_EXECUTION_MS` |
 
-### 8.2 并发与一致性
+**Task scheduling:** Configure a timer trigger to call `POST /task/check` at the desired frequency.
 
-- 单实例内数据库为 SQLite，本地路径 `/tmp/messages.db`。
-- 多实例并发由云平台管理，建议按场景控制实例并发。
-- 若要求强一致队列语义，应在网关层做幂等与重试设计。
+## 8. Operations
 
-### 8.3 定时任务
+### 8.1 Security
 
-- 系统内不做常驻调度，必须由外部 Cron（EventBridge/FC 定时触发器）调用 `/task/check`。
-- 由于一次只执行一个到期任务，建议高频触发（例如每 1 分钟）。
+- Inject `API_TOKEN` and `ANTHROPIC_API_KEY` via secret management systems — never bake into the image.
+- Place PicoClaw behind an API Gateway or WAF for network-level protection.
+- Enable request-level audit logging and rate limiting at the gateway layer.
+- See `docs/SECURITY.md` for the full trust model.
 
-### 8.4 停止策略
+### 8.2 Concurrency
 
-- API 停止：`POST /control/stop`（推荐在检测到会话结束标记后调用）。
-- 信号停止：由 Serverless 平台发送 `SIGTERM`，服务会在 signal handler 中持久化并退出。
-- 建议调用方保持幂等：`/control/stop` 可能与平台回收信号接近同时发生。
+- The runtime uses SQLite on a local path (`/tmp/messages.db`). SQLite does not support multi-writer concurrency across processes.
+- Cloud platform concurrency controls should limit to **one active instance** per conversation scope.
+- For strong consistency requirements, implement idempotency and retry logic at the gateway layer.
 
-### 8.5 备份恢复
+### 8.3 Scheduled Tasks
 
-建议备份目录：
+- PicoClaw has **no internal scheduler**. Task execution depends entirely on external cron calling `POST /task/check`.
+- Each call executes at most one due task. For high-frequency task needs, trigger every 1 minute.
+- Monitor the `remaining` field in `/task/check` responses to detect backlog buildup.
 
-- `/data/store/messages.db`
-- `/data/sessions/.claude`
-- `/data/memory`
+### 8.4 Shutdown Strategy
 
-恢复时确保版本兼容并优先恢复 `store + sessions`。
+| Method | Trigger | Use Case |
+|--------|---------|----------|
+| `POST /control/stop` | API call | Programmatic shutdown after session end marker detected |
+| `SIGTERM` | Platform signal | Serverless container recycling |
+| `SIGINT` | Ctrl+C | Local development |
 
-### 8.6 日志
+All three paths execute the same sequence: `syncDatabaseToVolume()` → `closeDatabase()` → process exit.
 
-服务默认使用 `pino` 输出。
+### 8.5 Backup & Recovery
 
-建议在平台侧采集：
+Recommended backup targets:
 
-- 请求耗时、状态码、错误率
-- `status=timeout` 比例
-- `task/check remaining` 长期积压情况
+| Path | Priority | Contains |
+|------|----------|----------|
+| `/data/store/messages.db` | Critical | All conversations, messages, tasks |
+| `/data/sessions/.claude` | High | Claude session state for resume |
+| `/data/memory` | High | Persona, archives, global memory |
+| `/data/skills` | Medium | Skill definitions (can be redeployed) |
 
-## 9. 常见故障排查
+On restore, ensure version compatibility and restore `store` + `sessions` together for consistent session resume.
+
+### 8.6 Logging & Monitoring
+
+PicoClaw uses structured JSON logging via `pino`.
+
+Recommended metrics to monitor:
+
+| Metric | Source | Alert Threshold |
+|--------|--------|-----------------|
+| Request latency | HTTP response time | P95 > `MAX_EXECUTION_MS` |
+| `status=timeout` rate | Chat response `status` field | > 10% |
+| `status=error` rate | Chat response `status` field | > 5% |
+| Task backlog | `/task/check` `remaining` field | Sustained > 0 |
+| `401` rate | HTTP status codes | Spike detection |
+
+## 9. Troubleshooting
 
 ### 9.1 `401 Unauthorized`
 
-检查：
+- Verify the `Authorization: Bearer <token>` header is present.
+- Confirm the token matches the server's `API_TOKEN` environment variable exactly.
 
-- 请求头是否带 `Authorization: Bearer <token>`
-- 服务端 `API_TOKEN` 与调用 token 是否一致
+### 9.2 `conversation_id not found` (404)
 
-### 9.2 `/chat` 返回 `conversation_id not found`
-
-原因：
-
-- 传入了不存在的 `conversation_id`
-
-处理：
-
-- 不传 `conversation_id` 重新创建，或使用已存在 ID
+- The specified `conversation_id` does not exist in the database.
+- Omit `conversation_id` to create a new conversation, or use an existing ID.
 
 ### 9.3 `MCP server not found ... dist/mcp-server.js`
 
-原因：
+- TypeScript has not been compiled. Run `npm run build` before starting.
+- In Docker, the build step runs during image creation; rebuild the image if source changed.
 
-- 未执行构建或构建产物缺失
+### 9.4 `schedule_value` validation errors
 
-处理：
+| Type | Requirement |
+|------|------------|
+| `interval` | Positive integer in milliseconds (as a string) |
+| `cron` | Valid 5-field cron expression |
+| `once` | Local timestamp string without `Z` or timezone offset |
 
-```bash
-npm run build
-```
+### 9.5 Data loss after forced termination
 
-### 9.4 `schedule_value` 校验失败
+If the container is killed before `syncDatabaseToVolume()` completes, the last request's data may be lost.
 
-- `interval` 必须是正整数毫秒字符串
-- `cron` 必须是合法 cron 表达式
-- `once` 必须是本地时间字符串（不能有 `Z`/时区偏移）
+Mitigations:
 
-### 9.5 数据丢失风险
+- Set platform timeout with sufficient buffer beyond `MAX_EXECUTION_MS`.
+- The runtime syncs after every HTTP response, so only the in-flight request is at risk.
 
-如果实例在请求末尾同步前被强制终止，可能丢失当次请求末尾写入。
+### 9.6 Session end marker not detected
 
-缓解：
+- Check that the agent's response text actually contains `[[PICOCLAW_SESSION_END]]`.
+- The marker is configurable via `SESSION_END_MARKER` env var.
+- The persona (CLAUDE.md) must instruct the agent when to emit this marker.
 
-- 平台设置合理 timeout 缓冲
-- 关键流程后触发尽快持久化（当前实现已在每次请求结束自动同步）
+## 10. Go-Live Checklist
 
-### 9.6 会话结束与停止
-
-检查点：
-
-- `/chat` 响应中的 `session_end_marker_detected` 是否符合预期
-- 若为 `true`，是否已调用 `/control/stop` 或触发平台 `SIGTERM`
-
-## 10. 上线检查清单
-
-- [ ] `GET /health` 正常
-- [ ] `POST /chat` 新会话可用
-- [ ] `POST /chat` 多轮续接可用
-- [ ] `session_end_marker_detected` 行为符合预期
-- [ ] `POST /task` / `POST /task/check` 可用
-- [ ] `POST /control/stop` 可用
-- [ ] `/data` 四类卷挂载生效
-- [ ] 外部 Cron 已接入 `/task/check`
-- [ ] 日志/告警/限流已配置
-- [ ] 密钥未出现在镜像、仓库和明文日志中
-
----
-
-如需补充 OpenAPI 规范（`openapi.yaml`）或 Terraform/SAM/s.yaml 的完整模板，可在此文档基础上继续扩展。
+- [ ] `GET /health` returns `200`
+- [ ] `POST /chat` creates a new conversation successfully
+- [ ] `POST /chat` with `conversation_id` resumes correctly (multi-turn)
+- [ ] `session_end_marker_detected` triggers as expected
+- [ ] `POST /task` + `POST /task/check` execute scheduled tasks
+- [ ] `POST /control/stop` syncs data and exits cleanly
+- [ ] All four `/data/*` volumes are mounted and writable
+- [ ] External cron is configured to call `POST /task/check`
+- [ ] Logging, alerting, and rate limiting are configured
+- [ ] Secrets (`API_TOKEN`, `ANTHROPIC_API_KEY`) are injected via secret manager, not in image or repository
+- [ ] Concurrency controls limit to one active instance per conversation scope
