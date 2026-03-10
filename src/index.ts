@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 import {
+  ANTHROPIC_BASE_URL,
   MEMORY_DIR,
   PORT,
   SESSIONS_DIR,
@@ -59,6 +60,12 @@ async function main(): Promise<void> {
     onStop: (reason: string) => shutdown(`API_STOP:${reason}`),
   });
   server = app.listen(PORT, () => {
+    if (ANTHROPIC_BASE_URL) {
+      logger.info(
+        { baseUrl: ANTHROPIC_BASE_URL },
+        'Using custom Anthropic base URL',
+      );
+    }
     logger.info({ port: PORT }, 'PicoClaw ready');
   });
 

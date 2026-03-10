@@ -233,7 +233,7 @@ Create a daily report at 9am:
 ```bash
 docker run --rm -it \
   -v ./my-skill:/data/skills/my-skill \
-  -e API_TOKEN=test -e ANTHROPIC_API_KEY=xxx \
+  -e API_TOKEN=test -e ANTHROPIC_API_KEY=xxx -e ANTHROPIC_BASE_URL=https://api.anthropic.com \
   picoclaw:latest
 ```
 

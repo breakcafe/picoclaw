@@ -142,6 +142,7 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | Variable | Description |
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | Claude API key (or equivalent OAuth token) |
+| `ANTHROPIC_BASE_URL` | Anthropic API base URL (default: `https://api.anthropic.com`). Set this when using a third-party API proxy or custom endpoint (e.g. `https://your-proxy.com/anthropic`). |
 | `API_TOKEN` | Bearer token for HTTP API authentication |
 
 ### 4.2 Optional
@@ -456,14 +457,14 @@ The repository includes `picoclaw.sh` for automated setup:
 ./picoclaw.sh down     # Docker stop
 ```
 
-The script prompts for `ANTHROPIC_API_KEY`, generates an `API_TOKEN`, and writes `.env`.
+The script prompts for `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL`, generates an `API_TOKEN`, and writes `.env`.
 
 ### 7.2 Local Node.js
 
 ```bash
 npm ci
 npm run build
-API_TOKEN=dev-token ANTHROPIC_API_KEY=sk-ant-xxx npm start
+API_TOKEN=dev-token ANTHROPIC_API_KEY=sk-ant-xxx ANTHROPIC_BASE_URL=https://api.anthropic.com npm start
 ```
 
 ### 7.3 Local Docker
@@ -481,6 +482,7 @@ docker run --rm -it \
   -p 9000:9000 \
   -e API_TOKEN=dev-token \
   -e ANTHROPIC_API_KEY=sk-ant-xxx \
+  -e ANTHROPIC_BASE_URL=https://api.anthropic.com \
   -v $(pwd)/dev-data/memory:/data/memory \
   -v $(pwd)/dev-data/skills:/data/skills \
   -v $(pwd)/dev-data/store:/data/store \
@@ -525,7 +527,7 @@ The `ENABLE_LAMBDA_ADAPTER=true` build arg installs the [AWS Lambda Web Adapter]
 
 **Task scheduling:** Use Amazon EventBridge Scheduler to invoke `POST /task/check` every minute via the Lambda function URL or API Gateway.
 
-**Environment variables:** Inject `ANTHROPIC_API_KEY` and `API_TOKEN` via Lambda environment variables or AWS Secrets Manager.
+**Environment variables:** Inject `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, and `API_TOKEN` via Lambda environment variables or AWS Secrets Manager.
 
 ### 7.6 Alibaba Cloud Function Compute (FC)
 
@@ -544,7 +546,7 @@ The `ENABLE_LAMBDA_ADAPTER=true` build arg installs the [AWS Lambda Web Adapter]
 
 ### 8.1 Security
 
-- Inject `API_TOKEN` and `ANTHROPIC_API_KEY` via secret management systems — never bake into the image.
+- Inject `API_TOKEN`, `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL` via secret management systems — never bake into the image.
 - Place PicoClaw behind an API Gateway or WAF for network-level protection.
 - Enable request-level audit logging and rate limiting at the gateway layer.
 - See `docs/SECURITY.md` for the full trust model.
@@ -649,5 +651,5 @@ Mitigations:
 - [ ] All four `/data/*` volumes are mounted and writable
 - [ ] External cron is configured to call `POST /task/check`
 - [ ] Logging, alerting, and rate limiting are configured
-- [ ] Secrets (`API_TOKEN`, `ANTHROPIC_API_KEY`) are injected via secret manager, not in image or repository
+- [ ] Secrets (`API_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`) are injected via secret manager, not in image or repository
 - [ ] Concurrency controls limit to one active instance per conversation scope

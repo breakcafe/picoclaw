@@ -92,9 +92,12 @@ prepare_env() {
   upsert_env "ANTHROPIC_API_KEY" "$api_key"
 
   local base_url="${ANTHROPIC_BASE_URL:-$(read_env ANTHROPIC_BASE_URL)}"
-  if [[ -n "$base_url" ]]; then
-    upsert_env "ANTHROPIC_BASE_URL" "$base_url"
+  if [[ -z "$base_url" || "$base_url" == "https://api.anthropic.com" ]]; then
+    echo "[info] ANTHROPIC_BASE_URL not set. Press Enter to use default (https://api.anthropic.com),"
+    read -r -p "       or enter a custom URL (e.g. https://your-proxy.com/anthropic): " base_url
+    base_url="${base_url:-https://api.anthropic.com}"
   fi
+  upsert_env "ANTHROPIC_BASE_URL" "$base_url"
 
   local api_token="${API_TOKEN:-$(read_env API_TOKEN)}"
   if [[ -z "$api_token" || "$api_token" == "dev-token-123" ]]; then
