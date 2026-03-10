@@ -60,7 +60,7 @@ cd picoclaw
 ./picoclaw.sh
 ```
 
-The script will prompt for `ANTHROPIC_API_KEY`, generate an `API_TOKEN`, build the Docker image, start the container, and run a smoke test.
+The script will prompt for `ANTHROPIC_BASE_URL` and `ANTHROPIC_API_KEY`, generate an `API_TOKEN`, build the Docker image, start the container, and run a smoke test.
 
 ### Option 2: Docker manually
 
@@ -72,6 +72,7 @@ docker build --platform linux/amd64 -t picoclaw:latest .
 docker run --rm -it \
   -p 9000:9000 \
   -e API_TOKEN=your-token \
+  -e ANTHROPIC_BASE_URL=https://api.anthropic.com \
   -e ANTHROPIC_API_KEY=sk-ant-xxx \
   -v $(pwd)/dev-data/memory:/data/memory \
   -v $(pwd)/dev-data/skills:/data/skills \
@@ -85,7 +86,7 @@ docker run --rm -it \
 ```bash
 npm ci
 npm run build
-API_TOKEN=dev-token ANTHROPIC_API_KEY=sk-ant-xxx npm start
+API_TOKEN=dev-token ANTHROPIC_BASE_URL=https://api.anthropic.com ANTHROPIC_API_KEY=sk-ant-xxx npm start
 ```
 
 ### Verify
@@ -201,6 +202,7 @@ make test-e2e             # full build + run + test pipeline
 
 | Variable | Description |
 |----------|-------------|
+| `ANTHROPIC_BASE_URL` | Anthropic API base URL (default: `https://api.anthropic.com`). Set this when using a third-party API proxy or custom endpoint. |
 | `ANTHROPIC_API_KEY` | Claude API key (or OAuth token equivalent) |
 | `API_TOKEN` | Bearer token for HTTP API authentication |
 

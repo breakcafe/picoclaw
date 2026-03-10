@@ -126,6 +126,7 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
 
 | Variable | Default | Code location |
 |----------|---------|---------------|
+| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Used by SDK internally; set for third-party API proxies |
 | `ANTHROPIC_API_KEY` | (required) | Used by SDK internally |
 | `API_TOKEN` | (required) | `src/config.ts` → auth middleware |
 | `PORT` | `9000` | `src/config.ts` |

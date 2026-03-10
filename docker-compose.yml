@@ -9,6 +9,7 @@ services:
       - ./dev-data/store:/data/store
       - ./dev-data/sessions:/data/sessions
     environment:
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - API_TOKEN=${API_TOKEN:-dev-token-123}
       - ASSISTANT_NAME=${ASSISTANT_NAME:-Pico}
