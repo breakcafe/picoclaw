@@ -11,6 +11,7 @@ info:
     - Memory and conversation history are persisted via mounted storage and reused across separate requests.
     - Scheduled tasks are externally triggered by calling `/task/check`.
     - `POST /control/stop` can be used to request graceful save-and-exit.
+    - Every response includes an `X-Request-ID` header for log correlation. If the caller sends an `X-Request-ID` header, the same value is echoed back; otherwise a new `req-<UUID>` is generated.
 servers:
   - url: http://localhost:9000
     description: Local development
@@ -33,6 +34,9 @@ paths:
       responses:
         '200':
           description: Service healthy
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
           content:
             application/json:
               schema:
@@ -593,9 +597,22 @@ components:
         type: string
         minLength: 1
 
+  headers:
+    X-Request-ID:
+      description: |
+        Request tracking identifier for log correlation.
+        Echoes the caller-provided `X-Request-ID` header, or a generated `req-<UUID>` if none was sent.
+        Present on every response, including error and unauthenticated responses.
+      schema:
+        type: string
+        example: req-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
   responses:
     Unauthorized:
       description: Unauthorized (missing or invalid bearer token)
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
       content:
         application/json:
           schema:
