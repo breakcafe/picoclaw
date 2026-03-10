@@ -18,7 +18,7 @@ describe('http server', () => {
     vi.resetModules();
     process.env.API_TOKEN = 'test-token';
 
-    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-http-'));
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'picoclaw-http-'));
 
     const dbModule = await import('./db.js');
     dbModule.initDatabase({

@@ -27,7 +27,7 @@ function createTempPaths(): {
   persistentPath: string;
   localPath: string;
 } {
-  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-db-'));
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'picoclaw-db-'));
   return {
     rootDir,
     persistentPath: path.join(rootDir, 'store', 'messages.db'),
