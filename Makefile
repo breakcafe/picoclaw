@@ -21,10 +21,10 @@ dev-watch: ## Run from source with tsx watch (no build needed)
 
 # ── Docker ───────────────────────────────────────────────
 
-docker-build: build-ts ## Build Docker image (linux/amd64)
+docker-build: ## Build Docker image (multi-stage, no local Node.js needed)
 	docker build --platform linux/amd64 -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
-docker-build-lambda: build-ts ## Build Docker image with Lambda Web Adapter
+docker-build-lambda: ## Build Docker image with Lambda Web Adapter
 	docker build --platform linux/amd64 --build-arg ENABLE_LAMBDA_ADAPTER=true -t $(IMAGE_NAME):lambda .
 
 docker-run: _ensure-data-dirs ## Run container interactively with volume mounts

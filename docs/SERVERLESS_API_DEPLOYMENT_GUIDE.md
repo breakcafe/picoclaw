@@ -469,6 +469,8 @@ API_TOKEN=dev-token ANTHROPIC_BASE_URL=https://api.anthropic.com ANTHROPIC_API_K
 
 ### 7.3 Local Docker
 
+The Dockerfile uses a multi-stage build — TypeScript is compiled inside Docker, so no local Node.js is needed.
+
 Build:
 
 ```bash
@@ -614,8 +616,8 @@ Recommended metrics to monitor:
 
 ### 9.3 `MCP server not found ... dist/mcp-server.js`
 
-- TypeScript has not been compiled. Run `npm run build` before starting.
-- In Docker, the build step runs during image creation; rebuild the image if source changed.
+- For local Node.js: TypeScript has not been compiled. Run `npm run build` before starting.
+- For Docker: the multi-stage build compiles TypeScript during image creation. Rebuild the image if source changed.
 
 ### 9.4 `schedule_value` validation errors
 
