@@ -6,9 +6,16 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
-const conversationId = process.env.NANOCLAW_CONVERSATION_ID || 'default';
-const dbPath = process.env.NANOCLAW_DB_PATH || '/tmp/messages.db';
-const isMain = process.env.NANOCLAW_IS_MAIN === '1';
+const conversationId =
+  process.env.PICOCLAW_CONVERSATION_ID ||
+  process.env.NANOCLAW_CONVERSATION_ID ||
+  'default';
+const dbPath =
+  process.env.PICOCLAW_DB_PATH ||
+  process.env.NANOCLAW_DB_PATH ||
+  '/tmp/messages.db';
+const isMain =
+  (process.env.PICOCLAW_IS_MAIN || process.env.NANOCLAW_IS_MAIN) === '1';
 const timezone =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
 

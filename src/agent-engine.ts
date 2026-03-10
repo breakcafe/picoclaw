@@ -108,10 +108,16 @@ class MessageStream implements AsyncIterable<StreamPromptMessage> {
   }
 }
 
-const SECRET_ENV_VARS = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'];
+const SECRET_ENV_VARS = [
+  'ANTHROPIC_API_KEY',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  'API_TOKEN',
+];
 
 function resolveMcpServerPath(): string {
-  const overridePath = process.env.NANOCLAW_MCP_SERVER_PATH;
+  const overridePath =
+    process.env.PICOCLAW_MCP_SERVER_PATH ||
+    process.env.NANOCLAW_MCP_SERVER_PATH;
   if (overridePath) {
     return overridePath;
   }
@@ -404,9 +410,9 @@ export class AgentEngine implements AgentRunner {
               command: 'node',
               args: [mcpServerPath],
               env: {
-                NANOCLAW_CONVERSATION_ID: input.conversationId,
-                NANOCLAW_DB_PATH: LOCAL_DB_PATH,
-                NANOCLAW_IS_MAIN: '1',
+                PICOCLAW_CONVERSATION_ID: input.conversationId,
+                PICOCLAW_DB_PATH: LOCAL_DB_PATH,
+                PICOCLAW_IS_MAIN: '1',
               },
             },
           },
