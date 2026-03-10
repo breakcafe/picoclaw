@@ -1,106 +1,166 @@
-# Cross-Conversation Memory System — Design & Implementation Plan
+# PicoClaw Feature Gap Analysis & Implementation Plan
 
 > Status: **Proposal** | Author: Claude Code | Date: 2026-03-10
 >
-> Target audience: PicoClaw contributors implementing long-term memory
+> Target audience: PicoClaw contributors
 
-## 1. Problem Statement
+## 1. Target Deployment Model
 
-### 1.1 Current Behavior
-
-PicoClaw isolates all conversational state by `conversation_id`:
-
-- SQLite `messages` table has `FOREIGN KEY (conversation_id)` — no cross-conversation queries exist.
-- MCP tools (`send_message`, `schedule_task`) are scoped to `NANOCLAW_CONVERSATION_ID`.
-- SDK session resume (`resume` + `resumeSessionAt`) is per-conversation.
-
-If a user tells conversation A "my name is Kevin", conversation B has **no automatic way** to know this.
-
-### 1.2 Target Use Case
+### 1.1 Scenario Description
 
 ```
-One container = one user
-├── Conversation A (research task)     ──┐
-├── Conversation B (coding task)         ├── All belong to the same user
-├── Conversation C (scheduled report)  ──┘
-└── Container lifecycle: start → work → archive to OSS → destroy
+User requests conversation
+  ↓
+Platform starts a container for this user
+  ↓
+Mount volumes:
+  /data/skills-global  ← shared OSS (read-only, all users share)
+  /data/skills         ← user OSS  (read-write, user-created skills)
+  /data/memory         ← user OSS  (read-write, persona + notes + archives)
+  /data/store          ← user OSS  (read-write, SQLite database)
+  /data/sessions       ← user OSS  (read-write, SDK session state)
+  ↓
+Container runs: conversations, agents, tasks — all for ONE user
+  ↓
+User creates skills, builds memory, runs multi-agent workflows
+  ↓
+Agent signals completion: session_end_marker_detected = true
+  ↓
+Container shuts down → data synced to user's OSS directory
+  ↓
+Next session: new container, same OSS mount → resume conversations, inherit memory + skills
 ```
 
-Within a container's lifetime, all conversations serve the same user. Knowledge learned in any conversation should be accessible to all others. After the container is destroyed, the archived data belongs entirely to that user.
+### 1.2 Key Invariants
 
-### 1.3 What's Missing
+- **One container = one user.** No multi-tenant concerns. SQLite single-writer is sufficient.
+- **All data belongs to the user.** The user's OSS directory is the complete state: conversations, memory, skills, sessions. Back it up and the user's entire agent state is preserved.
+- **Global skills are shared read-only.** Platform-provided skills (math, code review, etc.) come from a separate mount point that all users share. Users cannot modify them.
+- **User skills are read-write.** The user (via the agent) can create new skills at runtime. These persist in the user's OSS directory and survive container restarts.
 
-| Capability | Current | Needed |
-|-----------|---------|--------|
-| Agent learns a fact in conv A | Stored in conv A's session only | Persisted globally |
-| Conv B starts, needs user context | Starts blank (only CLAUDE.md persona) | Auto-injected with known facts |
-| Agent writes a note for later | File write to `/data/memory/` (manual) | Structured, queryable storage |
-| Search across all conversations | Not possible via MCP tools | MCP tool for cross-conv search |
-| Container shutdown | DB + sessions archived | Memory index archived alongside |
+## 2. Gap Analysis
 
-## 2. Architecture Overview
+### 2.1 Current State vs Requirements
 
-### 2.1 Design Principles
+| Requirement | Current Status | Gap? |
+|-------------|---------------|------|
+| Per-user container with OSS volumes | `MEMORY_DIR` + `STORE_DIR` + `SESSIONS_DIR` mountable | No |
+| Global shared skills (read-only) | Only **one** `SKILLS_DIR` — no dual-source merge | **Gap 1** |
+| User-created skills at runtime | Skills discovered once at startup; no runtime refresh | **Gap 2** |
+| Long-term memory across conversations | No `memory` table; no auto-injection | **Gap 3** |
+| Multi-agent parallel execution | SDK subagents work; HTTP-level concurrency untested | **Gap 4** |
+| Session end marker | `session_end_marker_detected` in response | No |
+| Conversation resume after restart | `session_id` + `last_assistant_uuid` + dual-DB sync | No |
+| MCP tool support | 7 built-in tools, extensible via `mcpServers` config | No |
+| Data persistence to OSS | `syncDatabaseToVolume()` on every response + shutdown | No |
 
-1. **System-level, not agent-dependent.** Memory persistence must not rely on the agent choosing to write files. The system extracts and injects memory automatically.
-2. **Additive, not invasive.** New table + new MCP tools + hook enhancement. No changes to existing conversation isolation or session resume logic.
-3. **Bounded injection.** Memory injected into prompts must be token-bounded to avoid consuming the context window.
-4. **Graceful degradation.** If memory is empty or unavailable, conversations work exactly as today.
+### 2.2 What Already Works
 
-### 2.2 Component Diagram
+These capabilities are fully implemented and tested (26 e2e tests pass):
+
+- **Conversation lifecycle:** Create, resume, multi-turn context retention
+- **Session resume across restarts:** SQLite + SDK session files on persistent volume
+- **Dual-DB sync:** `/tmp/messages.db` → `/data/store/messages.db` after every response
+- **Graceful shutdown:** `SIGTERM`, `SIGINT`, `POST /control/stop` all sync before exit
+- **Task scheduling:** CRUD + external cron trigger via `POST /task/check`
+- **Skills sync at startup:** Copy from `SKILLS_DIR` to `.claude/skills/`
+- **Persona via CLAUDE.md:** Loaded into system prompt for every conversation
+- **Session end marker:** `[[PICOCLAW_SESSION_END]]` detected and flagged in response
+- **Auth:** Bearer token on all endpoints except `/health`
+
+## 3. Gap 1: Dual-Source Skills (Global + User)
+
+### 3.1 Problem
+
+Current `syncSkills()` reads from a single `SKILLS_DIR` and **clears** the destination before copying. If we mount global skills and user skills to the same path, one overwrites the other.
+
+### 3.2 Solution
+
+Add `SKILLS_GLOBAL_DIR` config. At startup, merge both sources into `.claude/skills/`:
 
 ```
-                    ┌──────────────────────────────────┐
-                    │        /data/memory/              │
-                    │  CLAUDE.md  global/  notes/       │
-                    │  conversations/  (unchanged)      │
-                    └──────────────────────────────────┘
-
-┌─────────────┐     ┌──────────────────────────────────┐
-│  POST /chat │────>│         Agent Engine              │
-│  (new conv) │     │                                    │
-└─────────────┘     │  1. Load memory entries            │
-                    │     (getRecentMemory)              │
-                    │  2. Inject into system prompt      │
-                    │     (bounded by MAX_MEMORY_TOKENS) │
-                    │  3. Run query()                    │
-                    │  4. Post-response hook:            │
-                    │     extract facts → store_memory   │
-                    └──────────┬───────────────────────┘
-                               │
-              ┌────────────────┴────────────────┐
-              │        SQLite (memory table)     │
-              │                                  │
-              │  id | key | value | source_conv  │
-              │  -- | --- | ----- | ------------ │
-              │  1  | user_name | Kevin | conv-A │
-              │  2  | user_lang | Rust  | conv-A │
-              │  3  | user_pet  | Mochi | conv-A │
-              └──────────────────────────────────┘
-
-              ┌──────────────────────────────────┐
-              │        MCP Tools (new)           │
-              │                                  │
-              │  store_memory(key, value, tags)  │
-              │  recall_memory(query)            │
-              │  list_memory(tag?)               │
-              │  delete_memory(key)              │
-              └──────────────────────────────────┘
+Merge order (user wins on conflict):
+  1. Copy all from /data/skills-global/*  →  .claude/skills/
+  2. Copy all from /data/skills/*         →  .claude/skills/  (overwrites on conflict)
 ```
 
-## 3. Detailed Design
+### 3.3 Changes
 
-### 3.1 New SQLite Table: `memory`
+| File | Change |
+|------|--------|
+| `src/config.ts` | Add `SKILLS_GLOBAL_DIR` (default: `/data/skills-global`) |
+| `src/skills.ts` | `syncSkills()`: copy global first, then user skills (user overrides global) |
+| `entrypoint.sh` | Same merge logic in shell: global first, then user |
+| `src/agent-engine.ts` | `discoverAdditionalDirectories()`: scan both directories |
+| `src/index.ts` | `ensureDataDirectories()`: create `SKILLS_GLOBAL_DIR` |
 
-Add to `src/db.ts` schema:
+### 3.4 Volume Mount Example
+
+```bash
+docker run \
+  -v /oss/shared/skills:/data/skills-global:ro \  # global, read-only
+  -v /oss/user-123/skills:/data/skills \           # user, read-write
+  -v /oss/user-123/memory:/data/memory \
+  -v /oss/user-123/store:/data/store \
+  -v /oss/user-123/sessions:/data/sessions \
+  picoclaw:latest
+```
+
+## 4. Gap 2: Runtime Skill Creation
+
+### 4.1 Problem
+
+Skills are discovered once at startup via `discoverAdditionalDirectories()`. If the agent creates a new skill during conversation A (`Write /data/skills/my-skill/SKILL.md`), conversation B won't see it until the container restarts.
+
+### 4.2 Solution
+
+Move `discoverAdditionalDirectories()` call from static initialization to per-request execution. Since each HTTP request creates a new `query()` call, re-scanning at that point picks up any new skills.
+
+### 4.3 Changes
+
+| File | Change |
+|------|--------|
+| `src/agent-engine.ts` | Call `discoverAdditionalDirectories()` inside `run()` instead of at module level. Also re-run `syncSkills()` to copy new skill dirs to `.claude/skills/`. |
+| `docs/SKILLS_AND_PERSONA_GUIDE.md` | Document that agents can create skills by writing `SKILL.md` files to `/data/skills/<name>/` |
+
+### 4.4 Persona Instruction
+
+Add to CLAUDE.md template:
+
+```markdown
+## Creating Skills
+
+You can create reusable skills by writing SKILL.md files:
+
+1. Create directory: `/data/skills/<skill-name>/`
+2. Write `SKILL.md` with YAML frontmatter (name, description) and instructions
+3. The skill will be available in the next conversation turn
+
+Skills you create persist across conversations and container restarts.
+```
+
+## 5. Gap 3: Cross-Conversation Long-Term Memory
+
+### 5.1 Problem
+
+All conversational state is isolated by `conversation_id`. Knowledge from conversation A is invisible to conversation B.
+
+### 5.2 Design Principles
+
+1. **Single-user, no concurrency concern.** One container = one user = one SQLite process. No multi-writer issues.
+2. **System-level injection.** Memory is automatically loaded into every conversation's system prompt. Not dependent on agent behavior.
+3. **Agent-driven storage.** The agent decides what to store via MCP tools. Optionally enhanced with automatic extraction later.
+4. **Bounded injection.** `MAX_MEMORY_ENTRIES` config caps the token cost of memory context.
+
+### 5.3 New SQLite Table: `memory`
 
 ```sql
 CREATE TABLE IF NOT EXISTS memory (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  key TEXT NOT NULL UNIQUE,           -- Semantic key: "user_name", "project_goal", etc.
-  value TEXT NOT NULL,                -- Free-text value
-  tags TEXT NOT NULL DEFAULT '',      -- Comma-separated tags for filtering
-  source_conversation_id TEXT,        -- Which conversation created this entry
+  key TEXT NOT NULL UNIQUE,
+  value TEXT NOT NULL,
+  tags TEXT NOT NULL DEFAULT '',
+  source_conversation_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -108,464 +168,257 @@ CREATE INDEX IF NOT EXISTS idx_memory_tags ON memory(tags);
 CREATE INDEX IF NOT EXISTS idx_memory_updated ON memory(updated_at DESC);
 ```
 
-**Design decisions:**
+Design decisions:
 
-- `key` is `UNIQUE` — updating an existing key replaces the value (upsert semantics). This prevents unbounded growth from repeated "my name is X" statements.
-- `tags` enables filtering: `"user_profile"`, `"project"`, `"preference"`, etc.
-- `source_conversation_id` is nullable (for entries injected externally or at container setup).
-- No `FOREIGN KEY` on `source_conversation_id` — memory entries outlive their source conversations.
+- `UNIQUE(key)` with upsert — "my name is Kevin" said twice updates, doesn't duplicate.
+- No `FOREIGN KEY` on `source_conversation_id` — memory outlives its source conversation.
+- Same SQLite database (`messages.db`) — automatically covered by existing dual-DB sync. No extra persistence logic.
 
-### 3.2 New DB Functions
+### 5.4 New MCP Tools
 
-Add to `src/db.ts`:
+| Tool | Parameters | Behavior |
+|------|-----------|---------|
+| `store_memory` | `key`, `value`, `tags?` | Upsert into `memory` table. Key exists → update value. |
+| `recall_memory` | `query` | Substring search across key, value, tags. Returns top 20 matches. |
+| `list_memory` | `tag?` | List all entries, optionally filtered by tag. |
+| `delete_memory` | `key` | Delete entry by key. |
 
-```typescript
-// ── Memory CRUD ─────────────────────────────────────────
+All tools are **unscoped** — they operate on the container's global memory, not per-conversation. This is correct because one container = one user.
 
-export function storeMemory(input: {
-  key: string;
-  value: string;
-  tags?: string;
-  sourceConversationId?: string;
-}): void {
-  const now = getNowIso();
-  getDbOrThrow()
-    .prepare(
-      `INSERT INTO memory (key, value, tags, source_conversation_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET
-         value = excluded.value,
-         tags = excluded.tags,
-         source_conversation_id = excluded.source_conversation_id,
-         updated_at = excluded.updated_at`,
-    )
-    .run(input.key, input.value, input.tags ?? '', input.sourceConversationId ?? null, now, now);
-}
+### 5.5 Memory Injection
 
-export function recallMemory(query: string): MemoryEntry[] {
-  // Simple substring search across key, value, and tags
-  const pattern = `%${query}%`;
-  return getDbOrThrow()
-    .prepare(
-      `SELECT id, key, value, tags, source_conversation_id, created_at, updated_at
-       FROM memory
-       WHERE key LIKE ? OR value LIKE ? OR tags LIKE ?
-       ORDER BY updated_at DESC
-       LIMIT 20`,
-    )
-    .all(pattern, pattern, pattern) as MemoryEntry[];
-}
-
-export function listMemory(tag?: string): MemoryEntry[] {
-  if (tag) {
-    return getDbOrThrow()
-      .prepare(
-        `SELECT id, key, value, tags, source_conversation_id, created_at, updated_at
-         FROM memory
-         WHERE tags LIKE ?
-         ORDER BY updated_at DESC`,
-      )
-      .all(`%${tag}%`) as MemoryEntry[];
-  }
-  return getDbOrThrow()
-    .prepare(
-      `SELECT id, key, value, tags, source_conversation_id, created_at, updated_at
-       FROM memory
-       ORDER BY updated_at DESC`,
-    )
-    .all() as MemoryEntry[];
-}
-
-export function deleteMemory(key: string): boolean {
-  const result = getDbOrThrow()
-    .prepare('DELETE FROM memory WHERE key = ?')
-    .run(key);
-  return result.changes > 0;
-}
-
-export function getRecentMemory(limit: number = 50): MemoryEntry[] {
-  return getDbOrThrow()
-    .prepare(
-      `SELECT id, key, value, tags, source_conversation_id, created_at, updated_at
-       FROM memory
-       ORDER BY updated_at DESC
-       LIMIT ?`,
-    )
-    .all(limit) as MemoryEntry[];
-}
-```
-
-### 3.3 New Interface: `MemoryEntry`
-
-Add to `src/types.ts`:
+In `AgentEngine.run()`, before calling `query()`:
 
 ```typescript
-export interface MemoryEntry {
-  id: number;
-  key: string;
-  value: string;
-  tags: string;
-  source_conversation_id: string | null;
-  created_at: string;
-  updated_at: string;
+function buildMemoryContext(limit: number): string {
+  const entries = getRecentMemory(limit);
+  if (entries.length === 0) return '';
+  const lines = entries.map((e) => `- ${e.key}: ${e.value}`);
+  return [
+    '',
+    '## Long-Term Memory',
+    '',
+    'The following facts are known from previous interactions:',
+    '',
+    ...lines,
+    '',
+  ].join('\n');
 }
-```
 
-### 3.4 New MCP Tools
-
-Add to `src/mcp-server.ts`:
-
-```typescript
-// ── Memory Tools ─────────────────────────────────────
-
-server.tool(
-  'store_memory',
-  'Store a fact or note in long-term memory. Accessible across all conversations in this container. Use a semantic key (e.g. "user_name", "project_goal"). If the key already exists, its value is updated.',
-  {
-    key: z.string().describe('Semantic key, e.g. "user_name", "user_preference_language"'),
-    value: z.string().describe('The information to store'),
-    tags: z.string().optional().describe('Comma-separated tags for categorization, e.g. "user_profile,preference"'),
-  },
-  async (args) => {
-    db.prepare(
-      `INSERT INTO memory (key, value, tags, source_conversation_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET
-         value = excluded.value,
-         tags = excluded.tags,
-         source_conversation_id = excluded.source_conversation_id,
-         updated_at = excluded.updated_at`,
-    ).run(
-      args.key,
-      args.value,
-      args.tags || '',
-      conversationId,
-      new Date().toISOString(),
-      new Date().toISOString(),
-    );
-    return { content: [{ type: 'text' as const, text: `Memory stored: ${args.key}` }] };
-  },
-);
-
-server.tool(
-  'recall_memory',
-  'Search long-term memory for facts matching a query. Searches across keys, values, and tags.',
-  {
-    query: z.string().describe('Search term to find in memory'),
-  },
-  async (args) => {
-    const rows = db
-      .prepare(
-        `SELECT key, value, tags, updated_at FROM memory
-         WHERE key LIKE ? OR value LIKE ? OR tags LIKE ?
-         ORDER BY updated_at DESC LIMIT 20`,
-      )
-      .all(`%${args.query}%`, `%${args.query}%`, `%${args.query}%`) as Array<{
-      key: string;
-      value: string;
-      tags: string;
-      updated_at: string;
-    }>;
-
-    if (rows.length === 0) {
-      return { content: [{ type: 'text' as const, text: 'No matching memories found.' }] };
-    }
-
-    const text = rows
-      .map((r) => `- **${r.key}**: ${r.value}${r.tags ? ` [${r.tags}]` : ''} (${r.updated_at})`)
-      .join('\n');
-    return { content: [{ type: 'text' as const, text }] };
-  },
-);
-
-server.tool(
-  'list_memory',
-  'List all entries in long-term memory, optionally filtered by tag.',
-  {
-    tag: z.string().optional().describe('Filter by tag, e.g. "user_profile"'),
-  },
-  async (args) => {
-    const rows = args.tag
-      ? db
-          .prepare(
-            `SELECT key, value, tags, updated_at FROM memory
-             WHERE tags LIKE ? ORDER BY updated_at DESC`,
-          )
-          .all(`%${args.tag}%`)
-      : db.prepare('SELECT key, value, tags, updated_at FROM memory ORDER BY updated_at DESC').all();
-
-    if ((rows as unknown[]).length === 0) {
-      return { content: [{ type: 'text' as const, text: 'Memory is empty.' }] };
-    }
-
-    const text = (rows as Array<{ key: string; value: string; tags: string; updated_at: string }>)
-      .map((r) => `- **${r.key}**: ${r.value}${r.tags ? ` [${r.tags}]` : ''}`)
-      .join('\n');
-    return { content: [{ type: 'text' as const, text }] };
-  },
-);
-
-server.tool(
-  'delete_memory',
-  'Delete a specific memory entry by key.',
-  {
-    key: z.string().describe('The key to delete'),
-  },
-  async (args) => {
-    const result = db.prepare('DELETE FROM memory WHERE key = ?').run(args.key);
-    if (result.changes > 0) {
-      return { content: [{ type: 'text' as const, text: `Memory deleted: ${args.key}` }] };
-    }
-    return { content: [{ type: 'text' as const, text: `Key not found: ${args.key}` }] };
-  },
-);
-```
-
-### 3.5 Memory Injection into Agent Prompts
-
-Modify `src/agent-engine.ts` — in the `AgentEngine.run()` method, **before** constructing the SDK `query()` call:
-
-```typescript
-// ── Load cross-conversation memory ──────────────────
-function buildMemoryContext(): string {
-  try {
-    const entries = getRecentMemory(50);
-    if (entries.length === 0) return '';
-
-    const lines = entries.map((e) => `- ${e.key}: ${e.value}`);
-    return [
-      '',
-      '## Long-Term Memory',
-      '',
-      'The following facts are known from previous conversations in this session:',
-      '',
-      ...lines,
-      '',
-    ].join('\n');
-  } catch {
-    return ''; // Graceful degradation
-  }
-}
-```
-
-Then append to the system prompt:
-
-```typescript
-const memoryContext = buildMemoryContext();
+// Append to system prompt alongside globalClaudeMd
+const memoryContext = buildMemoryContext(MAX_MEMORY_ENTRIES);
 const fullAppend = [globalClaudeMd, memoryContext].filter(Boolean).join('\n');
-
-// In query() options:
-systemPrompt: fullAppend
-  ? {
-      type: 'preset',
-      preset: 'claude_code',
-      append: fullAppend,
-    }
-  : undefined,
 ```
 
-**Token budget control:** The `LIMIT 50` in `getRecentMemory()` bounds the injection. At ~20 tokens per entry average, this costs ~1000 tokens — well within budget. A future `MAX_MEMORY_TOKENS` config could add explicit truncation.
-
-### 3.6 Automatic Memory Extraction (Optional Enhancement)
-
-Add a **PostToolUse** hook or a post-response processing step that prompts the agent to extract key facts. This is the "system-level" guarantee that memory isn't solely agent-dependent.
-
-**Option A: PostResponse extraction (recommended)**
-
-After `query()` completes in `AgentEngine.run()`, invoke a lightweight extraction:
-
-```typescript
-// After capturing result from query()
-if (result && result.length > 50) {
-  // Fire-and-forget: extract facts from this turn's exchange
-  extractMemoryFromTurn(input.prompt, result, input.conversationId);
-}
-```
-
-Where `extractMemoryFromTurn` could:
-- Use a simple heuristic (regex for "my name is X", "I like X", "remember that X")
-- Or call a fast model (Haiku) with a structured extraction prompt
-- Or defer to the agent itself via an MCP tool hint in CLAUDE.md
-
-**Option B: CLAUDE.md instruction (simpler, current-compatible)**
-
-Add to the persona template:
-
-```markdown
-## Memory Management
-
-You have access to long-term memory tools that persist across conversations:
-
-- `mcp__picoclaw__store_memory` — Save important facts (user preferences, project context, decisions)
-- `mcp__picoclaw__recall_memory` — Search for previously stored facts
-- `mcp__picoclaw__list_memory` — List all stored facts
-- `mcp__picoclaw__delete_memory` — Remove outdated facts
-
-**Rules:**
-1. When you learn something important about the user (name, preferences, project details), store it immediately.
-2. At the start of each conversation, check memory for relevant context.
-3. Use semantic keys like "user_name", "project_language", "user_preference_timezone".
-```
-
-**Recommendation:** Start with Option B (simpler, no model cost), add Option A later if agents don't consistently store facts.
-
-## 4. Data Lifecycle
-
-### 4.1 Within Container Lifetime
+### 5.6 Data Lifecycle
 
 ```
 Container start
   ↓
-  initDatabase() — memory table created (empty or restored from volume)
+  initDatabase() → memory table restored from /data/store/messages.db
   ↓
 Conversation A:
-  1. Agent engine loads getRecentMemory() → empty → no injection
-  2. User says "I'm Kevin, I code in Rust"
-  3. Agent calls store_memory("user_name", "Kevin", "user_profile")
-  4. Agent calls store_memory("user_language", "Rust", "user_profile")
+  System prompt includes: (empty memory)
+  User: "I'm Kevin, I code in Rust, my dog is Mochi"
+  Agent: calls store_memory("user_name", "Kevin")
+         calls store_memory("user_language", "Rust")
+         calls store_memory("user_pet_name", "Mochi")
+  ↓
+  syncDatabaseToVolume() → memory persisted
   ↓
 Conversation B:
-  1. Agent engine loads getRecentMemory() → 2 entries
-  2. System prompt includes:
-     "## Long-Term Memory
-      - user_name: Kevin
-      - user_language: Rust"
-  3. User asks "what do you know about me?"
-  4. Agent answers "Your name is Kevin and you code in Rust" — WITHOUT user repeating it
+  System prompt includes:
+    ## Long-Term Memory
+    - user_name: Kevin
+    - user_language: Rust
+    - user_pet_name: Mochi
+  User: "What do you know about me?"
+  Agent: "Your name is Kevin, you code in Rust, and your dog is Mochi."
   ↓
-Container shutdown
+Container shutdown → syncDatabaseToVolume() → OSS archive
   ↓
-  syncDatabaseToVolume() — memory table persisted to /data/store/messages.db
+Next container start → initDatabase() → memory table restored → all entries available
 ```
 
-### 4.2 Cross-Container (Archive & Restore)
+### 5.7 Persona Template for Memory
 
-The `memory` table lives in the same SQLite database (`messages.db`) that already gets synced to `/data/store/`. When the container is destroyed and data is archived to OSS:
+```markdown
+## Memory Management
 
-1. `/data/store/messages.db` contains the full `memory` table
-2. Next container for the same user restores this database
-3. `initDatabase()` copies it to `/tmp/messages.db`
-4. All memory entries are immediately available
+You have long-term memory tools that persist across conversations:
 
-No special migration or export step is needed — it's part of the existing dual-DB sync.
+- `mcp__picoclaw__store_memory` — Save facts (use semantic keys like "user_name")
+- `mcp__picoclaw__recall_memory` — Search stored facts
+- `mcp__picoclaw__list_memory` — List all facts (optional tag filter)
+- `mcp__picoclaw__delete_memory` — Remove outdated facts
 
-### 4.3 Memory Cleanup
+Rules:
+1. When you learn something important about the user, store it immediately.
+2. When facts change, update by storing with the same key (upsert).
+3. Delete facts that are no longer true.
+```
 
-Over time, memory entries may become stale. Strategies:
+## 6. Gap 4: HTTP-Level Concurrent Conversations
 
-- **TTL-based:** Add `expires_at` column, `DELETE WHERE expires_at < NOW()` on startup.
-- **LRU-based:** Track `last_accessed_at`, prune entries not accessed in N days.
-- **Agent-driven:** The agent can call `delete_memory` to remove outdated facts.
-- **Manual:** Operator clears via direct DB access or a future admin API.
+### 6.1 Current State
 
-**Recommendation for v1:** Agent-driven deletion + `LIMIT 50` on injection is sufficient. Add TTL in v2 if growth becomes an issue.
+- Express handles multiple requests concurrently (Node.js event loop).
+- Each conversation has a `status: 'running'` lock — same conversation_id gets `409 Conflict`.
+- **Different** conversation_ids can technically run in parallel on the same Express instance.
+- SQLite WAL mode allows concurrent reads + serial writes — safe for single-process.
 
-## 5. Implementation Plan
+### 6.2 Assessment
 
-### Phase 1: Schema + MCP Tools (1-2 hours)
+For the target scenario (one user, one container), parallel conversations are low-priority. The typical flow is sequential: user sends message → waits for response → sends next. Background agents (via SDK `Task` tool within a conversation) already support parallelism.
 
-| Step | File | Change |
-|------|------|--------|
-| 1 | `src/types.ts` | Add `MemoryEntry` interface |
-| 2 | `src/db.ts` | Add `memory` table to schema, add CRUD functions |
-| 3 | `src/mcp-server.ts` | Add 4 MCP tools: `store_memory`, `recall_memory`, `list_memory`, `delete_memory` |
-| 4 | `src/db.test.ts` | Add unit tests for memory CRUD |
+### 6.3 Recommended Action
 
-**Verification:** `npm run build && npm test`
+- Document that different `conversation_id` requests can run concurrently.
+- Add a `MAX_CONCURRENT_QUERIES` config (default: 1) for future resource control.
+- No code change needed for v1 — SQLite WAL + single-process is safe.
 
-### Phase 2: Memory Injection (30 min)
+## 7. Implementation Plan
 
-| Step | File | Change |
-|------|------|--------|
-| 5 | `src/agent-engine.ts` | Add `buildMemoryContext()`, append to `systemPrompt` |
-| 6 | `src/config.ts` | Add `MAX_MEMORY_ENTRIES` config (default: 50) |
-
-**Verification:** Start container, store memory in conv A, verify it appears in conv B's system prompt.
-
-### Phase 3: Persona Template Update (15 min)
+### Phase 1: Dual-Source Skills (Gap 1 + Gap 2)
 
 | Step | File | Change |
 |------|------|--------|
-| 7 | `dev-data/memory/CLAUDE.md` | Add memory management instructions |
-| 8 | `docs/SKILLS_AND_PERSONA_GUIDE.md` | Document memory tools in persona authoring guide |
+| 1 | `src/config.ts` | Add `SKILLS_GLOBAL_DIR` env var |
+| 2 | `src/skills.ts` | Merge global + user skills in `syncSkills()` |
+| 3 | `entrypoint.sh` | Same merge logic in shell |
+| 4 | `src/agent-engine.ts` | Re-scan skills per request in `run()` |
+| 5 | `src/index.ts` | Create `SKILLS_GLOBAL_DIR` in `ensureDataDirectories()` |
 
-### Phase 4: E2E Test (30 min)
+Estimated effort: **1.5 hours**
+
+### Phase 2: Memory System (Gap 3)
 
 | Step | File | Change |
 |------|------|--------|
-| 9 | `scripts/e2e-test.sh` | Add Section 10: "Cross-Conversation Memory" tests |
+| 6 | `src/types.ts` | Add `MemoryEntry` interface |
+| 7 | `src/db.ts` | Add `memory` table schema + CRUD functions |
+| 8 | `src/mcp-server.ts` | Add 4 MCP tools |
+| 9 | `src/agent-engine.ts` | Add `buildMemoryContext()`, inject into system prompt |
+| 10 | `src/config.ts` | Add `MAX_MEMORY_ENTRIES` (default: 50) |
+| 11 | `src/db.test.ts` | Unit tests for memory CRUD |
+
+Estimated effort: **2-3 hours**
+
+### Phase 3: Documentation & Persona
+
+| Step | File | Change |
+|------|------|--------|
+| 12 | `CLAUDE.md` | Add memory table to schema, new MCP tools, skills dual-source |
+| 13 | `docs/SKILLS_AND_PERSONA_GUIDE.md` | Memory tools + runtime skill creation guide |
+| 14 | `docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md` | Volume mount examples with dual skills |
+| 15 | `CHANGELOG.md` | New features documented |
+
+Estimated effort: **30 minutes**
+
+### Phase 4: E2E Tests
+
+| Step | File | Change |
+|------|------|--------|
+| 16 | `scripts/e2e-test.sh` | New sections: cross-conv memory, skill creation, dual-source skills |
 
 New test cases:
-- Store fact in conversation A via `POST /chat`
-- Start conversation B, verify fact is recalled without being told
-- `recall_memory` finds stored fact
-- `delete_memory` removes it
-- New conversation C no longer sees deleted fact
 
-### Phase 5: Documentation (15 min)
+- **Memory:** Store fact in conv A → conv B recalls without being told → delete → conv C doesn't know
+- **Skills:** Agent creates skill in conv A → conv B sees it in next request
+- **Dual-source:** Global skill present → user skill overrides it → both discoverable
 
-| Step | File | Change |
-|------|------|--------|
-| 10 | `CLAUDE.md` | Add `memory` table to schema section, document MCP tools |
-| 11 | `CHANGELOG.md` | Add entry for cross-conversation memory |
-| 12 | `docs/api/openapi.yaml` | No API change needed (memory is internal to agent) |
+Estimated effort: **1 hour**
 
-### Phase 6: Optional Enhancements (Future)
+### Phase 5: Future Enhancements
 
-| Enhancement | Effort | Value |
-|-------------|--------|-------|
-| Automatic fact extraction (PostResponse hook + Haiku) | 2-3h | High — removes agent dependency |
-| `GET /memory` admin API for external inspection | 1h | Medium — debugging/monitoring |
-| TTL-based expiry (`expires_at` column) | 1h | Low — premature for v1 |
-| Vector similarity search (sqlite-vss) | 4-6h | High — semantic recall instead of substring |
-| Memory import/export API for container migration | 2h | Medium — OSS archive integration |
+| Enhancement | Effort | Priority |
+|-------------|--------|----------|
+| Automatic fact extraction (post-response hook) | 2-3h | P1 |
+| `GET /memory` admin API | 1h | P2 |
+| `POST /skills` API for external skill injection | 1h | P2 |
+| Memory TTL/expiry | 1h | P3 |
+| Vector similarity search (sqlite-vss) | 4-6h | P3 |
 
-## 6. Migration & Compatibility
+## 8. Volume Mount Reference
 
-### 6.1 Schema Migration
+### 8.1 Full Deployment
 
-The `memory` table is **additive** — existing databases without it will have the table created on next `initDatabase()` call. The `CREATE TABLE IF NOT EXISTS` guard ensures no conflict with existing data.
+```bash
+docker run \
+  -e API_TOKEN=<token> \
+  -e ANTHROPIC_BASE_URL=<url> \
+  -e ANTHROPIC_API_KEY=<key> \
+  -v /oss/shared/skills:/data/skills-global:ro \
+  -v /oss/user-123/skills:/data/skills \
+  -v /oss/user-123/memory:/data/memory \
+  -v /oss/user-123/store:/data/store \
+  -v /oss/user-123/sessions:/data/sessions \
+  picoclaw:latest
+```
 
-### 6.2 Backward Compatibility
+### 8.2 Volume Ownership
 
-- Containers without memory entries work identically to today (empty `getRecentMemory()` → no injection).
-- The MCP tools are new additions — existing agent sessions discover them automatically.
-- No changes to existing API contract (`POST /chat`, `POST /task`, etc.).
-- No changes to existing conversation isolation or session resume.
+| Volume | Source | Mode | Content |
+|--------|--------|------|---------|
+| `/data/skills-global` | Shared OSS | `ro` | Platform-provided skills |
+| `/data/skills` | User OSS | `rw` | User-created skills |
+| `/data/memory` | User OSS | `rw` | CLAUDE.md persona, notes, archives |
+| `/data/store` | User OSS | `rw` | SQLite DB (conversations, messages, memory, tasks) |
+| `/data/sessions` | User OSS | `rw` | SDK session state (`.claude/`) |
 
-### 6.3 Rollback
+### 8.3 OSS Archive Strategy
 
-Drop the `memory` table and remove the MCP tools. No other components depend on them.
+On container shutdown, the user's OSS directory contains:
 
-## 7. Risks & Mitigations
+```
+/oss/user-123/
+  skills/              → User-created skills (persist across sessions)
+  memory/
+    CLAUDE.md          → Persona (may be updated by agent)
+    global/CLAUDE.md   → Global context
+    conversations/     → Archived transcripts
+    notes/             → Agent-written notes
+  store/
+    messages.db        → All conversations, messages, memory entries, tasks
+  sessions/
+    .claude/           → SDK session state for resume
+```
 
-| Risk | Impact | Mitigation |
-|------|--------|-----------|
-| Agent doesn't call `store_memory` | Memory stays empty | Phase 6: automatic extraction hook |
-| Memory injection bloats system prompt | Reduced context for conversation | `MAX_MEMORY_ENTRIES` config, token counting |
-| Stale/wrong facts persist | Agent gives incorrect answers | `delete_memory` tool + persona instructions to correct outdated info |
-| Concurrent writes from parallel agents | SQLite write contention | SQLite WAL mode handles this; single-writer per process already enforced |
-| Memory grows unbounded | DB size, injection cost | `LIMIT` on queries, future TTL/LRU pruning |
+Back up this directory = back up the user's entire agent state. Restore it to a new container = full continuity.
 
-## 8. Open Questions
+## 9. Migration & Compatibility
 
-1. **Should memory injection be opt-in per conversation?** Some task-type conversations (e.g., `context_mode: isolated`) might not benefit from memory injection. Consider a `skip_memory` flag on `POST /chat`.
+### 9.1 Schema Migration
 
-2. **Should the agent auto-recall at conversation start?** Current design injects memory into the system prompt. An alternative is to NOT inject but instruct the agent to call `recall_memory` proactively. Trade-off: injection is guaranteed but costs tokens; explicit recall is cheaper but agent-dependent.
+All new tables use `CREATE TABLE IF NOT EXISTS`. Existing databases are upgraded automatically on `initDatabase()`. No migration scripts needed.
 
-3. **Key namespace conventions.** Should keys follow a convention like `user.name`, `project.language`, `preference.timezone`? Or free-form? Recommendation: document conventions in persona guide, don't enforce in code.
+### 9.2 Backward Compatibility
 
-4. **Memory visibility in HTTP responses.** Should `POST /chat` responses include a `memory_entries_injected` count for observability? Useful for debugging but adds to response payload.
+- Containers without memory entries behave identically to today.
+- Containers without `SKILLS_GLOBAL_DIR` mount skip global skills (empty directory fallback).
+- New MCP tools are auto-discovered by the agent — no config change required.
+- No changes to HTTP API contract.
 
-## 9. Appendix: Current Memory Mechanisms (Reference)
+### 9.3 Rollback
 
-For completeness, here's what exists today and how it relates to the proposed system:
+- **Memory:** Drop the `memory` table, remove MCP tools and injection code.
+- **Dual-source skills:** Remove `SKILLS_GLOBAL_DIR` config, revert to single-source.
+- Both changes are additive and independently reversible.
 
-| Mechanism | Scope | Automatic? | Proposed Change |
-|-----------|-------|-----------|----------------|
-| `/data/memory/CLAUDE.md` | All convs (system prompt) | Yes | Unchanged — persona definition |
-| `/data/memory/global/CLAUDE.md` | All convs (system prompt append) | Yes | Unchanged — global context |
-| SDK auto-memory (`MEMORY.md`) | Per-project (cwd) | Yes (SDK-managed) | Unchanged — complementary |
-| Agent file writes (`/data/memory/notes/`) | All convs (shared cwd) | No (agent-driven) | Unchanged — filesystem-based alternative |
-| Conversation archives (`/data/memory/conversations/`) | Read-only reference | Yes (PreCompact hook) | Unchanged — archival |
-| **`memory` table (NEW)** | **All convs (system prompt inject)** | **Yes (inject) + Agent (write)** | **Core addition** |
+## 10. Risks & Mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| Agent doesn't consistently call `store_memory` | Phase 5: automatic extraction hook as system-level backup |
+| Memory injection uses too many tokens | `MAX_MEMORY_ENTRIES` config with conservative default (50) |
+| Stale facts persist across sessions | `delete_memory` tool + persona instructions to correct outdated info |
+| User-created skills have invalid SKILL.md format | Agent follows template in persona; invalid skills are silently ignored by SDK |
+| `SKILLS_GLOBAL_DIR` not mounted | Fallback: empty directory, no global skills — same as today |
+
+## 11. Open Questions
+
+1. **Memory in isolated tasks.** Should `context_mode: isolated` tasks receive memory injection? Recommendation: yes — the user's facts are relevant regardless of task type.
+
+2. **Skill namespacing.** If global and user skills share a name, user wins. Should this be logged/warned? Recommendation: log at `info` level during skill merge.
+
+3. **Memory export format.** For OSS archival, is SQLite sufficient or should we also export `memory` as JSON? Recommendation: SQLite is sufficient for v1; add JSON export in Phase 5 if needed.
