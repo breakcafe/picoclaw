@@ -21,10 +21,10 @@ dev-watch: ## Run from source with tsx watch (no build needed)
 
 # ── Docker ───────────────────────────────────────────────
 
-docker-build: build-ts ## Build Docker image (linux/amd64)
+docker-build: ## Build Docker image (multi-stage, no local Node.js needed)
 	docker build --platform linux/amd64 -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
-docker-build-lambda: build-ts ## Build Docker image with Lambda Web Adapter
+docker-build-lambda: ## Build Docker image with Lambda Web Adapter
 	docker build --platform linux/amd64 --build-arg ENABLE_LAMBDA_ADAPTER=true -t $(IMAGE_NAME):lambda .
 
 docker-run: _ensure-data-dirs ## Run container interactively with volume mounts
@@ -82,7 +82,11 @@ test-task-check: ## Smoke test: check and execute due tasks
 		-H "Authorization: Bearer $(API_TOKEN)" \
 		| jq .
 
-test-e2e: docker-build docker-run-bg _wait-ready test-health test-chat docker-stop ## End-to-end: build, run, smoke test, stop
+test-e2e: ## End-to-end: build, run, multi-turn conversation, persistence, stop
+	./scripts/e2e-test.sh
+
+test-e2e-quick: ## E2E without Docker build or Claude API calls
+	./scripts/e2e-test.sh --no-build --no-chat
 
 # ── Cleanup ──────────────────────────────────────────────
 
@@ -119,4 +123,4 @@ help: ## Show this help
 
 .PHONY: build-ts dev dev-watch docker-build docker-build-lambda docker-run docker-run-bg \
 	docker-stop docker-logs test test-health test-chat test-task-create test-task-check \
-	test-e2e clean clean-data help _ensure-data-dirs _wait-ready
+	test-e2e test-e2e-quick clean clean-data help _ensure-data-dirs _wait-ready

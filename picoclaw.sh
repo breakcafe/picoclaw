@@ -140,9 +140,7 @@ MD
 }
 
 build_image() {
-  echo "[step] building TypeScript"
-  npm run build
-  echo "[step] building Docker image: $IMAGE_NAME"
+  echo "[step] building Docker image: $IMAGE_NAME (multi-stage, includes TypeScript compilation)"
   docker build --platform linux/amd64 -t "$IMAGE_NAME" .
 }
 

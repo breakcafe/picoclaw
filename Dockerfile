@@ -1,7 +1,20 @@
 # ================================================================
 # PicoClaw — Single Container Serverless Agent
+# Multi-stage build: compiles TypeScript inside Docker,
+# no local Node.js required.
 # ================================================================
 
+# ── Stage 1: Build ──────────────────────────────────────────────
+FROM node:22-slim AS builder
+
+WORKDIR /build
+COPY package.json package-lock.json tsconfig.json ./
+RUN npm ci
+
+COPY src/ ./src/
+RUN npm run build
+
+# ── Stage 2: Runtime ────────────────────────────────────────────
 FROM node:22-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -46,9 +59,10 @@ RUN npm install -g \
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN HUSKY=0 npm ci && npm prune --omit=dev
+RUN npm ci --omit=dev --ignore-scripts && \
+    npm rebuild better-sqlite3
 
-COPY dist/ ./dist/
+COPY --from=builder /build/dist/ ./dist/
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 

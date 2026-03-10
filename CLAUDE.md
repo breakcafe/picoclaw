@@ -29,6 +29,9 @@ Full tooling reference: `make help` shows all Makefile targets.
 
 ## Docker Workflow
 
+The Dockerfile uses a **multi-stage build** — TypeScript compilation happens inside Docker,
+so no local Node.js is required for building images.
+
 ```bash
 ./picoclaw.sh              # one-click: env setup → build → docker run → smoke test
 ./picoclaw.sh up           # build and start (no smoke test)

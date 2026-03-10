@@ -4,7 +4,14 @@ All notable changes to PicoClaw will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Dockerfile converted to multi-stage build: TypeScript compiles inside Docker,
+  no local Node.js required for image builds
+- Makefile `docker-build` no longer depends on local `build-ts` target
+- `picoclaw.sh` build step no longer requires local `npm run build`
+
 ### Added
+- `.dockerignore` for faster build context transfer
 - Developer documentation: API integration guide, Skills & Persona authoring guide
 - Rewritten SECURITY.md for HTTP API trust model
 - Cleaned up legacy NanoClaw docs from `docs/` directory
