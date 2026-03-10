@@ -161,8 +161,43 @@ export function initDatabase(options: DatabaseInitOptions = {}): void {
   createSchema(db);
 }
 
+export function cleanupStaleData(): void {
+  if (!db) return;
+
+  // Remove delivered outbound messages older than 7 days
+  db.prepare(
+    `DELETE FROM outbound_messages
+     WHERE delivered = 1
+       AND created_at < datetime('now', '-7 days')`,
+  ).run();
+
+  // Keep only 100 most recent logs per task
+  const taskIds = db
+    .prepare(
+      `SELECT DISTINCT task_id FROM task_run_logs
+       GROUP BY task_id HAVING COUNT(*) > 100`,
+    )
+    .all() as Array<{ task_id: string }>;
+
+  const deleteStmt = db.prepare(
+    `DELETE FROM task_run_logs
+     WHERE task_id = ?
+       AND id NOT IN (
+         SELECT id FROM task_run_logs
+         WHERE task_id = ?
+         ORDER BY run_at DESC
+         LIMIT 100
+       )`,
+  );
+
+  for (const { task_id } of taskIds) {
+    deleteStmt.run(task_id, task_id);
+  }
+}
+
 export function syncDatabaseToVolume(): void {
   if (!db) return;
+  cleanupStaleData();
   db.pragma('wal_checkpoint(TRUNCATE)');
   fs.mkdirSync(path.dirname(dbPaths.persistentDbPath), { recursive: true });
   fs.copyFileSync(dbPaths.localDbPath, dbPaths.persistentDbPath);
@@ -292,6 +327,18 @@ export function getAllConversations(): Conversation[] {
   }>;
 
   return rows.map(mapConversation);
+}
+
+export function deleteConversation(conversationId: string): boolean {
+  const conversation = getConversation(conversationId);
+  if (!conversation) {
+    return false;
+  }
+  // CASCADE deletes messages, outbound_messages, and scheduled_tasks (+ task_run_logs)
+  getDbOrThrow()
+    .prepare('DELETE FROM conversations WHERE id = ?')
+    .run(conversationId);
+  return true;
 }
 
 export function setConversationStatus(
