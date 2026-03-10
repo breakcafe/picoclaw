@@ -56,7 +56,11 @@ describe('http server', () => {
   it('returns health without auth', async () => {
     const response = await request(app).get('/health');
     expect(response.status).toBe(200);
-    expect(response.body.status).toBe('ok');
+    expect(['ok', 'degraded']).toContain(response.body.status);
+    expect(response.body.database.ok).toBe(true);
+    expect(response.body.database.conversations).toBeTypeOf('number');
+    expect(response.body.database.tasks).toBeTypeOf('number');
+    expect(response.body.volumes).toBeDefined();
   });
 
   it('rejects chat request without bearer token', async () => {
