@@ -1,7 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 
-import { MEMORY_DIR, SESSIONS_DIR, SKILLS_DIR } from './config.js';
+import {
+  BUILT_IN_SKILLS_DIR,
+  MEMORY_DIR,
+  SESSIONS_DIR,
+  SKILLS_DIR,
+} from './config.js';
 import { logger } from './logger.js';
 
 /**
@@ -32,36 +37,41 @@ function syncDirectory(sourceDir: string, destination: string): number {
 }
 
 /**
- * Sync skills from shared and user directories to .claude/skills/.
+ * Sync skills from three tiers to .claude/skills/.
  *
  * Load order (later entries override earlier):
- *   1. SKILLS_DIR (shared/global skills — typically read-only mount)
- *   2. USER_SKILLS_DIR (user-created skills — in user's private volume)
+ *   1. BUILT_IN_SKILLS_DIR (bundled in Docker image, e.g. agent-browser)
+ *   2. SKILLS_DIR (shared/global skills — typically read-only mount)
+ *   3. USER_SKILLS_DIR (user-created skills — in user's private volume)
  *
- * This means user skills can override shared skills of the same name.
+ * This means user skills can override shared skills, and shared skills
+ * can override built-in skills of the same name.
  */
 export function syncSkills(): void {
   const destination = path.join(SESSIONS_DIR, '.claude', 'skills');
   fs.mkdirSync(destination, { recursive: true });
 
+  const builtInCount = syncDirectory(BUILT_IN_SKILLS_DIR, destination);
   const sharedCount = syncDirectory(SKILLS_DIR, destination);
   const userCount = syncDirectory(USER_SKILLS_DIR, destination);
 
   logger.info(
-    { shared: sharedCount, user: userCount },
+    { builtIn: builtInCount, shared: sharedCount, user: userCount },
     'Skills synced to .claude/skills/',
   );
 }
 
 export function getSkillsSummary(): {
+  builtIn: string[];
   shared: string[];
   user: string[];
   effective: string[];
 } {
+  const builtIn = listSkillNames(BUILT_IN_SKILLS_DIR);
   const shared = listSkillNames(SKILLS_DIR);
   const user = listSkillNames(USER_SKILLS_DIR);
-  const effective = [...new Set([...shared, ...user])].sort();
-  return { shared, user, effective };
+  const effective = [...new Set([...builtIn, ...shared, ...user])].sort();
+  return { builtIn, shared, user, effective };
 }
 
 function listSkillNames(dir: string): string[] {
