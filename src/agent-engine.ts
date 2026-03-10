@@ -339,6 +339,7 @@ export class AgentEngine implements AgentRunner {
     let newSessionId: string | undefined;
     let lastAssistantUuid: string | undefined;
     let lastResult: string | null = null;
+    let lastStreamedLength = 0;
 
     try {
       const sdkEnv: Record<string, string | undefined> = {
@@ -401,6 +402,7 @@ export class AgentEngine implements AgentRunner {
             'NotebookEdit',
             'mcp__picoclaw__*',
           ],
+          includePartialMessages: true,
           env: sdkEnv,
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
@@ -437,6 +439,19 @@ export class AgentEngine implements AgentRunner {
           newSessionId = message.session_id;
         }
 
+        // Stream incremental text from content_block_delta events
+        if (
+          message.type === 'stream_event' &&
+          message.event?.type === 'content_block_delta' &&
+          onChunk
+        ) {
+          const delta = message.event.delta;
+          if (delta?.type === 'text_delta' && delta.text) {
+            lastStreamedLength += delta.text.length;
+            await onChunk(delta.text);
+          }
+        }
+
         if (message.type === 'assistant' && message.uuid) {
           lastAssistantUuid = message.uuid;
         }
@@ -446,7 +461,8 @@ export class AgentEngine implements AgentRunner {
             typeof message.result === 'string' ? message.result : null;
           if (text) {
             lastResult = text;
-            if (onChunk) {
+            // Only call onChunk for result if no streaming happened
+            if (onChunk && lastStreamedLength === 0) {
               await onChunk(text);
             }
           }

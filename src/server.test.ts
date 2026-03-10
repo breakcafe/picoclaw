@@ -56,7 +56,11 @@ describe('http server', () => {
   it('returns health without auth', async () => {
     const response = await request(app).get('/health');
     expect(response.status).toBe(200);
-    expect(response.body.status).toBe('ok');
+    expect(['ok', 'degraded']).toContain(response.body.status);
+    expect(response.body.database.ok).toBe(true);
+    expect(response.body.database.conversations).toBeTypeOf('number');
+    expect(response.body.database.tasks).toBeTypeOf('number');
+    expect(response.body.volumes).toBeDefined();
   });
 
   it('rejects chat request without bearer token', async () => {
@@ -223,6 +227,18 @@ describe('http server', () => {
 
     const statuses = [r1.status, r2.status].sort();
     expect(statuses).toEqual([200, 409]);
+  });
+
+  it('returns X-Request-ID header on every response', async () => {
+    const response = await request(app).get('/health');
+    expect(response.headers['x-request-id']).toMatch(/^req-/);
+  });
+
+  it('echoes caller-provided X-Request-ID', async () => {
+    const response = await request(app)
+      .get('/health')
+      .set('X-Request-ID', 'caller-trace-42');
+    expect(response.headers['x-request-id']).toBe('caller-trace-42');
   });
 
   it('accepts stop request and invokes shutdown callback', async () => {

@@ -4,6 +4,7 @@ import { AgentEngine, AgentRunner } from './agent-engine.js';
 import { syncDatabaseToVolume } from './db.js';
 import { logger } from './logger.js';
 import { authMiddleware } from './middleware/auth.js';
+import { requestIdMiddleware } from './middleware/request-id.js';
 import { adminRoutes } from './routes/admin.js';
 import { chatRoutes } from './routes/chat.js';
 import { controlRoutes } from './routes/control.js';
@@ -21,6 +22,7 @@ export function createServer(
   const app = express();
 
   app.use(express.json({ limit: '1mb' }));
+  app.use(requestIdMiddleware);
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     res.on('finish', () => {

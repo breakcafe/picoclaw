@@ -208,6 +208,27 @@ export function syncDatabaseToVolume(): void {
   fs.copyFileSync(dbPaths.localDbPath, dbPaths.persistentDbPath);
 }
 
+export interface DatabaseHealth {
+  ok: boolean;
+  conversations: number;
+  tasks: number;
+}
+
+export function getDatabaseHealth(): DatabaseHealth {
+  try {
+    const database = getDbOrThrow();
+    const { conversations } = database
+      .prepare('SELECT COUNT(*) AS conversations FROM conversations')
+      .get() as { conversations: number };
+    const { tasks } = database
+      .prepare('SELECT COUNT(*) AS tasks FROM scheduled_tasks')
+      .get() as { tasks: number };
+    return { ok: true, conversations, tasks };
+  } catch {
+    return { ok: false, conversations: 0, tasks: 0 };
+  }
+}
+
 export function closeDatabase(): void {
   if (!db) return;
   db.close();

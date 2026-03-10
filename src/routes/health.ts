@@ -1,15 +1,47 @@
+import fs from 'fs';
+
 import { Router } from 'express';
 
-import { APP_VERSION, MAX_EXECUTION_MS } from '../config.js';
+import {
+  APP_VERSION,
+  MAX_EXECUTION_MS,
+  MEMORY_DIR,
+  SESSIONS_DIR,
+  SKILLS_DIR,
+  STORE_DIR,
+} from '../config.js';
+import { getDatabaseHealth } from '../db.js';
+
+function isDirectoryWritable(dir: string): boolean {
+  try {
+    fs.accessSync(dir, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function healthRoutes(): Router {
   const router = Router();
 
   router.get('/', (_req, res) => {
+    const database = getDatabaseHealth();
+    const volumes = {
+      memory: isDirectoryWritable(MEMORY_DIR),
+      skills: fs.existsSync(SKILLS_DIR),
+      sessions: isDirectoryWritable(SESSIONS_DIR),
+      store: isDirectoryWritable(STORE_DIR),
+    };
+
+    const allHealthy =
+      database.ok && volumes.memory && volumes.sessions && volumes.store;
+
     res.json({
-      status: 'ok',
+      status: allHealthy ? 'ok' : 'degraded',
       version: APP_VERSION,
       max_execution_ms: MAX_EXECUTION_MS,
+      database,
+      volumes,
     });
   });
 
