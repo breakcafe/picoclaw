@@ -59,7 +59,8 @@ RUN npm install -g \
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts
+RUN npm ci --omit=dev --ignore-scripts && \
+    npm rebuild better-sqlite3
 
 COPY --from=builder /build/dist/ ./dist/
 COPY entrypoint.sh /app/entrypoint.sh
