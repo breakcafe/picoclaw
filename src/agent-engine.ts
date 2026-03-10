@@ -24,6 +24,8 @@ export interface AgentRunInput {
   timeoutMs?: number;
   assistantName?: string;
   isScheduledTask?: boolean;
+  maxThinkingTokens?: number;
+  showToolUse?: boolean;
 }
 
 export interface AgentRunOutput {
@@ -34,10 +36,16 @@ export interface AgentRunOutput {
   error?: string;
 }
 
+export interface StreamCallbacks {
+  onChunk?: (text: string) => Promise<void> | void;
+  onThinking?: (text: string) => Promise<void> | void;
+  onToolUse?: (tool: string, input: unknown) => Promise<void> | void;
+}
+
 export interface AgentRunner {
   run(
     input: AgentRunInput,
-    onChunk?: (text: string) => Promise<void> | void,
+    callbacksOrOnChunk?: StreamCallbacks | ((text: string) => Promise<void> | void),
   ): Promise<AgentRunOutput>;
 }
 
@@ -327,8 +335,13 @@ function loadGlobalClaudeMd(): string | undefined {
 export class AgentEngine implements AgentRunner {
   async run(
     input: AgentRunInput,
-    onChunk?: (text: string) => Promise<void> | void,
+    callbacksOrOnChunk?: StreamCallbacks | ((text: string) => Promise<void> | void),
   ): Promise<AgentRunOutput> {
+    const callbacks: StreamCallbacks =
+      typeof callbacksOrOnChunk === 'function'
+        ? { onChunk: callbacksOrOnChunk }
+        : callbacksOrOnChunk || {};
+    const { onChunk, onThinking, onToolUse } = callbacks;
     const timeoutMs = input.timeoutMs ?? MAX_EXECUTION_MS;
     const abortController = new AbortController();
 
@@ -403,6 +416,7 @@ export class AgentEngine implements AgentRunner {
             'mcp__picoclaw__*',
           ],
           includePartialMessages: true,
+          maxThinkingTokens: input.maxThinkingTokens,
           env: sdkEnv,
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
@@ -439,21 +453,42 @@ export class AgentEngine implements AgentRunner {
           newSessionId = message.session_id;
         }
 
-        // Stream incremental text from content_block_delta events
+        // Stream incremental text and thinking from content_block_delta events
         if (
           message.type === 'stream_event' &&
-          message.event?.type === 'content_block_delta' &&
-          onChunk
+          message.event?.type === 'content_block_delta'
         ) {
           const delta = message.event.delta;
-          if (delta?.type === 'text_delta' && delta.text) {
+          if (delta?.type === 'text_delta' && delta.text && onChunk) {
             lastStreamedLength += delta.text.length;
             await onChunk(delta.text);
           }
+          if (delta?.type === 'thinking_delta' && delta.thinking && onThinking) {
+            await onThinking(delta.thinking);
+          }
         }
 
-        if (message.type === 'assistant' && message.uuid) {
-          lastAssistantUuid = message.uuid;
+        // Track assistant UUID and emit tool_use events
+        if (message.type === 'assistant') {
+          if (message.uuid) {
+            lastAssistantUuid = message.uuid;
+          }
+          if (
+            input.showToolUse &&
+            onToolUse &&
+            message.message?.content
+          ) {
+            const contentBlocks = message.message.content as Array<{
+              type?: string;
+              name?: string;
+              input?: unknown;
+            }>;
+            for (const block of contentBlocks) {
+              if (block.type === 'tool_use' && block.name) {
+                await onToolUse(block.name, block.input);
+              }
+            }
+          }
         }
 
         if (message.type === 'result') {
