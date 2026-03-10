@@ -272,6 +272,28 @@ export function ensureConversation(conversationId: string): Conversation {
   return getConversation(conversationId) || createConversation(conversationId);
 }
 
+export function getAllConversations(): Conversation[] {
+  const rows = getDbOrThrow()
+    .prepare(
+      `
+      SELECT id, session_id, last_assistant_uuid, created_at, last_activity, message_count, status
+      FROM conversations
+      ORDER BY last_activity DESC
+    `,
+    )
+    .all() as Array<{
+    id: string;
+    session_id: string | null;
+    last_assistant_uuid: string | null;
+    created_at: string;
+    last_activity: string;
+    message_count: number;
+    status: string;
+  }>;
+
+  return rows.map(mapConversation);
+}
+
 export function setConversationStatus(
   conversationId: string,
   status: 'idle' | 'running',

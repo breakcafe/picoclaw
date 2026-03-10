@@ -4,6 +4,10 @@ import { Request, Response, Router } from 'express';
 
 import { AgentRunner } from '../agent-engine.js';
 import {
+  ConversationBusyError,
+  acquireConversationLock,
+} from '../conversation-lock.js';
+import {
   createTask,
   deleteTask,
   ensureConversation,
@@ -240,13 +244,28 @@ export function taskRoutes(agentEngine: AgentRunner): Router {
       return;
     }
 
+    let releaseLock: (() => void) | undefined;
     try {
+      if (task.context_mode === 'group') {
+        releaseLock = await acquireConversationLock(task.conversation_id, {
+          wait: false,
+        });
+      }
       const result = await runTask(task, agentEngine);
       res.json(result);
     } catch (err) {
+      if (err instanceof ConversationBusyError) {
+        res.status(409).json({
+          error: `Conversation ${task.conversation_id} is currently busy`,
+          task_id: taskId,
+        });
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       logger.error({ err, taskId }, 'Failed to trigger task');
       res.status(500).json({ error: message });
+    } finally {
+      releaseLock?.();
     }
   });
 
@@ -260,7 +279,13 @@ export function taskRoutes(agentEngine: AgentRunner): Router {
 
     const task = dueTasks[0];
 
+    let releaseLock: (() => void) | undefined;
     try {
+      if (task.context_mode === 'group') {
+        releaseLock = await acquireConversationLock(task.conversation_id, {
+          wait: false,
+        });
+      }
       const executed = await runTask(task, agentEngine);
       res.json({
         checked: dueTasks.length,
@@ -268,6 +293,18 @@ export function taskRoutes(agentEngine: AgentRunner): Router {
         remaining: Math.max(0, dueTasks.length - 1),
       });
     } catch (err) {
+      if (err instanceof ConversationBusyError) {
+        res.json({
+          checked: dueTasks.length,
+          executed: {
+            task_id: task.id,
+            status: 'skipped',
+            error: `Conversation ${task.conversation_id} is currently busy`,
+          },
+          remaining: Math.max(0, dueTasks.length - 1),
+        });
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       logger.error({ err, taskId: task.id }, 'Failed to run due task');
       res.status(500).json({
@@ -279,6 +316,8 @@ export function taskRoutes(agentEngine: AgentRunner): Router {
         },
         remaining: Math.max(0, dueTasks.length - 1),
       });
+    } finally {
+      releaseLock?.();
     }
   });
 
