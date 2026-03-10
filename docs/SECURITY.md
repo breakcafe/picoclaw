@@ -28,8 +28,8 @@ Authorization: Bearer <API_TOKEN>
 
 The agent never sees deployment secrets:
 
-- `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` are unset from the Bash environment in the `preToolUse` hook before any shell command executes.
 - `ANTHROPIC_BASE_URL` is passed to the SDK as an environment variable. While not a secret, it should be injected at deployment time alongside `ANTHROPIC_API_KEY` for consistency.
+- `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` are unset from the Bash environment in the `preToolUse` hook before any shell command executes.
 - `API_TOKEN` is only used by the Express middleware; the agent cannot read it.
 - Secrets and configuration must be injected via environment variables or cloud secret managers — never baked into the Docker image.
 
@@ -71,7 +71,7 @@ The MCP server enforces ownership rules:
 
 ### Secrets
 
-- Use cloud secret managers (AWS Secrets Manager, Alibaba Cloud KMS) for `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, and `API_TOKEN`.
+- Use cloud secret managers (AWS Secrets Manager, Alibaba Cloud KMS) for `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, and `API_TOKEN`.
 - Rotate `API_TOKEN` periodically.
 - Never commit `.env` to version control.
 

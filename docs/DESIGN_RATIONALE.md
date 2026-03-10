@@ -157,8 +157,8 @@ NanoClaw's security relies on Docker container isolation: each agent runs in a s
 PicoClaw replaces this with:
 
 1. **HTTP Bearer token authentication** as the primary boundary.
-2. **Environment variable scrubbing** via `PreToolUse` hook: before any Bash command, `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` are unset.
-3. **API proxy support** via `ANTHROPIC_BASE_URL`: the SDK reads this from `process.env` to route API calls to a custom endpoint (e.g. third-party proxies, regional endpoints, or self-hosted gateways). Passed through the same `env` object as `ANTHROPIC_API_KEY`.
+2. **API proxy support** via `ANTHROPIC_BASE_URL`: the SDK reads this from `process.env` to route API calls to a custom endpoint (e.g. third-party proxies, regional endpoints, or self-hosted gateways). Passed through the same `env` object as `ANTHROPIC_API_KEY`.
+3. **Environment variable scrubbing** via `PreToolUse` hook: before any Bash command, `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` are unset.
 4. **Container boundary** as the blast radius limit — the agent has full Bash access within the container, but the container itself is the sandbox.
 5. **MCP tool ownership**: non-main sessions can only manage tasks belonging to their conversation.
 
