@@ -4,6 +4,7 @@ import { AgentEngine, AgentRunner } from './agent-engine.js';
 import { syncDatabaseToVolume } from './db.js';
 import { logger } from './logger.js';
 import { authMiddleware } from './middleware/auth.js';
+import { adminRoutes } from './routes/admin.js';
 import { chatRoutes } from './routes/chat.js';
 import { controlRoutes } from './routes/control.js';
 import { healthRoutes } from './routes/health.js';
@@ -37,6 +38,7 @@ export function createServer(
   app.use(authMiddleware);
   app.use('/chat', chatRoutes(agentEngine));
   app.use(taskRoutes(agentEngine));
+  app.use('/admin', adminRoutes());
   app.use('/control', controlRoutes({ onStop: options.onStop }));
 
   app.use((_req, res) => {
