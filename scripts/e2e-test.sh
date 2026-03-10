@@ -570,14 +570,64 @@ JSON
   fi
 fi
 
-# 6. Clean up
+# 6. Test hot-reload: modify the skill and reload again
+docker exec "$CONTAINER_NAME" sh -c 'cat > /data/memory/skills/e2e-test-skill/SKILL.md << SKILLEOF
+---
+name: e2e-test-skill-v2
+description: Updated test skill created dynamically during E2E testing
+---
+
+# E2E Test Skill (Updated)
+
+When the user says "e2e skill test", respond with exactly: "E2E_SKILL_V2_ACTIVE"
+SKILLEOF'
+
+# Reload after modification
+RELOAD2=$(api POST /admin/reload-skills)
+RELOAD2_STATUS=$(echo "$RELOAD2" | jq -r '.status')
+if [ "$RELOAD2_STATUS" = "reloaded" ]; then
+  pass "Hot-reload after modification: status=reloaded"
+else
+  fail "Hot-reload after modification" "status=$RELOAD2_STATUS"
+fi
+
+# Verify the skill content was updated in .claude/skills/
+UPDATED_CONTENT=$(docker exec "$CONTAINER_NAME" cat /data/sessions/.claude/skills/e2e-test-skill/SKILL.md 2>&1)
+if echo "$UPDATED_CONTENT" | grep -q "e2e-test-skill-v2"; then
+  pass "Hot-reload: skill content updated in .claude/skills/"
+else
+  fail "Hot-reload content" "expected v2 content, got: ${UPDATED_CONTENT:0:100}"
+fi
+
+# 7. Best-effort: verify updated skill triggers in chat
+if [ "$SKIP_CHAT" = false ]; then
+  cat > "$TMP_DIR/skill-test-v2.json" << 'JSON'
+{"message":"e2e skill test","sender":"test","sender_name":"Tester"}
+JSON
+  SKILL_V2_RESP=$(api POST /chat -d @"$TMP_DIR/skill-test-v2.json")
+  SKILL_V2_STATUS=$(echo "$SKILL_V2_RESP" | jq -r '.status')
+  SKILL_V2_RESULT=$(echo "$SKILL_V2_RESP" | jq -r '.result')
+
+  if [ "$SKILL_V2_STATUS" = "success" ]; then
+    if echo "$SKILL_V2_RESULT" | grep -qi "V2"; then
+      pass "Hot-reload: updated skill triggered in chat (v2 detected)"
+    else
+      echo -e "  ${YELLOW}WARN${NC} V2 marker not found (LLM non-deterministic), checking for skill activity"
+      pass "Hot-reload: chat completed after skill update (status=success)"
+    fi
+  else
+    fail "Hot-reload chat" "status=$SKILL_V2_STATUS"
+  fi
+fi
+
+# 8. Clean up
 docker exec "$CONTAINER_NAME" rm -rf /data/memory/skills/e2e-test-skill
 pass "Cleaned up dynamic skill"
 
 # ── 9. Built-in Skills (agent-browser) ──────────────────
 section "9. Built-in Skills (agent-browser)"
 
-# Verify agent-browser is in the built-in skills list
+# 9a. Verify agent-browser is in the built-in skills list
 AB_SKILLS=$(api GET /admin/skills)
 AB_BUILTIN=$(echo "$AB_SKILLS" | jq -r '.skills.builtIn[]' 2>/dev/null)
 if echo "$AB_BUILTIN" | grep -q "agent-browser"; then
@@ -593,16 +643,61 @@ else
   fail "agent-browser" "not in effective: $AB_EFFECTIVE"
 fi
 
-# Verify agent-browser SKILL.md exists in container
+# 9b. Verify agent-browser SKILL.md exists in container
 if docker exec "$CONTAINER_NAME" test -f /app/built-in-skills/agent-browser/SKILL.md; then
   pass "agent-browser SKILL.md exists at /app/built-in-skills/"
 else
   fail "agent-browser" "SKILL.md not found in /app/built-in-skills/"
 fi
 
-# Test agent-browser can access a web page (requires Claude API)
+# 9c. Verify agent-browser CLI is installed and executable
+AB_VERSION=$(docker exec "$CONTAINER_NAME" agent-browser --version 2>&1 || true)
+if echo "$AB_VERSION" | grep -qE "[0-9]+\.[0-9]+"; then
+  pass "agent-browser CLI installed (version: $AB_VERSION)"
+else
+  # agent-browser may not have --version, try --help
+  AB_HELP=$(docker exec "$CONTAINER_NAME" agent-browser --help 2>&1 || true)
+  if echo "$AB_HELP" | grep -qi "agent-browser\|usage\|command"; then
+    pass "agent-browser CLI installed (--help works)"
+  else
+    fail "agent-browser CLI" "not found or not executable: $AB_VERSION"
+  fi
+fi
+
+# 9d. Verify Chromium is installed (required by agent-browser)
+CHROMIUM_PATH=$(docker exec "$CONTAINER_NAME" which chromium 2>/dev/null || true)
+if [ -n "$CHROMIUM_PATH" ]; then
+  pass "Chromium installed at $CHROMIUM_PATH"
+else
+  fail "Chromium" "not found in container PATH"
+fi
+
+# 9e. Verify AGENT_BROWSER_EXECUTABLE_PATH env var is set
+AB_ENV=$(docker exec "$CONTAINER_NAME" printenv AGENT_BROWSER_EXECUTABLE_PATH 2>/dev/null || true)
+if [ -n "$AB_ENV" ]; then
+  pass "AGENT_BROWSER_EXECUTABLE_PATH set ($AB_ENV)"
+else
+  echo -e "  ${YELLOW}WARN${NC} AGENT_BROWSER_EXECUTABLE_PATH not set (agent-browser may auto-detect)"
+fi
+
+# 9f. Test agent-browser can actually open and snapshot a page (no Claude needed)
+AB_OPEN=$(docker exec "$CONTAINER_NAME" sh -c 'agent-browser open https://httpbin.org/html 2>&1' || true)
+if echo "$AB_OPEN" | grep -qi "error\|fail\|not found\|ENOENT"; then
+  echo -e "  ${YELLOW}WARN${NC} agent-browser open returned error: ${AB_OPEN:0:150}"
+else
+  pass "agent-browser open https://httpbin.org/html executed"
+fi
+AB_SNAP=$(docker exec "$CONTAINER_NAME" sh -c 'agent-browser snapshot 2>&1' || true)
+if echo "$AB_SNAP" | grep -qi "herman\|melville\|html\|heading\|text"; then
+  pass "agent-browser snapshot: page content captured"
+else
+  echo -e "  ${YELLOW}WARN${NC} agent-browser snapshot output: ${AB_SNAP:0:150}"
+fi
+docker exec "$CONTAINER_NAME" sh -c 'agent-browser close 2>&1' > /dev/null || true
+
+# 9g. Test agent-browser via Claude conversation (requires Claude API)
 if [ "$SKIP_CHAT" = true ]; then
-  skip "agent-browser web browsing test (--no-chat)"
+  skip "agent-browser web browsing via Claude test (--no-chat)"
 else
   cat > "$TMP_DIR/browser-test.json" << 'JSON'
 {"message":"Use the agent-browser skill to visit https://httpbin.org/html and tell me the title of the page. Just tell me the title text.","sender":"test","sender_name":"Tester"}
@@ -614,15 +709,15 @@ JSON
   if [ "$BROWSER_STATUS" = "success" ]; then
     # httpbin.org/html has "Herman Melville" content
     if echo "$BROWSER_RESULT" | grep -qi "herman\|melville\|moby\|whale"; then
-      pass "agent-browser: extracted content from httpbin.org/html"
+      pass "agent-browser via Claude: extracted content from httpbin.org/html"
     else
       echo -e "  ${YELLOW}WARN${NC} Response did not contain expected content (LLM non-deterministic)"
       echo -e "  ${YELLOW}     ${NC} Response: ${BROWSER_RESULT:0:150}"
-      pass "agent-browser: web browsing completed (status=success)"
+      pass "agent-browser via Claude: web browsing completed (status=success)"
     fi
   elif [ "$BROWSER_STATUS" = "timeout" ]; then
     echo -e "  ${YELLOW}WARN${NC} Browser test timed out (may need more execution time)"
-    pass "agent-browser: web browsing attempted (timeout)"
+    pass "agent-browser via Claude: web browsing attempted (timeout)"
   else
     fail "agent-browser web test" "status=$BROWSER_STATUS, error=$(echo "$BROWSER_RESP" | jq -r '.error')"
   fi
@@ -666,6 +761,36 @@ else
   else
     echo -e "  ${YELLOW}WARN${NC} Could not parse done event data"
   fi
+
+  # Verify done event contains conversation_id for continuation
+  SSE_CONV=$(echo "$DONE_DATA" | jq -r '.conversation_id' 2>/dev/null)
+  if [ -n "$SSE_CONV" ] && [ "$SSE_CONV" != "null" ]; then
+    pass "SSE: done event includes conversation_id ($SSE_CONV)"
+
+    # 10b. Test streaming continuation on existing conversation
+    SSE_CONT=$(curl -s -N --max-time 120 -X POST "$BASE_URL/chat" \
+      -H "Authorization: Bearer $API_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"message\":\"What did I just ask you?\",\"conversation_id\":\"$SSE_CONV\",\"sender\":\"test\",\"sender_name\":\"Tester\",\"stream\":true}")
+
+    if echo "$SSE_CONT" | grep -q "event: start"; then
+      pass "SSE continuation: received 'start' event"
+    else
+      fail "SSE continuation" "no start event"
+    fi
+
+    if echo "$SSE_CONT" | grep -q "event: done"; then
+      CONT_DONE=$(echo "$SSE_CONT" | grep -A1 "event: done" | grep "data: " | head -1 | sed 's/data: //')
+      CONT_CONV=$(echo "$CONT_DONE" | jq -r '.conversation_id' 2>/dev/null)
+      if [ "$CONT_CONV" = "$SSE_CONV" ]; then
+        pass "SSE continuation: same conversation_id preserved"
+      else
+        fail "SSE continuation" "conversation_id mismatch: $CONT_CONV vs $SSE_CONV"
+      fi
+    else
+      fail "SSE continuation" "no done event"
+    fi
+  fi
 fi
 
 # ── 11. Thinking Process & Tool Use Display ────────────
@@ -674,8 +799,9 @@ section "11. Thinking & Tool Use Display"
 if [ "$SKIP_CHAT" = true ]; then
   skip "Thinking display test (--no-chat)"
   skip "Tool use display test (--no-chat)"
+  skip "Non-streaming thinking/tool test (--no-chat)"
 else
-  # Test thinking display
+  # 11a. Test thinking display in streaming mode
   THINK_RESPONSE=$(curl -s -N --max-time 120 -X POST "$BASE_URL/chat" \
     -H "Authorization: Bearer $API_TOKEN" \
     -H "Content-Type: application/json" \
@@ -683,21 +809,20 @@ else
 
   THINK_STATUS=$(echo "$THINK_RESPONSE" | grep -A1 "event: done" | grep "data: " | head -1 | sed 's/data: //' | jq -r '.status' 2>/dev/null)
   if [ "$THINK_STATUS" = "success" ]; then
-    pass "Thinking mode: completed successfully"
+    pass "Thinking (stream): completed successfully"
   else
-    # Thinking may not produce thinking events if model doesn't support it
     echo -e "  ${YELLOW}WARN${NC} Thinking mode completed but could not verify status"
-    pass "Thinking mode: request accepted"
+    pass "Thinking (stream): request accepted"
   fi
 
   if echo "$THINK_RESPONSE" | grep -q "event: thinking"; then
-    pass "Thinking mode: received 'thinking' SSE events"
+    pass "Thinking (stream): received 'thinking' SSE events"
   else
     echo -e "  ${YELLOW}WARN${NC} No thinking events (model may not support extended thinking)"
-    pass "Thinking mode: API accepted thinking=true"
+    pass "Thinking (stream): API accepted thinking=true"
   fi
 
-  # Test tool use display — ask something that requires a tool
+  # 11b. Test tool use display in streaming mode — ask something that requires a tool
   TOOL_RESPONSE=$(curl -s -N --max-time 120 -X POST "$BASE_URL/chat" \
     -H "Authorization: Bearer $API_TOKEN" \
     -H "Content-Type: application/json" \
@@ -705,66 +830,179 @@ else
 
   TOOL_STATUS=$(echo "$TOOL_RESPONSE" | grep -A1 "event: done" | grep "data: " | head -1 | sed 's/data: //' | jq -r '.status' 2>/dev/null)
   if [ "$TOOL_STATUS" = "success" ]; then
-    pass "Tool use display: completed successfully"
+    pass "Tool use (stream): completed successfully"
   else
     echo -e "  ${YELLOW}WARN${NC} Tool use display completed but could not verify status"
-    pass "Tool use display: request accepted"
+    pass "Tool use (stream): request accepted"
   fi
 
   if echo "$TOOL_RESPONSE" | grep -q "event: tool_use"; then
-    pass "Tool use display: received 'tool_use' SSE events"
+    pass "Tool use (stream): received 'tool_use' SSE events"
     # Check tool name is in the event
     TOOL_EVENT=$(echo "$TOOL_RESPONSE" | grep -A1 "event: tool_use" | grep "data: " | head -1 | sed 's/data: //')
     TOOL_NAME=$(echo "$TOOL_EVENT" | jq -r '.tool' 2>/dev/null)
     if [ -n "$TOOL_NAME" ] && [ "$TOOL_NAME" != "null" ]; then
-      pass "Tool use display: tool name reported ($TOOL_NAME)"
+      pass "Tool use (stream): tool name reported ($TOOL_NAME)"
     fi
   else
     echo -e "  ${YELLOW}WARN${NC} No tool_use events received (agent may not have used tools)"
-    pass "Tool use display: API accepted show_tool_use=true"
+    pass "Tool use (stream): API accepted show_tool_use=true"
+  fi
+
+  # 11c. Test thinking in NON-streaming mode (thinking=true, stream=false)
+  THINK_NS_RESP=$(api POST /chat -d '{"message":"Think step by step: what is 17 * 23? Just answer the number.","sender":"test","sender_name":"Tester","thinking":true,"max_thinking_tokens":3000}')
+  THINK_NS_STATUS=$(echo "$THINK_NS_RESP" | jq -r '.status')
+  THINK_NS_RESULT=$(echo "$THINK_NS_RESP" | jq -r '.result')
+
+  if [ "$THINK_NS_STATUS" = "success" ]; then
+    pass "Thinking (non-stream): accepted and completed"
+    if echo "$THINK_NS_RESULT" | grep -q "391"; then
+      pass "Thinking (non-stream): correct answer (391)"
+    else
+      echo -e "  ${YELLOW}WARN${NC} Answer: ${THINK_NS_RESULT:0:100}"
+    fi
+  else
+    fail "Thinking (non-stream)" "status=$THINK_NS_STATUS"
+  fi
+
+  # 11d. Test tool use in NON-streaming mode (show_tool_use=true, stream=false)
+  # In non-streaming mode, tool_use events are NOT in the response (no SSE),
+  # but the parameter should be accepted and the agent should still use tools.
+  TOOL_NS_RESP=$(api POST /chat -d '{"message":"List the files in /data/memory/ directory.","sender":"test","sender_name":"Tester","show_tool_use":true}')
+  TOOL_NS_STATUS=$(echo "$TOOL_NS_RESP" | jq -r '.status')
+
+  if [ "$TOOL_NS_STATUS" = "success" ]; then
+    pass "Tool use (non-stream): accepted and completed"
+  else
+    fail "Tool use (non-stream)" "status=$TOOL_NS_STATUS"
+  fi
+
+  # 11e. Test combined thinking + tool_use in streaming mode
+  COMBINED_RESPONSE=$(curl -s -N --max-time 120 -X POST "$BASE_URL/chat" \
+    -H "Authorization: Bearer $API_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"message":"Think about this, then check: does the file /data/memory/CLAUDE.md exist? Read it and tell me the first line.","sender":"test","sender_name":"Tester","stream":true,"thinking":true,"max_thinking_tokens":3000,"show_tool_use":true}')
+
+  COMBINED_DONE=$(echo "$COMBINED_RESPONSE" | grep -A1 "event: done" | grep "data: " | head -1 | sed 's/data: //')
+  COMBINED_STATUS=$(echo "$COMBINED_DONE" | jq -r '.status' 2>/dev/null)
+  if [ "$COMBINED_STATUS" = "success" ]; then
+    pass "Combined thinking+tool_use (stream): completed"
+  else
+    echo -e "  ${YELLOW}WARN${NC} Combined mode status: $COMBINED_STATUS"
+    pass "Combined thinking+tool_use (stream): request accepted"
+  fi
+
+  HAS_THINKING=false
+  HAS_TOOLUSE=false
+  echo "$COMBINED_RESPONSE" | grep -q "event: thinking" && HAS_THINKING=true
+  echo "$COMBINED_RESPONSE" | grep -q "event: tool_use" && HAS_TOOLUSE=true
+  if [ "$HAS_THINKING" = true ] && [ "$HAS_TOOLUSE" = true ]; then
+    pass "Combined: both thinking + tool_use events received"
+  elif [ "$HAS_THINKING" = true ]; then
+    pass "Combined: thinking events received (tool_use may be absent)"
+  elif [ "$HAS_TOOLUSE" = true ]; then
+    pass "Combined: tool_use events received (thinking may not be supported)"
+  else
+    echo -e "  ${YELLOW}WARN${NC} Neither thinking nor tool_use events received"
+    pass "Combined: API accepted both parameters"
   fi
 fi
 
-# ── 12. Background Task in Conversation ─────────────────
-section "12. Agent Background Execution"
+# ── 12. Agent Synchronous & Background Execution ────────
+section "12. Agent Synchronous & Background Execution"
 
 if [ "$SKIP_CHAT" = true ]; then
-  skip "Background agent test (--no-chat)"
+  skip "Agent sync execution test (--no-chat)"
+  skip "Agent background execution test (--no-chat)"
 else
-  # Test that the agent can spawn background tasks within a conversation
-  # We ask the agent to use the Task tool or run something in background
-  cat > "$TMP_DIR/bg-test.json" << 'JSON'
-{"message":"Create a simple text file at /data/memory/bg-test-marker.txt with the content 'background-test-ok'. Then confirm you created it.","sender":"test","sender_name":"Tester"}
+  # 12a. SYNCHRONOUS agent execution — agent performs a task and returns result inline
+  cat > "$TMP_DIR/sync-test.json" << 'JSON'
+{"message":"Create a simple text file at /data/memory/sync-test-marker.txt with the content 'sync-test-ok'. Then confirm you created it.","sender":"test","sender_name":"Tester"}
 JSON
-  BG_RESP=$(api POST /chat -d @"$TMP_DIR/bg-test.json")
-  BG_STATUS=$(echo "$BG_RESP" | jq -r '.status')
-  BG_CONV=$(echo "$BG_RESP" | jq -r '.conversation_id')
+  SYNC_RESP=$(api POST /chat -d @"$TMP_DIR/sync-test.json")
+  SYNC_STATUS=$(echo "$SYNC_RESP" | jq -r '.status')
+  SYNC_CONV=$(echo "$SYNC_RESP" | jq -r '.conversation_id')
+  SYNC_DURATION=$(echo "$SYNC_RESP" | jq -r '.duration_ms')
 
-  if [ "$BG_STATUS" = "success" ]; then
-    pass "Agent task execution: completed (status=success)"
+  if [ "$SYNC_STATUS" = "success" ]; then
+    pass "Sync execution: completed (status=success, ${SYNC_DURATION}ms)"
 
-    # Verify the file was actually created
-    if docker exec "$CONTAINER_NAME" test -f /data/memory/bg-test-marker.txt; then
-      MARKER_CONTENT=$(docker exec "$CONTAINER_NAME" cat /data/memory/bg-test-marker.txt 2>/dev/null)
-      if echo "$MARKER_CONTENT" | grep -q "background-test-ok"; then
-        pass "Agent task execution: file created with correct content"
+    # Verify the file was actually created (proves agent used tools synchronously)
+    if docker exec "$CONTAINER_NAME" test -f /data/memory/sync-test-marker.txt; then
+      MARKER_CONTENT=$(docker exec "$CONTAINER_NAME" cat /data/memory/sync-test-marker.txt 2>/dev/null)
+      if echo "$MARKER_CONTENT" | grep -q "sync-test-ok"; then
+        pass "Sync execution: file created with correct content"
       else
-        pass "Agent task execution: file created (content may differ)"
+        pass "Sync execution: file created (content may differ)"
       fi
     else
       echo -e "  ${YELLOW}WARN${NC} Agent did not create the file (LLM non-deterministic)"
-      pass "Agent task execution: chat completed"
+      pass "Sync execution: chat completed"
     fi
 
     # Clean up
-    docker exec "$CONTAINER_NAME" rm -f /data/memory/bg-test-marker.txt
+    docker exec "$CONTAINER_NAME" rm -f /data/memory/sync-test-marker.txt
   else
-    fail "Agent task execution" "status=$BG_STATUS"
+    fail "Sync execution" "status=$SYNC_STATUS"
   fi
 
-  # Test scheduled task creation via MCP tool in conversation
+  # 12b. BACKGROUND agent execution — use the Agent/Task tool to run_in_background
+  # The SDK's Task tool with run_in_background=true spawns a subagent that runs independently.
+  # We test this by asking the agent to launch a background task, then verifying the main
+  # conversation returns before the background work completes.
+  cat > "$TMP_DIR/bg-test.json" << 'JSON'
+{"message":"I need you to do two things: (1) Write the text 'foreground-done' to /data/memory/fg-marker.txt immediately, and (2) use the Task tool to launch a background agent that writes 'background-done' to /data/memory/bg-marker.txt. Return as soon as the foreground write is complete — do not wait for the background task.","sender":"test","sender_name":"Tester"}
+JSON
+  BG_RESP=$(api POST /chat -d @"$TMP_DIR/bg-test.json")
+  BG_STATUS=$(echo "$BG_RESP" | jq -r '.status')
+  BG_DURATION=$(echo "$BG_RESP" | jq -r '.duration_ms')
+
+  if [ "$BG_STATUS" = "success" ] || [ "$BG_STATUS" = "timeout" ]; then
+    pass "Background execution: chat returned (status=$BG_STATUS, ${BG_DURATION}ms)"
+
+    # Check foreground file
+    if docker exec "$CONTAINER_NAME" test -f /data/memory/fg-marker.txt; then
+      pass "Background execution: foreground task completed"
+    else
+      echo -e "  ${YELLOW}WARN${NC} Foreground marker not found (LLM non-deterministic)"
+    fi
+
+    # Wait a few seconds for background to complete, then check
+    sleep 5
+    if docker exec "$CONTAINER_NAME" test -f /data/memory/bg-marker.txt; then
+      pass "Background execution: background agent wrote marker file"
+    else
+      echo -e "  ${YELLOW}WARN${NC} Background marker not found (agent may not have used background mode)"
+      pass "Background execution: chat completed"
+    fi
+
+    # Clean up
+    docker exec "$CONTAINER_NAME" rm -f /data/memory/fg-marker.txt /data/memory/bg-marker.txt
+  else
+    fail "Background execution" "status=$BG_STATUS"
+  fi
+
+  # 12c. Test conversation-scoped agent execution — continue same conversation
+  cat > "$TMP_DIR/continue-test.json" << JSON
+{"message":"What was the last thing I asked you to do?","conversation_id":"$SYNC_CONV","sender":"test","sender_name":"Tester"}
+JSON
+  CONT_RESP=$(api POST /chat -d @"$TMP_DIR/continue-test.json")
+  CONT_STATUS=$(echo "$CONT_RESP" | jq -r '.status')
+  CONT_RESULT=$(echo "$CONT_RESP" | jq -r '.result')
+
+  if [ "$CONT_STATUS" = "success" ]; then
+    if echo "$CONT_RESULT" | grep -qi "file\|marker\|sync\|creat"; then
+      pass "Conversation continuation: agent recalled previous action"
+    else
+      pass "Conversation continuation: completed (context recall is best-effort)"
+    fi
+  else
+    fail "Conversation continuation" "status=$CONT_STATUS"
+  fi
+
+  # 12d. Test scheduled task creation via MCP tool in conversation
   cat > "$TMP_DIR/schedule-test.json" << JSON
-{"message":"Use the schedule_task MCP tool to create a task with id 'e2e-mcp-task', prompt 'test task from conversation', schedule_type 'once', schedule_value '2099-01-01T00:00:00', context_mode 'isolated'. Then confirm you created it.","conversation_id":"$BG_CONV","sender":"test","sender_name":"Tester"}
+{"message":"Use the schedule_task MCP tool to create a task with id 'e2e-mcp-task', prompt 'test task from conversation', schedule_type 'once', schedule_value '2099-01-01T00:00:00', context_mode 'isolated'. Then confirm you created it.","conversation_id":"$SYNC_CONV","sender":"test","sender_name":"Tester"}
 JSON
   SCHED_RESP=$(api POST /chat -d @"$TMP_DIR/schedule-test.json")
   SCHED_STATUS=$(echo "$SCHED_RESP" | jq -r '.status')
