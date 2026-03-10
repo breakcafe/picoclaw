@@ -51,7 +51,7 @@ The agent has full Bash access within the container, but the container itself li
 
 The MCP server enforces ownership rules:
 
-- **Main session** (`NANOCLAW_IS_MAIN=1`): Can list and manage all tasks across conversations.
+- **Main session** (`PICOCLAW_IS_MAIN=1`): Can list and manage all tasks across conversations. (Legacy `NANOCLAW_IS_MAIN` is accepted as fallback.)
 - **Non-main sessions**: Can only manage tasks belonging to their `conversation_id`.
 - `send_message` writes are scoped to the current conversation.
 

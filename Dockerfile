@@ -63,12 +63,12 @@ RUN npm ci --omit=dev --ignore-scripts && \
     npm rebuild better-sqlite3
 
 COPY --from=builder /build/dist/ ./dist/
+COPY container/skills/ /app/built-in-skills/
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 RUN mkdir -p \
-    /data/memory/global \
-    /data/memory/conversations \
+    /data/memory \
     /data/skills \
     /data/store \
     /data/sessions/.claude/skills

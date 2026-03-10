@@ -26,7 +26,19 @@ export const MEMORY_DIR = process.env.MEMORY_DIR || '/data/memory';
 export const SKILLS_DIR = process.env.SKILLS_DIR || '/data/skills';
 export const SESSIONS_DIR = process.env.SESSIONS_DIR || '/data/sessions';
 
+export const BUILT_IN_SKILLS_DIR =
+  process.env.BUILT_IN_SKILLS_DIR || '/app/built-in-skills';
+
 export const LOCAL_DB_PATH = process.env.LOCAL_DB_PATH || '/tmp/messages.db';
+
+export const OUTBOUND_TTL_DAYS = parseIntWithDefault(
+  process.env.OUTBOUND_TTL_DAYS,
+  7,
+);
+export const TASK_LOG_RETENTION = parseIntWithDefault(
+  process.env.TASK_LOG_RETENTION,
+  100,
+);
 
 export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;

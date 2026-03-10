@@ -23,7 +23,7 @@ import {
 } from './task-scheduler.js';
 
 function setupDb(): void {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-scheduler-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'picoclaw-scheduler-'));
   initDatabase({
     persistentDbPath: path.join(root, 'store', 'messages.db'),
     localDbPath: path.join(root, 'tmp', 'messages.db'),

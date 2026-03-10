@@ -69,7 +69,7 @@ SDK (sdk.mjs) → spawns CLI (cli.js) → CLI spawns MCP servers (stdio)
 
 The CLI process manages MCP server lifecycle. An in-process MCP server would require the SDK to support it natively (which it does via `type: 'sdk'`), but stdio transport is more reliable for PicoClaw because:
 
-1. **The MCP server shares the same SQLite database.** It receives `NANOCLAW_DB_PATH` as an environment variable and opens its own connection. This works because both the main process and MCP subprocess run on the same machine, accessing the same `/tmp/messages.db` file.
+1. **The MCP server shares the same SQLite database.** It receives `PICOCLAW_DB_PATH` as an environment variable and opens its own connection. This works because both the main process and MCP subprocess run on the same machine, accessing the same `/tmp/messages.db` file. (Legacy `NANOCLAW_DB_PATH` is accepted as fallback.)
 
 2. **Process isolation prevents MCP crashes from taking down the HTTP server.** If an MCP tool handler throws, only the subprocess is affected.
 

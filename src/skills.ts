@@ -1,18 +1,29 @@
 import fs from 'fs';
 import path from 'path';
 
-import { SESSIONS_DIR, SKILLS_DIR } from './config.js';
+import {
+  BUILT_IN_SKILLS_DIR,
+  MEMORY_DIR,
+  SESSIONS_DIR,
+  SKILLS_DIR,
+} from './config.js';
+import { logger } from './logger.js';
 
-export function syncSkills(): void {
-  if (!fs.existsSync(SKILLS_DIR)) {
-    return;
+/**
+ * User skills directory: lives inside the user's private memory volume
+ * so user-created skills persist across container restarts.
+ */
+const USER_SKILLS_DIR =
+  process.env.USER_SKILLS_DIR || path.join(MEMORY_DIR, 'skills');
+
+function syncDirectory(sourceDir: string, destination: string): number {
+  if (!fs.existsSync(sourceDir)) {
+    return 0;
   }
 
-  const destination = path.join(SESSIONS_DIR, '.claude', 'skills');
-  fs.mkdirSync(destination, { recursive: true });
-
-  for (const entry of fs.readdirSync(SKILLS_DIR)) {
-    const sourcePath = path.join(SKILLS_DIR, entry);
+  let count = 0;
+  for (const entry of fs.readdirSync(sourceDir)) {
+    const sourcePath = path.join(sourceDir, entry);
     if (!fs.statSync(sourcePath).isDirectory()) {
       continue;
     }
@@ -20,7 +31,57 @@ export function syncSkills(): void {
     const destinationPath = path.join(destination, entry);
     fs.rmSync(destinationPath, { recursive: true, force: true });
     fs.cpSync(sourcePath, destinationPath, { recursive: true });
+    count++;
   }
+  return count;
+}
+
+/**
+ * Sync skills from three tiers to .claude/skills/.
+ *
+ * Load order (later entries override earlier):
+ *   1. BUILT_IN_SKILLS_DIR (bundled in Docker image, e.g. agent-browser)
+ *   2. SKILLS_DIR (shared/global skills — typically read-only mount)
+ *   3. USER_SKILLS_DIR (user-created skills — in user's private volume)
+ *
+ * This means user skills can override shared skills, and shared skills
+ * can override built-in skills of the same name.
+ */
+export function syncSkills(): void {
+  const destination = path.join(SESSIONS_DIR, '.claude', 'skills');
+  fs.mkdirSync(destination, { recursive: true });
+
+  const builtInCount = syncDirectory(BUILT_IN_SKILLS_DIR, destination);
+  const sharedCount = syncDirectory(SKILLS_DIR, destination);
+  const userCount = syncDirectory(USER_SKILLS_DIR, destination);
+
+  logger.info(
+    { builtIn: builtInCount, shared: sharedCount, user: userCount },
+    'Skills synced to .claude/skills/',
+  );
+}
+
+export function getSkillsSummary(): {
+  builtIn: string[];
+  shared: string[];
+  user: string[];
+  effective: string[];
+} {
+  const builtIn = listSkillNames(BUILT_IN_SKILLS_DIR);
+  const shared = listSkillNames(SKILLS_DIR);
+  const user = listSkillNames(USER_SKILLS_DIR);
+  const effective = [...new Set([...builtIn, ...shared, ...user])].sort();
+  return { builtIn, shared, user, effective };
+}
+
+function listSkillNames(dir: string): string[] {
+  if (!fs.existsSync(dir)) {
+    return [];
+  }
+  return fs
+    .readdirSync(dir)
+    .filter((entry) => fs.statSync(path.join(dir, entry)).isDirectory())
+    .sort();
 }
 
 export function ensureClaudeSettings(): void {

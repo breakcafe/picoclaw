@@ -18,7 +18,7 @@ describe('http server', () => {
     vi.resetModules();
     process.env.API_TOKEN = 'test-token';
 
-    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-http-'));
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'picoclaw-http-'));
 
     const dbModule = await import('./db.js');
     dbModule.initDatabase({
@@ -122,6 +122,107 @@ describe('http server', () => {
 
     expect(list.status).toBe(200);
     expect(list.body.tasks).toHaveLength(1);
+  });
+
+  it('lists conversations via GET /chat', async () => {
+    // Create a conversation
+    await request(app)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'hello' });
+
+    const list = await request(app)
+      .get('/chat')
+      .set('Authorization', 'Bearer test-token');
+
+    expect(list.status).toBe(200);
+    expect(list.body.conversations).toHaveLength(1);
+    expect(list.body.conversations[0].id).toMatch(/^conv-/);
+  });
+
+  it('returns messages via GET /chat/:id/messages', async () => {
+    const first = await request(app)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'hello' });
+
+    const conversationId = first.body.conversation_id as string;
+
+    const messages = await request(app)
+      .get(`/chat/${conversationId}/messages`)
+      .set('Authorization', 'Bearer test-token');
+
+    expect(messages.status).toBe(200);
+    expect(messages.body.conversation_id).toBe(conversationId);
+    expect(messages.body.messages.length).toBeGreaterThanOrEqual(2);
+    expect(messages.body.messages[0].role).toBe('user');
+  });
+
+  it('deletes conversation via DELETE /chat/:id', async () => {
+    const create = await request(app)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'hello' });
+
+    const conversationId = create.body.conversation_id as string;
+
+    const del = await request(app)
+      .delete(`/chat/${conversationId}`)
+      .set('Authorization', 'Bearer test-token');
+
+    expect(del.status).toBe(204);
+
+    // Verify it's gone
+    const get = await request(app)
+      .get(`/chat/${conversationId}`)
+      .set('Authorization', 'Bearer test-token');
+    expect(get.status).toBe(404);
+  });
+
+  it('returns 404 when deleting non-existent conversation', async () => {
+    const del = await request(app)
+      .delete('/chat/conv-nonexistent')
+      .set('Authorization', 'Bearer test-token');
+
+    expect(del.status).toBe(404);
+  });
+
+  it('returns 409 for concurrent requests to same conversation', async () => {
+    const slowEngine: AgentRunner = {
+      async run() {
+        await new Promise((r) => setTimeout(r, 100));
+        return {
+          status: 'success',
+          result: 'slow-result',
+          newSessionId: 'session-slow',
+          lastAssistantUuid: 'uuid-slow',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const slowApp = serverModule.createServer(slowEngine);
+
+    // Create a conversation first
+    const create = await request(slowApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'create' });
+    const convId = create.body.conversation_id;
+
+    // Fire two requests concurrently
+    const [r1, r2] = await Promise.all([
+      request(slowApp)
+        .post('/chat')
+        .set('Authorization', 'Bearer test-token')
+        .send({ message: 'first', conversation_id: convId }),
+      request(slowApp)
+        .post('/chat')
+        .set('Authorization', 'Bearer test-token')
+        .send({ message: 'second', conversation_id: convId }),
+    ]);
+
+    const statuses = [r1.status, r2.status].sort();
+    expect(statuses).toEqual([200, 409]);
   });
 
   it('accepts stop request and invokes shutdown callback', async () => {

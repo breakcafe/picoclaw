@@ -20,6 +20,7 @@ tags:
   - name: System
   - name: Chat
   - name: Task
+  - name: Admin
 paths:
   /health:
     get:
@@ -151,12 +152,32 @@ paths:
                 notFound:
                   value:
                     error: 'conversation_id not found: conv-missing'
+        '409':
+          description: Conversation is currently processing another request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationBusyError'
         '500':
           description: Internal server error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChatInternalErrorResponse'
+    get:
+      tags:
+        - Chat
+      summary: List all conversations
+      operationId: listConversations
+      responses:
+        '200':
+          description: Conversation list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /chat/{conversation_id}:
     get:
@@ -179,6 +200,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    delete:
+      tags:
+        - Chat
+      summary: Delete a conversation
+      description: |
+        Deletes a conversation and all related data (messages, outbound messages, tasks).
+        Returns 409 if the conversation is currently running.
+      operationId: deleteConversation
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '204':
+          description: Conversation deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Conversation is currently running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationBusyError'
+
+  /chat/{conversation_id}/messages:
+    get:
+      tags:
+        - Chat
+      summary: Get conversation messages
+      operationId: getConversationMessages
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '200':
+          description: Message list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationMessagesResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -359,6 +431,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Task's conversation is currently processing another request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationBusyError'
         '500':
           description: Internal trigger failure
           content:
@@ -408,6 +486,42 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TaskCheckErrorResponse'
+
+  /admin/reload-skills:
+    post:
+      tags:
+        - Admin
+      summary: Reload skills from all tiers
+      description: |
+        Re-syncs skills from built-in, shared, and user directories to `.claude/skills/`.
+        Returns the updated skills summary.
+      operationId: reloadSkills
+      responses:
+        '200':
+          description: Skills reloaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillsReloadResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/skills:
+    get:
+      tags:
+        - Admin
+      summary: Get skills summary
+      description: Returns the current skills from all three tiers.
+      operationId: getSkills
+      responses:
+        '200':
+          description: Skills summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillsSummaryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /control/stop:
     post:
@@ -924,3 +1038,121 @@ components:
         remaining:
           type: integer
           minimum: 0
+
+    ConversationListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - conversations
+      properties:
+        conversations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConversationStatusResponse'
+
+    ConversationMessage:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - conversation_id
+        - role
+        - content
+        - created_at
+      properties:
+        id:
+          type: string
+        conversation_id:
+          type: string
+        role:
+          type: string
+          enum:
+            - user
+            - assistant
+            - system
+        sender:
+          type: string
+          nullable: true
+        sender_name:
+          type: string
+          nullable: true
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ConversationMessagesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - conversation_id
+        - messages
+      properties:
+        conversation_id:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConversationMessage'
+
+    ConversationBusyError:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+        - conversation_id
+      properties:
+        error:
+          type: string
+        conversation_id:
+          type: string
+
+    SkillsSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - builtIn
+        - shared
+        - user
+        - effective
+      properties:
+        builtIn:
+          type: array
+          items:
+            type: string
+        shared:
+          type: array
+          items:
+            type: string
+        user:
+          type: array
+          items:
+            type: string
+        effective:
+          type: array
+          items:
+            type: string
+
+    SkillsReloadResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - skills
+      properties:
+        status:
+          type: string
+          enum:
+            - reloaded
+        skills:
+          $ref: '#/components/schemas/SkillsSummary'
+
+    SkillsSummaryResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - skills
+      properties:
+        skills:
+          $ref: '#/components/schemas/SkillsSummary'

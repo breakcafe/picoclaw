@@ -2,7 +2,12 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 
-import { LOCAL_DB_PATH, STORE_DIR } from './config.js';
+import {
+  LOCAL_DB_PATH,
+  OUTBOUND_TTL_DAYS,
+  STORE_DIR,
+  TASK_LOG_RETENTION,
+} from './config.js';
 import {
   Conversation,
   ConversationMessage,
@@ -161,8 +166,43 @@ export function initDatabase(options: DatabaseInitOptions = {}): void {
   createSchema(db);
 }
 
+export function cleanupStaleData(): void {
+  if (!db) return;
+
+  // Remove delivered outbound messages older than OUTBOUND_TTL_DAYS
+  db.prepare(
+    `DELETE FROM outbound_messages
+     WHERE delivered = 1
+       AND created_at < datetime('now', '-' || ? || ' days')`,
+  ).run(OUTBOUND_TTL_DAYS);
+
+  // Keep only TASK_LOG_RETENTION most recent logs per task
+  const taskIds = db
+    .prepare(
+      `SELECT DISTINCT task_id FROM task_run_logs
+       GROUP BY task_id HAVING COUNT(*) > ?`,
+    )
+    .all(TASK_LOG_RETENTION) as Array<{ task_id: string }>;
+
+  const deleteStmt = db.prepare(
+    `DELETE FROM task_run_logs
+     WHERE task_id = ?
+       AND id NOT IN (
+         SELECT id FROM task_run_logs
+         WHERE task_id = ?
+         ORDER BY run_at DESC
+         LIMIT ?
+       )`,
+  );
+
+  for (const { task_id } of taskIds) {
+    deleteStmt.run(task_id, task_id, TASK_LOG_RETENTION);
+  }
+}
+
 export function syncDatabaseToVolume(): void {
   if (!db) return;
+  cleanupStaleData();
   db.pragma('wal_checkpoint(TRUNCATE)');
   fs.mkdirSync(path.dirname(dbPaths.persistentDbPath), { recursive: true });
   fs.copyFileSync(dbPaths.localDbPath, dbPaths.persistentDbPath);
@@ -270,6 +310,40 @@ export function getConversation(
 
 export function ensureConversation(conversationId: string): Conversation {
   return getConversation(conversationId) || createConversation(conversationId);
+}
+
+export function getAllConversations(): Conversation[] {
+  const rows = getDbOrThrow()
+    .prepare(
+      `
+      SELECT id, session_id, last_assistant_uuid, created_at, last_activity, message_count, status
+      FROM conversations
+      ORDER BY last_activity DESC
+    `,
+    )
+    .all() as Array<{
+    id: string;
+    session_id: string | null;
+    last_assistant_uuid: string | null;
+    created_at: string;
+    last_activity: string;
+    message_count: number;
+    status: string;
+  }>;
+
+  return rows.map(mapConversation);
+}
+
+export function deleteConversation(conversationId: string): boolean {
+  const conversation = getConversation(conversationId);
+  if (!conversation) {
+    return false;
+  }
+  // CASCADE deletes messages, outbound_messages, and scheduled_tasks (+ task_run_logs)
+  getDbOrThrow()
+    .prepare('DELETE FROM conversations WHERE id = ?')
+    .run(conversationId);
+  return true;
 }
 
 export function setConversationStatus(

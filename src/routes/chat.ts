@@ -10,10 +10,17 @@ import {
   TIMEZONE,
 } from '../config.js';
 import {
+  ConversationBusyError,
+  acquireConversationLock,
+} from '../conversation-lock.js';
+import {
   consumeOutboundMessages,
   createConversation,
+  deleteConversation,
   ensureConversation,
+  getAllConversations,
   getConversation,
+  getConversationMessages,
   getPromptMessages,
   setConversationStatus,
   storeConversationMessage,
@@ -118,10 +125,14 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
       });
     }
 
+    let releaseLock: (() => void) | undefined;
     const startedAt = Date.now();
     const chunkBuffer: string[] = [];
 
     try {
+      releaseLock = await acquireConversationLock(conversationId, {
+        wait: false,
+      });
       setConversationStatus(conversationId, 'running');
 
       const output = await agentEngine.run(
@@ -204,6 +215,20 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
 
       res.json(responseBody);
     } catch (err) {
+      if (err instanceof ConversationBusyError) {
+        const errorBody = {
+          error: `Conversation ${conversationId} is currently processing another request`,
+          conversation_id: conversationId,
+        };
+        if (stream) {
+          writeSseEvent(res, 'error', errorBody);
+          res.end();
+          return;
+        }
+        res.status(409).json(errorBody);
+        return;
+      }
+
       setConversationStatus(conversationId, 'idle');
       const messageText = err instanceof Error ? err.message : String(err);
       logger.error({ err, conversationId }, 'Chat request failed');
@@ -221,7 +246,71 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
         result: null,
         error: messageText,
       });
+    } finally {
+      releaseLock?.();
     }
+  });
+
+  router.get('/', (_req: Request, res: Response) => {
+    const conversations = getAllConversations();
+    res.json({ conversations });
+  });
+
+  router.get('/:conversation_id/messages', (req: Request, res: Response) => {
+    const rawConversationId = req.params.conversation_id;
+    const conversationId = Array.isArray(rawConversationId)
+      ? rawConversationId[0]
+      : rawConversationId;
+
+    if (!conversationId) {
+      res.status(400).json({ error: 'conversation_id is required' });
+      return;
+    }
+
+    const conversation = getConversation(conversationId);
+    if (!conversation) {
+      res
+        .status(404)
+        .json({ error: `conversation_id not found: ${conversationId}` });
+      return;
+    }
+
+    const messages = getConversationMessages(conversationId);
+    res.json({
+      conversation_id: conversationId,
+      messages,
+    });
+  });
+
+  router.delete('/:conversation_id', (req: Request, res: Response) => {
+    const rawConversationId = req.params.conversation_id;
+    const conversationId = Array.isArray(rawConversationId)
+      ? rawConversationId[0]
+      : rawConversationId;
+
+    if (!conversationId) {
+      res.status(400).json({ error: 'conversation_id is required' });
+      return;
+    }
+
+    const conversation = getConversation(conversationId);
+    if (!conversation) {
+      res
+        .status(404)
+        .json({ error: `conversation_id not found: ${conversationId}` });
+      return;
+    }
+
+    if (conversation.status === 'running') {
+      res.status(409).json({
+        error: `Conversation ${conversationId} is currently running`,
+        conversation_id: conversationId,
+      });
+      return;
+    }
+
+    deleteConversation(conversationId);
+    res.status(204).send();
   });
 
   router.get('/:conversation_id', (req: Request, res: Response) => {

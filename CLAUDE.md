@@ -47,10 +47,12 @@ Alternatively: `make docker-build && make docker-run` for manual control.
 
 ```
 src/index.ts          → process boot, directory init, shutdown signals
-src/server.ts         → Express app: middleware → healthRoutes → authMiddleware → chat/task/control
-src/routes/chat.ts    → POST /chat (SSE streaming), GET /chat/:id
+src/server.ts         → Express app: middleware → healthRoutes → authMiddleware → chat/task/admin/control
+src/routes/chat.ts    → POST /chat (SSE streaming), GET /chat, GET /chat/:id, GET /chat/:id/messages
 src/routes/task.ts    → task CRUD + POST /task/trigger + POST /task/check
+src/routes/admin.ts   → POST /admin/reload-skills, GET /admin/skills
 src/routes/control.ts → POST /control/stop (graceful shutdown)
+src/conversation-lock.ts → per-conversation mutex (prevents concurrent agent execution)
 src/agent-engine.ts   → Claude Agent SDK query() wrapper, hooks, timeout via AbortController
 src/mcp-server.ts     → MCP tools (send_message, schedule_task, etc.) backed by SQLite
 src/db.ts             → SQLite schema, CRUD operations, dual-path sync
@@ -63,12 +65,14 @@ src/types.ts          → shared interfaces (Conversation, ScheduledTask, etc.)
 
 1. HTTP hits Express router → `authMiddleware` validates Bearer token
 2. Route handler resolves/creates conversation in SQLite
-3. `AgentEngine.run()` wraps prompt in `MessageStream`, calls `query()`
-4. SDK spawns CLI subprocess → CLI spawns MCP Server (stdio)
-5. Agent executes tools; MCP tools read/write same SQLite via `NANOCLAW_DB_PATH`
-6. `query()` yields `system/init` (session_id), `assistant` (uuid), `result` messages
-7. Route stores `session_id` + `last_assistant_uuid` for next resume
-8. `syncDatabaseToVolume()` runs after response completes
+3. `acquireConversationLock()` prevents concurrent execution on same conversation (409 if busy)
+4. `AgentEngine.run()` wraps prompt in `MessageStream`, calls `query()`
+5. SDK spawns CLI subprocess → CLI spawns MCP Server (stdio)
+6. Agent executes tools; MCP tools read/write same SQLite via `PICOCLAW_DB_PATH`
+7. `query()` yields `system/init` (session_id), `assistant` (uuid), `result` messages
+8. Route stores `session_id` + `last_assistant_uuid` for next resume
+9. Conversation lock released in `finally` block
+10. `syncDatabaseToVolume()` runs after response completes
 
 ### Database schema (5 tables in `src/db.ts`)
 
@@ -93,7 +97,7 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
 
 | Mount | Runtime access | Agent `cwd` | Purpose |
 |-------|---------------|-------------|---------|
-| `/data/memory` | Read/Write | **Yes** (set as cwd) | CLAUDE.md persona, conversation archives, global memory |
+| `/data/memory` | Read/Write | **Yes** (set as cwd) | CLAUDE.md persona, agent workspace (subdirs created on-demand) |
 | `/data/skills` | Read-only sync | No | SKILL.md definitions → synced to `.claude/skills/` at startup |
 | `/data/sessions` | Read/Write | No | `.claude/` session state for SDK resume |
 | `/data/store` | Write (sync target) | No | Persistent copy of SQLite DB |
@@ -135,9 +139,12 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
 | `PORT` | `9000` | `src/config.ts` |
 | `MAX_EXECUTION_MS` | `300000` | `src/config.ts` → AbortController timeout |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | `src/config.ts` → chat response |
-| `NANOCLAW_DB_PATH` | `/tmp/messages.db` | MCP server env var (set by agent-engine) |
-| `NANOCLAW_CONVERSATION_ID` | per-request | MCP server env var (set by agent-engine) |
-| `NANOCLAW_IS_MAIN` | `1` | MCP server env var — enables cross-conversation task management |
+| `PICOCLAW_DB_PATH` | `/tmp/messages.db` | MCP server env var (set by agent-engine; `NANOCLAW_DB_PATH` as fallback) |
+| `PICOCLAW_CONVERSATION_ID` | per-request | MCP server env var (set by agent-engine; `NANOCLAW_CONVERSATION_ID` as fallback) |
+| `PICOCLAW_IS_MAIN` | `1` | MCP server env var — enables cross-conversation task management |
+| `USER_SKILLS_DIR` | `/data/memory/skills` | User-created skills directory (overlay on SKILLS_DIR) |
+| `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |
+| `TASK_LOG_RETENTION` | `100` | Max task run logs kept per task (oldest pruned on sync) |
 
 ## Common Gotchas
 
@@ -145,7 +152,7 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
   say `.js`. Forgetting this causes runtime `ERR_MODULE_NOT_FOUND`.
 - **MCP server is a subprocess**: `src/mcp-server.ts` runs as a stdio child process spawned
   by the SDK, not as part of the main Express server. It shares the SQLite DB via
-  `NANOCLAW_DB_PATH` env var. You cannot import it directly.
+  `PICOCLAW_DB_PATH` env var. You cannot import it directly.
 - **Dual-DB sync**: Runtime operates on `/tmp/messages.db` (fast local). Every HTTP response
   triggers `syncDatabaseToVolume()` which does `wal_checkpoint(TRUNCATE)` + file copy to
   `STORE_DIR`. Never write directly to the volume path.

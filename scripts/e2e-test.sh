@@ -498,8 +498,83 @@ JSON
   fi
 fi
 
-# ── 8. Conversation 404 ─────────────────────────────────
-section "8. Error Handling"
+# ── 8. Dynamic Skill Creation ────────────────────────────
+section "8. Dynamic Skill Creation & Reload"
+
+# 1. Create a skill inside the container via docker exec
+docker exec "$CONTAINER_NAME" mkdir -p /data/memory/skills/e2e-test-skill
+docker exec "$CONTAINER_NAME" sh -c 'cat > /data/memory/skills/e2e-test-skill/SKILL.md << SKILLEOF
+---
+name: e2e-test-skill
+description: A test skill created dynamically during E2E testing
+---
+
+# E2E Test Skill
+
+When the user says "e2e skill test", respond with exactly: "E2E_SKILL_ACTIVE"
+SKILLEOF'
+
+if docker exec "$CONTAINER_NAME" test -f /data/memory/skills/e2e-test-skill/SKILL.md; then
+  pass "Created dynamic skill in container"
+else
+  fail "Dynamic skill creation" "SKILL.md not found"
+fi
+
+# 2. Reload skills via admin API
+RELOAD=$(api POST /admin/reload-skills)
+RELOAD_STATUS=$(echo "$RELOAD" | jq -r '.status')
+if [ "$RELOAD_STATUS" = "reloaded" ]; then
+  pass "POST /admin/reload-skills → status=reloaded"
+else
+  fail "Reload skills" "status=$RELOAD_STATUS"
+fi
+
+# 3. Verify skill appears in effective list
+SKILLS=$(api GET /admin/skills)
+EFFECTIVE=$(echo "$SKILLS" | jq -r '.skills.effective[]' 2>/dev/null)
+if echo "$EFFECTIVE" | grep -q "e2e-test-skill"; then
+  pass "GET /admin/skills → e2e-test-skill in effective list"
+else
+  fail "Skills list" "e2e-test-skill not in effective: $EFFECTIVE"
+fi
+
+# 4. Verify skill is synced to .claude/skills/
+SYNCED=$(docker exec "$CONTAINER_NAME" ls /data/sessions/.claude/skills/ 2>&1)
+if echo "$SYNCED" | grep -q "e2e-test-skill"; then
+  pass "Dynamic skill synced to .claude/skills/"
+else
+  fail "Skill sync" "e2e-test-skill not in .claude/skills/: $SYNCED"
+fi
+
+# 5. Best-effort: send a message that triggers the skill (LLM non-deterministic)
+if [ "$SKIP_CHAT" = true ]; then
+  skip "Dynamic skill chat test (--no-chat)"
+else
+  cat > "$TMP_DIR/skill-test.json" << 'JSON'
+{"message":"e2e skill test","sender":"test","sender_name":"Tester"}
+JSON
+  SKILL_RESP=$(api POST /chat -d @"$TMP_DIR/skill-test.json")
+  SKILL_STATUS=$(echo "$SKILL_RESP" | jq -r '.status')
+  SKILL_RESULT=$(echo "$SKILL_RESP" | jq -r '.result')
+
+  if [ "$SKILL_STATUS" = "success" ]; then
+    if echo "$SKILL_RESULT" | grep -qi "E2E_SKILL_ACTIVE"; then
+      pass "Dynamic skill triggered in chat response"
+    else
+      echo -e "  ${YELLOW}WARN${NC} Skill response did not contain exact marker (LLM non-deterministic)"
+      pass "Dynamic skill chat completed (status=success)"
+    fi
+  else
+    fail "Dynamic skill chat" "status=$SKILL_STATUS"
+  fi
+fi
+
+# 6. Clean up
+docker exec "$CONTAINER_NAME" rm -rf /data/memory/skills/e2e-test-skill
+pass "Cleaned up dynamic skill"
+
+# ── 9. Conversation 404 ─────────────────────────────────
+section "9. Error Handling"
 
 CODE=$(api_status GET /chat/conv-nonexistent-12345)
 if [ "$CODE" = "404" ]; then
@@ -508,8 +583,8 @@ else
   fail "Conversation 404" "expected 404, got $CODE"
 fi
 
-# ── 9. Graceful Shutdown ────────────────────────────────
-section "9. Final Graceful Shutdown"
+# ── 10. Graceful Shutdown ────────────────────────────────
+section "10. Final Graceful Shutdown"
 
 FINAL_STOP=$(api POST /control/stop -d '{"reason":"e2e-complete"}')
 FINAL_STATUS=$(echo "$FINAL_STOP" | jq -r '.status')
