@@ -16,6 +16,7 @@ import {
 import {
   consumeOutboundMessages,
   createConversation,
+  deleteConversation,
   ensureConversation,
   getAllConversations,
   getConversation,
@@ -279,6 +280,37 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
       conversation_id: conversationId,
       messages,
     });
+  });
+
+  router.delete('/:conversation_id', (req: Request, res: Response) => {
+    const rawConversationId = req.params.conversation_id;
+    const conversationId = Array.isArray(rawConversationId)
+      ? rawConversationId[0]
+      : rawConversationId;
+
+    if (!conversationId) {
+      res.status(400).json({ error: 'conversation_id is required' });
+      return;
+    }
+
+    const conversation = getConversation(conversationId);
+    if (!conversation) {
+      res
+        .status(404)
+        .json({ error: `conversation_id not found: ${conversationId}` });
+      return;
+    }
+
+    if (conversation.status === 'running') {
+      res.status(409).json({
+        error: `Conversation ${conversationId} is currently running`,
+        conversation_id: conversationId,
+      });
+      return;
+    }
+
+    deleteConversation(conversationId);
+    res.status(204).send();
   });
 
   router.get('/:conversation_id', (req: Request, res: Response) => {

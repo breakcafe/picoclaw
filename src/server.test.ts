@@ -158,6 +158,35 @@ describe('http server', () => {
     expect(messages.body.messages[0].role).toBe('user');
   });
 
+  it('deletes conversation via DELETE /chat/:id', async () => {
+    const create = await request(app)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'hello' });
+
+    const conversationId = create.body.conversation_id as string;
+
+    const del = await request(app)
+      .delete(`/chat/${conversationId}`)
+      .set('Authorization', 'Bearer test-token');
+
+    expect(del.status).toBe(204);
+
+    // Verify it's gone
+    const get = await request(app)
+      .get(`/chat/${conversationId}`)
+      .set('Authorization', 'Bearer test-token');
+    expect(get.status).toBe(404);
+  });
+
+  it('returns 404 when deleting non-existent conversation', async () => {
+    const del = await request(app)
+      .delete('/chat/conv-nonexistent')
+      .set('Authorization', 'Bearer test-token');
+
+    expect(del.status).toBe(404);
+  });
+
   it('returns 409 for concurrent requests to same conversation', async () => {
     const slowEngine: AgentRunner = {
       async run() {
