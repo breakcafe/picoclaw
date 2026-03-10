@@ -321,6 +321,9 @@ Request body:
 | `sender_name` | string | No | Display name (default: same as sender) |
 | `stream` | boolean | No | Enable SSE streaming (default: `false`) |
 | `max_execution_ms` | number | No | Per-request timeout, capped at server `MAX_EXECUTION_MS` |
+| `thinking` | boolean | No | Enable extended thinking (default: `false`) |
+| `max_thinking_tokens` | number | No | Max thinking tokens when thinking is enabled (default: `10000`) |
+| `show_tool_use` | boolean | No | Stream tool invocation events (default: `false`) |
 
 Non-streaming response:
 
@@ -358,15 +361,23 @@ When `stream: true`, the response uses `Content-Type: text/event-stream`. Text i
 | Event | Data | When |
 |-------|------|------|
 | `start` | `{"conversation_id", "message_id"}` | Agent begins processing |
+| `thinking` | `{"text": "..."}` | Extended thinking output (requires `thinking: true`) |
+| `tool_use` | `{"tool": "...", "input": {...}}` | Tool invocation (requires `show_tool_use: true`) |
 | `chunk` | `{"text": "..."}` | Incremental text output (per-token granularity) |
 | `done` | Full response object | Agent finished |
 | `error` | `{"error": "..."}` | Processing failed |
 
-Example stream:
+Example stream (with thinking and tool use enabled):
 
 ```text
 event: start
 data: {"conversation_id":"conv-...","message_id":"msg-..."}
+
+event: thinking
+data: {"text":"Let me reason about this..."}
+
+event: tool_use
+data: {"tool":"WebSearch","input":{"query":"example"}}
 
 event: chunk
 data: {"text":"partial output"}

@@ -45,7 +45,9 @@ export interface StreamCallbacks {
 export interface AgentRunner {
   run(
     input: AgentRunInput,
-    callbacksOrOnChunk?: StreamCallbacks | ((text: string) => Promise<void> | void),
+    callbacksOrOnChunk?:
+      | StreamCallbacks
+      | ((text: string) => Promise<void> | void),
   ): Promise<AgentRunOutput>;
 }
 
@@ -335,7 +337,9 @@ function loadGlobalClaudeMd(): string | undefined {
 export class AgentEngine implements AgentRunner {
   async run(
     input: AgentRunInput,
-    callbacksOrOnChunk?: StreamCallbacks | ((text: string) => Promise<void> | void),
+    callbacksOrOnChunk?:
+      | StreamCallbacks
+      | ((text: string) => Promise<void> | void),
   ): Promise<AgentRunOutput> {
     const callbacks: StreamCallbacks =
       typeof callbacksOrOnChunk === 'function'
@@ -463,7 +467,11 @@ export class AgentEngine implements AgentRunner {
             lastStreamedLength += delta.text.length;
             await onChunk(delta.text);
           }
-          if (delta?.type === 'thinking_delta' && delta.thinking && onThinking) {
+          if (
+            delta?.type === 'thinking_delta' &&
+            delta.thinking &&
+            onThinking
+          ) {
             await onThinking(delta.thinking);
           }
         }
@@ -473,11 +481,7 @@ export class AgentEngine implements AgentRunner {
           if (message.uuid) {
             lastAssistantUuid = message.uuid;
           }
-          if (
-            input.showToolUse &&
-            onToolUse &&
-            message.message?.content
-          ) {
+          if (input.showToolUse && onToolUse && message.message?.content) {
             const contentBlocks = message.message.content as Array<{
               type?: string;
               name?: string;
