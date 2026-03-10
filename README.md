@@ -7,24 +7,45 @@ Forked from [NanoClaw](https://github.com/qwibitai/nanoclaw) — replaces the al
 ## Architecture
 
 ```
-HTTP Client / API Gateway / Cron Trigger
-              |
-              v
-      PicoClaw (Node.js + Express)
-      |                           |
-      v                           v
-  AgentEngine                  Routes
-  (Claude Agent SDK)       /chat  /task  /control
-      |                           |
-      v                           v
-  MCP Server (stdio)          SQLite (/tmp)
-  - send_message                  |
-  - schedule_task            DB Sync on
-  - list/pause/cancel        every response
-      |                           |
-      v                           v
-  Shared SQLite           Persistent Volume
-                          /data/store/messages.db
+HTTP Request
+      |
+      v
+  Express Router + Auth Middleware
+      |
+      |--- GET  /health -----> { status, version }
+      |--- POST /control/stop -> sync DB, exit
+      |
+      v
+  POST /chat  (or /task/trigger, /task/check)
+      |
+      |  1. Read/write conversation state
+      v
+    SQLite (/tmp/messages.db)  <----+
+      |                             |
+      |  2. Invoke agent            |  4. MCP tools write back
+      v                             |
+  AgentEngine                       |
+  (Claude Agent SDK query())        |
+      |                             |
+      |  3. Spawns subprocess       |
+      v                             |
+  MCP Server (stdio) -------->------+
+  - send_message
+  - schedule_task
+  - list/pause/cancel_task
+      .
+      .  5. After response
+      v
+  syncDatabaseToVolume()
+  /tmp/messages.db  -->  /data/store/messages.db
+```
+
+```
+Mounted Volumes:
+  /data/memory     CLAUDE.md, conversation archives, global memory
+  /data/skills     Skill definitions (synced to .claude/skills/ at startup)
+  /data/sessions   Claude session state (.claude/)
+  /data/store      Persistent SQLite database
 ```
 
 **Key difference from NanoClaw**: No Docker child containers. The agent runs in the same process as the HTTP server. Skills and memory are volume-mounted, not installed into the source tree.

@@ -7,24 +7,45 @@ Serverless 优先的 Claude Agent 运行时。基于 HTTP API 按需触发，支
 ## 架构
 
 ```
-HTTP 客户端 / API 网关 / Cron 触发器
-              |
-              v
-      PicoClaw (Node.js + Express)
-      |                           |
-      v                           v
-  AgentEngine                  Routes
-  (Claude Agent SDK)       /chat  /task  /control
-      |                           |
-      v                           v
-  MCP Server (stdio)          SQLite (/tmp)
-  - send_message                  |
-  - schedule_task            每次响应后
-  - list/pause/cancel        同步到持久卷
-      |                           |
-      v                           v
-  共享 SQLite              持久化卷
-                          /data/store/messages.db
+HTTP 请求
+      |
+      v
+  Express 路由 + 认证中间件
+      |
+      |--- GET  /health -----> { status, version }
+      |--- POST /control/stop -> 同步 DB，退出
+      |
+      v
+  POST /chat（或 /task/trigger、/task/check）
+      |
+      |  1. 读写对话状态
+      v
+    SQLite (/tmp/messages.db)  <----+
+      |                             |
+      |  2. 调用 Agent              |  4. MCP 工具回写
+      v                             |
+  AgentEngine                       |
+  (Claude Agent SDK query())        |
+      |                             |
+      |  3. 启动子进程              |
+      v                             |
+  MCP Server (stdio) -------->------+
+  - send_message
+  - schedule_task
+  - list/pause/cancel_task
+      .
+      .  5. 响应结束后
+      v
+  syncDatabaseToVolume()
+  /tmp/messages.db  -->  /data/store/messages.db
+```
+
+```
+外挂卷：
+  /data/memory     CLAUDE.md、对话归档、全局记忆
+  /data/skills     技能定义（启动时同步到 .claude/skills/）
+  /data/sessions   Claude 会话状态（.claude/）
+  /data/store      持久化 SQLite 数据库
 ```
 
 **与 NanoClaw 的关键区别**：不再使用 Docker 子容器。Agent 与 HTTP 服务器在同一进程中运行。Skills 和 Memory 通过文件卷外挂，而非安装到源码目录。
