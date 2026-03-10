@@ -15,15 +15,15 @@ This guide covers:
 
 The repository includes importable API artifacts:
 
-- `openapi.yaml` (OpenAPI 3.0.3 source)
-- `openapi.json` (OpenAPI JSON export)
-- `postman_collection.json` (Postman Collection)
+- `docs/api/openapi.yaml` (OpenAPI 3.0.3 source)
+- `docs/api/openapi.json` (OpenAPI JSON export)
+- `docs/api/postman_collection.json` (Postman Collection)
 
 Recommended workflow:
 
 1. Read this document to understand runtime and operational constraints.
-2. Import `openapi.yaml` or `openapi.json` into your API tooling.
-3. Use `postman_collection.json` for integration smoke testing.
+2. Import `docs/api/openapi.yaml` or `docs/api/openapi.json` into your API tooling.
+3. Use `docs/api/postman_collection.json` for integration smoke testing.
 
 ## 2. Architecture Overview
 

@@ -50,8 +50,8 @@ All notable changes to PicoClaw will be documented in this file.
 ## [1.2.8] — 2026-03-07
 
 ### Added
-- OpenAPI 3.0.3 specification (`openapi.yaml`, `openapi.json`)
-- Postman collection for API smoke testing (`postman_collection.json`)
+- OpenAPI 3.0.3 specification (`docs/api/openapi.yaml`, `docs/api/openapi.json`)
+- Postman collection for API smoke testing (`docs/api/postman_collection.json`)
 - `docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md` — full operations manual (Chinese)
 
 ## [1.2.7] — 2026-03-06

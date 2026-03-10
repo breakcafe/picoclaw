@@ -166,7 +166,7 @@ npm run format:check                # must pass
 ```
 
 Also check:
-- OpenAPI spec (`openapi.yaml`) updated if API contract changed
+- OpenAPI spec (`docs/api/openapi.yaml`) updated if API contract changed
 - `CHANGELOG.md` updated for user-visible changes
 - Stop path still syncs data and exits cleanly
 
@@ -178,5 +178,5 @@ Also check:
 - @docs/SECURITY.md — HTTP API trust model and deployment hardening
 - @docs/DESIGN_RATIONALE.md — architectural decisions and first-principles reasoning
 - @docs/SDK_DEEP_DIVE.md — Claude Agent SDK internals (query, session resume, hooks)
-- `openapi.yaml` / `openapi.json` — API specification
-- `postman_collection.json` — API smoke testing collection
+- `docs/api/openapi.yaml` / `openapi.json` — API specification (validated by `src/openapi.test.ts`)
+- `docs/api/postman_collection.json` — API smoke testing collection

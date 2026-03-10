@@ -120,9 +120,9 @@ All routes except `/health` require `Authorization: Bearer <API_TOKEN>`.
 
 Full API documentation: [`docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md`](docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md)
 
-OpenAPI spec: `openapi.yaml` / `openapi.json`
+OpenAPI spec: [`docs/api/openapi.yaml`](docs/api/openapi.yaml) / [`docs/api/openapi.json`](docs/api/openapi.json)
 
-Postman collection: `postman_collection.json`
+Postman collection: [`docs/api/postman_collection.json`](docs/api/postman_collection.json)
 
 ## Data Persistence
 
