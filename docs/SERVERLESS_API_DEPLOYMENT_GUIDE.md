@@ -88,6 +88,8 @@ When deploying with cloud object storage or network-attached filesystems, map th
 User-specific storage (per-user OSS bucket or subdirectory):
 ├── memory/         → mount to /data/memory    (persona, agent workspace)
 │   ├── CLAUDE.md                              (user persona, required)
+│   ├── global/
+│   │   └── CLAUDE.md                          (global persona overlay, optional)
 │   ├── skills/                                (user-created skills, auto-discovered)
 │   ├── conversations/                         (archived transcripts, auto-created)
 │   └── [agent-managed files]                  (no enforced structure)
@@ -99,12 +101,24 @@ User-specific storage (per-user OSS bucket or subdirectory):
         └── settings.json
 
 Shared storage (global, read-only):
-├── skills/         → mount to /data/skills    (organization-wide skills)
-│   ├── add-pdf-reader/
-│   ├── add-image-vision/
-│   └── ...
-└── default-persona/ → copy to /data/memory/CLAUDE.md on first boot
+└── skills/         → mount to /data/skills    (organization-wide skills)
+    ├── add-pdf-reader/
+    ├── add-image-vision/
+    └── ...
 ```
+
+#### Persona loading order
+
+PicoClaw uses a **two-tier persona** model. Both files are optional, but at least the user persona is recommended:
+
+| Tier | Path | Mechanism | Purpose |
+|------|------|-----------|---------|
+| Global | `/data/memory/global/CLAUDE.md` | `loadGlobalClaudeMd()` → `systemPrompt.append` | Organization-wide policies, shared rules |
+| User | `/data/memory/CLAUDE.md` | SDK auto-discovery via `cwd` + `settingSources: ['project']` | Agent identity, user-specific instructions |
+
+The effective system prompt is assembled as: **Claude Code preset** → **global CLAUDE.md** (appended) → **user CLAUDE.md** (loaded by CLI). This mirrors NanoClaw's global + per-group persona stacking, adapted for PicoClaw's single-user model.
+
+For multi-user deployments, provision the global persona from shared storage into each user's memory volume at `global/CLAUDE.md`. The user persona at `CLAUDE.md` can be customized per user.
 
 Docker mount example with cloud storage paths:
 
@@ -121,7 +135,7 @@ docker run --rm -it \
   picoclaw:latest
 ```
 
-The `memory` directory does not enforce a subdirectory structure. The `conversations/` subdirectory is created on-demand by the PreCompact hook when context compaction occurs. The `skills/` subdirectory is auto-discovered for user-created skills.
+The `memory` directory does not enforce a subdirectory structure beyond the persona files. The `conversations/` subdirectory is created on-demand by the PreCompact hook when context compaction occurs. The `skills/` subdirectory is auto-discovered for user-created skills.
 
 ## 3. Lifecycle & State
 
