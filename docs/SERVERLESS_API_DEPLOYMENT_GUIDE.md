@@ -80,6 +80,49 @@ Default paths (overridable via environment variables):
 
 All four `/data/*` paths must be on persistent storage (EFS, NAS, or local volumes) for cross-request state to survive.
 
+### 2.4 Cloud Storage Mount Scheme (OSS / EFS / NAS)
+
+When deploying with cloud object storage or network-attached filesystems, map the user-specific and shared storage to PicoClaw volumes:
+
+```
+User-specific storage (per-user OSS bucket or subdirectory):
+├── memory/         → mount to /data/memory    (persona, agent workspace)
+│   ├── CLAUDE.md                              (user persona, required)
+│   ├── skills/                                (user-created skills, auto-discovered)
+│   ├── conversations/                         (archived transcripts, auto-created)
+│   └── [agent-managed files]                  (no enforced structure)
+├── store/          → mount to /data/store     (persistent SQLite)
+│   └── messages.db
+└── sessions/       → mount to /data/sessions  (SDK session state)
+    └── .claude/
+        ├── sessions/
+        └── settings.json
+
+Shared storage (global, read-only):
+├── skills/         → mount to /data/skills    (organization-wide skills)
+│   ├── add-pdf-reader/
+│   ├── add-image-vision/
+│   └── ...
+└── default-persona/ → copy to /data/memory/CLAUDE.md on first boot
+```
+
+Docker mount example with cloud storage paths:
+
+```bash
+docker run --rm -it \
+  -p 9000:9000 \
+  -v /oss/users/${USER_ID}/memory:/data/memory \
+  -v /oss/users/${USER_ID}/store:/data/store \
+  -v /oss/users/${USER_ID}/sessions:/data/sessions \
+  -v /oss/global/skills:/data/skills:ro \
+  -e API_TOKEN=${GENERATED_TOKEN} \
+  -e ANTHROPIC_BASE_URL=${API_BASE} \
+  -e ANTHROPIC_API_KEY=${API_KEY} \
+  picoclaw:latest
+```
+
+The `memory` directory does not enforce a subdirectory structure. The `conversations/` subdirectory is created on-demand by the PreCompact hook when context compaction occurs. The `skills/` subdirectory is auto-discovered for user-created skills.
+
 ## 3. Lifecycle & State
 
 ### 3.1 Conversation State
