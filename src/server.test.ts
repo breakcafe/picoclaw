@@ -225,6 +225,18 @@ describe('http server', () => {
     expect(statuses).toEqual([200, 409]);
   });
 
+  it('returns X-Request-ID header on every response', async () => {
+    const response = await request(app).get('/health');
+    expect(response.headers['x-request-id']).toMatch(/^req-/);
+  });
+
+  it('echoes caller-provided X-Request-ID', async () => {
+    const response = await request(app)
+      .get('/health')
+      .set('X-Request-ID', 'caller-trace-42');
+    expect(response.headers['x-request-id']).toBe('caller-trace-42');
+  });
+
   it('accepts stop request and invokes shutdown callback', async () => {
     const response = await request(app)
       .post('/control/stop')

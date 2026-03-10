@@ -231,7 +231,10 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
 
       setConversationStatus(conversationId, 'idle');
       const messageText = err instanceof Error ? err.message : String(err);
-      logger.error({ err, conversationId }, 'Chat request failed');
+      logger.error(
+        { err, conversationId, requestId: req.requestId },
+        'Chat request failed',
+      );
 
       if (stream) {
         writeSseEvent(res, 'error', { error: messageText });
