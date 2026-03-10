@@ -158,7 +158,7 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
       );
 
       const finalResult = formatOutbound(
-        output.result || chunkBuffer.join('\n').trim(),
+        output.result || chunkBuffer.join('').trim(),
       );
 
       let assistantMessageId: string | null = null;
