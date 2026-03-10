@@ -53,9 +53,9 @@
 
 ### 2.3 总结
 
-> **picoclaw 的核心设计满足描述的所有场景，关键边界已在本轮评审中补齐。**
+> **picoclaw 的核心设计满足描述的所有场景，关键边界已在两轮评审中全部补齐。**
 >
-> 初始评审时，并发安全、API 完整性和 skills 生命周期存在缺口。经过本轮修复（对话锁、conversation/message 列表 API、skills 热重载、环境变量清理），这些缺口已闭合。相对 nanoclaw 的改动核心是移除了多 channel adapter 和 Docker-in-Docker 容器模型，替换为 HTTP API channel；agent 引擎、skills、memory、数据库、MCP 机制基本一致。
+> Phase 1 修复了并发安全、API 完整性和 skills 生命周期缺口（对话锁、conversation/message 列表 API、skills 热重载、环境变量清理）。Phase 2 补全了数据生命周期管理（自动清理 + 可配置阈值）、对话删除 API、内置 skills 三级优先级、memory 结构简化、OpenAPI 规范对齐。相对 nanoclaw 的改动核心是移除了多 channel adapter 和 Docker-in-Docker 容器模型，替换为 HTTP API channel；agent 引擎、skills、memory、数据库、MCP 机制基本一致。
 
 ## 3. 架构对比：PicoClaw vs NanoClaw
 
@@ -93,11 +93,11 @@ PicoClaw (HTTP API + 单进程):
 | **数据库** | 7 表 (messages, chats, registered_groups, sessions, router_state, scheduled_tasks, task_run_logs) | 5 表 (conversations, messages, outbound_messages, scheduled_tasks, task_run_logs) | 精简——移除 chats/groups/sessions/router_state，新增 conversations/outbound_messages |
 | **任务调度** | 内部 60s polling loop (`startSchedulerLoop`) | 外部 cron 调用 `POST /task/check` | 调度驱动方从内部改为外部 |
 | **MCP 工具** | IPC 文件监控 (`ipc-mcp-stdio.ts`)，基于文件系统通信 | SQLite 直连 (`mcp-server.ts`)，基于共享数据库 | 通信方式简化 |
-| **Skills** | container 内 `.claude/skills/` + 每 group 独立 session | 启动时 sync `/data/skills/` → `.claude/skills/` | 功能一致，同步时机不同 |
+| **Skills** | container 内 `.claude/skills/` + 每 group 独立 session | 三级同步 built-in → shared → user → `.claude/skills/`，支持 hot-reload | 功能增强，三级优先级 |
 | **Memory** | 每 group 独立 CLAUDE.md (`/workspace/group/CLAUDE.md`) + global (`/workspace/global/CLAUDE.md`) | 单用户 CLAUDE.md (`/data/memory/CLAUDE.md`) + global (`/data/memory/global/CLAUDE.md`) | 从多 group 简化为单用户 |
 | **Session 恢复** | session_id 存 DB → 下次传给 container | session_id + last_assistant_uuid 存 DB → 下次传给 SDK | 增加了 `resumeSessionAt` 精确恢复 |
 | **安全模型** | Docker 容器隔离 + Credential Proxy | Bearer Token + Bash env 清洗 | 安全边界从 OS 隔离降为进程隔离 |
-| **并发控制** | GroupQueue (max 5 concurrent) | 单请求串行（SQLite 限制） | 简化 |
+| **并发控制** | GroupQueue (max 5 concurrent) | Per-conversation 互斥锁（`conversation-lock.ts`），不同对话可并发，同一对话返回 409 | 从多 group 队列简化为 per-conversation 锁 |
 
 ### 3.3 代码复用度分析
 
@@ -152,7 +152,7 @@ PicoClaw (HTTP API + 单进程):
 | 6 | **outbound_messages 未自动清理** | `cleanupStaleData()` 在 `syncDatabaseToVolume()` 前执行，删除已投递的过期消息（`OUTBOUND_TTL_DAYS`，默认 7 天） | **已修复** (Phase 2) |
 | 7 | **task_run_logs 未限制** | `cleanupStaleData()` 每个 task 保留最近 N 条日志（`TASK_LOG_RETENTION`，默认 100 条） | **已修复** (Phase 2) |
 
-#### P2 - 优化建议（2/4 已修复）
+#### P2 - 优化建议（2/5 已修复）
 
 | # | 问题 | 修复方案 | 状态 |
 |---|------|---------|------|
@@ -168,11 +168,11 @@ PicoClaw (HTTP API + 单进程):
 
 ```
 OSS 用户专属目录/
-├── memory/         → 挂载到 /data/memory    (用户人设、全局记忆、对话归档)
-│   ├── CLAUDE.md                             (用户专属人设)
-│   ├── global/
-│   │   └── CLAUDE.md                         (全局共享上下文)
-│   └── conversations/                        (自动归档的对话记录)
+├── memory/         → 挂载到 /data/memory    (用户人设、agent 工作目录)
+│   ├── CLAUDE.md                             (用户专属人设，必需)
+│   ├── skills/                               (用户自建 skills，按需创建)
+│   ├── conversations/                        (对话归档，PreCompact hook 按需创建)
+│   └── [agent 自行管理的文件]                  (不强制目录结构)
 ├── store/          → 挂载到 /data/store     (SQLite 数据库持久化)
 │   └── messages.db
 └── sessions/       → 挂载到 /data/sessions  (Claude SDK session 状态)
@@ -187,6 +187,8 @@ OSS 全局共用目录/
 │   └── ...
 └── default-persona/ → 首次启动时复制到 /data/memory/CLAUDE.md
 ```
+
+> **注意**：memory 目录不强制子目录结构。`conversations/` 由 PreCompact hook 按需创建，`skills/` 由用户通过 agent 按需创建。Agent 可自由在 `/data/memory` 下组织工作文件。
 
 ### 挂载配置示例（Docker）
 
@@ -205,14 +207,15 @@ docker run --rm -it \
 
 ### 用户自建 Skills 处理
 
-用户通过 agent 创建的 skills 应保存在**用户专属目录**中。建议方案：
+用户通过 agent 创建的 skills 应保存在**用户专属目录**中。三级 skill 优先级：
 
 ```
-/data/memory/skills/    ← 用户自建 skills (agent 的 cwd 在 /data/memory 下可写)
+/app/built-in-skills/   ← 内置 skills (Docker 镜像自带，如 agent-browser)
 /data/skills/           ← 全局共用 skills (read-only 挂载)
+/data/memory/skills/    ← 用户自建 skills (agent 的 cwd 在 /data/memory 下可写)
 ```
 
-启动时两个目录都同步到 `.claude/skills/`，用户目录优先级高于全局目录（允许覆盖）。
+启动时按 built-in → shared → user 顺序同步到 `.claude/skills/`，后者覆盖前者（用户 > 全局 > 内置）。用户可通过 `POST /admin/reload-skills` 热重载。
 
 ## 6. 与 NanoClaw 的关键代码迁移点
 
@@ -238,7 +241,7 @@ docker run --rm -it \
 | Credential Proxy | `credential-proxy.ts` | **不需要** | picoclaw 环境变量直接注入 + Bash hook 清洗 |
 | Mount Security | `mount-security.ts` | **不需要** | picoclaw 通过 volume mount 控制 |
 | Sender Allowlist | `sender-allowlist.ts` | **不需要** | picoclaw 通过 Bearer Token 认证 |
-| GroupQueue 并发控制 | `group-queue.ts` | **建议迁移思路** | picoclaw 需要 request-level mutex（见 P0 问题） |
+| GroupQueue 并发控制 | `group-queue.ts` | **已解决** | `conversation-lock.ts` 实现了 per-conversation 互斥锁（见 P0 修复） |
 | `resumeSessionAt` 在 nanoclaw | `agent-runner:queryResult.lastAssistantUuid` | **已迁移** | picoclaw 已实现此机制 |
 
 ### 6.3 PicoClaw 新增的功能
@@ -248,9 +251,13 @@ docker run --rm -it \
 | HTTP API (Express) | `src/server.ts` + `src/routes/` | 全新的 HTTP channel |
 | Bearer Token 认证 | `src/middleware/auth.ts` | 替代 channel 认证 |
 | SSE 流式响应 | `src/routes/chat.ts:42-45,110-118` | 实时输出 |
-| Dual-DB Sync | `src/db.ts:164-169` | `/tmp` → volume 同步策略 |
+| Dual-DB Sync | `src/db.ts` (`syncDatabaseToVolume`) | `/tmp` → volume 同步策略 |
+| Data Lifecycle | `src/db.ts` (`cleanupStaleData`) | 自动清理过期 outbound 消息和超量 task 日志 |
 | Outbound Messages | `outbound_messages` 表 + MCP `send_message` | 替代 IPC 输出通道 |
 | Session End Marker | `SESSION_END_MARKER` + `session_end_marker_detected` | 会话结束信号 |
+| Per-conversation Lock | `src/conversation-lock.ts` | 同一对话互斥，409 Conflict |
+| DELETE /chat/:id | `src/routes/chat.ts` | CASCADE 删除对话及关联数据 |
+| 三级 Skills | `src/skills.ts` | built-in → shared → user 优先级覆盖 |
 | Graceful Stop API | `POST /control/stop` | 编程式关停 |
 | Lambda Adapter | Dockerfile `ENABLE_LAMBDA_ADAPTER` | Serverless 部署适配 |
 
@@ -320,7 +327,7 @@ docker run --rm -it \
 **新增文件**：`src/routes/admin.ts`
 
 **修改文件**：
-- `src/skills.ts` — 重写为 overlay 模型：shared skills (`SKILLS_DIR`) + user skills (`USER_SKILLS_DIR`，默认 `/data/memory/skills`)，用户 skills 优先级高于全局
+- `src/skills.ts` — 重写为三级 overlay 模型：built-in (`BUILT_IN_SKILLS_DIR`) → shared (`SKILLS_DIR`) → user (`USER_SKILLS_DIR`，默认 `/data/memory/skills`)，后者覆盖前者
 - `src/server.ts` — 挂载 `app.use('/admin', adminRoutes())`
 
 **新环境变量**：`USER_SKILLS_DIR`（默认 `/data/memory/skills`）
@@ -361,13 +368,13 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 | Skills 无法热重载 | 已识别为 P1 | 完全同意 | 已修复 — POST /admin/reload-skills |
 | NANOCLAW_ 命名混淆 | 已识别为 P2 | 完全同意 | 已修复 — 重命名为 PICOCLAW_* |
 | 私有/共享目录抽象不足 | 初始评为"完全满足" | GPT 正确 | 已修复 — USER_SKILLS_DIR overlay 模型 |
-| 数据清理策略缺失 | 已识别为 P1 | 同意但优先级可降 | 留待后续 Phase |
+| 数据清理策略缺失 | 已识别为 P1 | 同意但优先级可降 | 已修复 — `cleanupStaleData()` + 可配置的 `OUTBOUND_TTL_DAYS` / `TASK_LOG_RETENTION` |
 
 **总结**：GPT 评审团队的意见总体准确，特别是在 API_TOKEN 泄露和私有/共享目录抽象这两个我方初始遗漏的点上提供了有价值的补充。
 
 ## 10. 开发计划（修订版）
 
-> Phase 1 已在本轮完成。以下为后续计划。
+> Phase 1 和 Phase 2 均已完成。以下为完整计划和后续方向。
 
 ### Phase 1：稳固基础 — 已完成
 
@@ -434,9 +441,9 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 
 ### 12.1 核心结论
 
-1. **PicoClaw 满足描述的所有核心使用场景，关键边界已补齐**。它是一个设计精良的单用户容器化 Agent 运行时，通过 HTTP API 暴露完整的对话和任务管理能力。初始评审中发现的并发安全、API 完整性和 skills 生命周期问题已全部修复。
+1. **PicoClaw 满足描述的所有核心使用场景，关键边界已补齐**。它是一个设计精良的单用户容器化 Agent 运行时，通过 HTTP API 暴露完整的对话和任务管理能力。两轮评审中发现的并发安全、API 完整性、skills 生命周期、数据生命周期问题已全部修复，清理策略可通过环境变量配置。
 
-2. **相对 NanoClaw 的改动确实不大**——保留了 Agent SDK 集成的核心（MessageStream、Hooks、Session Resume），移除了多 channel 和 Docker-in-Docker，添加了 HTTP API 层。代码量从 NanoClaw 的 ~3,000 行核心代码减少到 ~2,000 行（不含新增的 ~270 行修复代码）。
+2. **相对 NanoClaw 的改动确实不大**——保留了 Agent SDK 集成的核心（MessageStream、Hooks、Session Resume），移除了多 channel 和 Docker-in-Docker，添加了 HTTP API 层和三级 skills 体系。代码量从 NanoClaw 的 ~3,000 行核心代码减少到 ~2,000 行（不含新增的修复和增强代码）。
 
 3. **SQLite 数据库是给单用户服务的**——无多租户逻辑，全部数据在一个 DB 文件中，通过 volume mount 实现用户级数据隔离。
 
@@ -447,14 +454,14 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 ### 12.2 推荐的后续步骤
 
 1. **配置** OSS 挂载方案并进行端到端联调
-2. **实现** Phase 2 的数据生命周期管理
-3. **部署** 到目标云平台并验证
-4. **补充** MCP Server 单元测试（当前测试盲区）
+2. **部署** 到目标云平台（Alibaba Cloud FC / AWS Lambda）并验证
+3. **补充** MCP Server 单元测试（当前测试盲区）
+4. **实现** Phase 3 可观测性增强（Health Check 深度信息、Request-ID、SSE 逐 token 流式）
 
 ---
 
-*文档版本: 3.0*
+*文档版本: 3.1*
 *评审日期: 2026-03-10*
-*更新日期: 2026-03-10*
+*更新日期: 2026-03-11*
 *基于 picoclaw v1.2.14, nanoclaw latest (commit on disk)*
-*变更：Phase 1 + Phase 2 全部完成。Phase 2 新增数据生命周期管理、内置 skills 三级优先级、memory 简化、OpenAPI 补全、E2E 动态 skill 测试。28 个单元测试全部通过。*
+*变更 v3.1：修正文档中的遗留问题——并发控制描述更新、P2 计数修正、OSS memory 结构简化对齐、GroupQueue 状态更新、三级 skills 描述补全、GPT 对照表数据清理状态更新、后续步骤更新。*

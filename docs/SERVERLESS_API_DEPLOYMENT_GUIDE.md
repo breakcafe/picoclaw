@@ -351,7 +351,7 @@ Returns `204 No Content` on success. Deletes all associated messages, outbound m
 
 Returns `404` if the conversation does not exist. Returns `409` if the conversation is currently running.
 
-### 6.8 Get Conversation Metadata
+### 6.7 Get Conversation Metadata
 
 `GET /chat/:conversation_id`
 
@@ -367,7 +367,7 @@ Returns `404` if the conversation does not exist. Returns `409` if the conversat
 
 Returns `404` if the conversation does not exist.
 
-### 6.9 Create a Scheduled Task
+### 6.8 Create a Scheduled Task
 
 `POST /task`
 
@@ -399,7 +399,7 @@ Schedule value formats:
 | `interval` | Milliseconds as string | `3600000` (every hour) |
 | `once` | Local time string (no `Z` or timezone offset) | `2026-03-15T14:00:00` |
 
-### 6.10 List All Tasks
+### 6.9 List All Tasks
 
 `GET /tasks`
 
@@ -423,7 +423,7 @@ Schedule value formats:
 }
 ```
 
-### 6.11 Update a Task
+### 6.10 Update a Task
 
 `PUT /task/:task_id`
 
@@ -431,13 +431,13 @@ Supports partial updates of: `prompt`, `schedule_type`, `schedule_value`, `conte
 
 If `schedule_type` or `schedule_value` changes, `next_run` is recalculated automatically.
 
-### 6.12 Delete a Task
+### 6.11 Delete a Task
 
 `DELETE /task/:task_id`
 
 Returns `204 No Content` on success.
 
-### 6.13 Manually Trigger a Task
+### 6.12 Manually Trigger a Task
 
 `POST /task/trigger`
 
@@ -459,7 +459,7 @@ Response:
 }
 ```
 
-### 6.14 Check and Execute Due Tasks
+### 6.13 Check and Execute Due Tasks
 
 `POST /task/check`
 
@@ -490,7 +490,7 @@ With due tasks:
 
 Each call executes at most **one** due task. Call repeatedly or increase external cron frequency for backlogs.
 
-### 6.15 Reload Skills
+### 6.14 Reload Skills
 
 `POST /admin/reload-skills`
 
@@ -508,13 +508,13 @@ Re-syncs skills from all three tiers (built-in, shared, user) to `.claude/skills
 }
 ```
 
-### 6.16 Get Skills Summary
+### 6.15 Get Skills Summary
 
 `GET /admin/skills`
 
 Returns the current skills from all three tiers.
 
-### 6.17 Graceful Shutdown
+### 6.16 Graceful Shutdown
 
 `POST /control/stop`
 
