@@ -160,7 +160,7 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | `SESSIONS_DIR` | `/data/sessions` | Session state volume |
 | `LOCAL_DB_PATH` | `/tmp/messages.db` | Local runtime database path |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | Marker string for session completion |
-| `NANOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable path |
+| `PICOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable path (legacy `NANOCLAW_MCP_SERVER_PATH` accepted as fallback) |
 
 ## 5. Authentication
 
