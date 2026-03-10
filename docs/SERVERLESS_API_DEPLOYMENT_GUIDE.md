@@ -126,7 +126,33 @@ The dual-database strategy optimizes for both performance and durability:
 
 This avoids SQLite-on-NFS corruption risks while ensuring data survives container recycling.
 
-### 3.4 SDK Version Alignment
+### 3.4 Data Lifecycle & Automatic Cleanup
+
+PicoClaw automatically prunes stale data during each database sync (after every HTTP response and on shutdown). Two cleanup policies run inside `cleanupStaleData()`:
+
+| Policy | Env Var | Default | Behavior |
+|--------|---------|---------|----------|
+| Outbound message TTL | `OUTBOUND_TTL_DAYS` | `7` | Delivered outbound messages older than N days are deleted |
+| Task run log retention | `TASK_LOG_RETENTION` | `100` | Per-task, only the most recent N run log entries are kept |
+
+**When to tune these values:**
+
+- **High-traffic deployments** with frequent `send_message` calls may accumulate outbound messages quickly. Reduce `OUTBOUND_TTL_DAYS` (e.g., `3`) to keep the database smaller.
+- **Long-running deployments** with many recurring tasks can accumulate run logs. Reduce `TASK_LOG_RETENTION` (e.g., `50`) if storage is constrained, or increase it (e.g., `500`) if you need deeper task execution history for debugging.
+- **Short-lived containers** (e.g., single-session Lambda) can safely leave defaults — cleanup runs automatically and the data volume is minimal.
+
+**Configuration example:**
+
+```bash
+docker run ... \
+  -e OUTBOUND_TTL_DAYS=3 \
+  -e TASK_LOG_RETENTION=50 \
+  picoclaw:latest
+```
+
+These settings only affect automatic cleanup. Undelivered outbound messages are never deleted by TTL. Active (non-delivered) data is always preserved.
+
+### 3.5 SDK Version Alignment
 
 | Package | Version | Notes |
 |---------|---------|-------|
@@ -161,6 +187,8 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | `LOCAL_DB_PATH` | `/tmp/messages.db` | Local runtime database path |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | Marker string for session completion |
 | `PICOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable path (legacy `NANOCLAW_MCP_SERVER_PATH` accepted as fallback) |
+| `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before automatic cleanup |
+| `TASK_LOG_RETENTION` | `100` | Maximum task run log entries retained per task (oldest pruned) |
 
 ## 5. Authentication
 

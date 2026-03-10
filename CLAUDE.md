@@ -143,6 +143,8 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
 | `PICOCLAW_CONVERSATION_ID` | per-request | MCP server env var (set by agent-engine; `NANOCLAW_CONVERSATION_ID` as fallback) |
 | `PICOCLAW_IS_MAIN` | `1` | MCP server env var — enables cross-conversation task management |
 | `USER_SKILLS_DIR` | `/data/memory/skills` | User-created skills directory (overlay on SKILLS_DIR) |
+| `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |
+| `TASK_LOG_RETENTION` | `100` | Max task run logs kept per task (oldest pruned on sync) |
 
 ## Common Gotchas
 

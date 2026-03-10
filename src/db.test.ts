@@ -182,9 +182,7 @@ describe('db', () => {
     const db = getDatabase();
     const beforeCount = (
       db
-        .prepare(
-          'SELECT COUNT(*) as cnt FROM task_run_logs WHERE task_id = ?',
-        )
+        .prepare('SELECT COUNT(*) as cnt FROM task_run_logs WHERE task_id = ?')
         .get('task-logs') as { cnt: number }
     ).cnt;
     expect(beforeCount).toBe(110);
@@ -193,9 +191,7 @@ describe('db', () => {
 
     const afterCount = (
       db
-        .prepare(
-          'SELECT COUNT(*) as cnt FROM task_run_logs WHERE task_id = ?',
-        )
+        .prepare('SELECT COUNT(*) as cnt FROM task_run_logs WHERE task_id = ?')
         .get('task-logs') as { cnt: number }
     ).cnt;
     expect(afterCount).toBe(100);
