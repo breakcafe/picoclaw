@@ -82,6 +82,8 @@ SSE events:
 | Event | Data | When |
 |-------|------|------|
 | `start` | `{"conversation_id", "message_id"}` | Agent starts processing |
+| `thinking` | `{"text": "..."}` | Thinking process (requires `thinking: true`) |
+| `tool_use` | `{"tool": "...", "input": {...}}` | Tool invocation (requires `show_tool_use: true`) |
 | `chunk` | `{"text": "..."}` | Incremental text output |
 | `done` | Full response object | Agent finished |
 | `error` | `{"error": "..."}` | Processing failed |
@@ -140,6 +142,66 @@ for line in response.iter_lines():
         if 'text' in data:
             print(data['text'], end='', flush=True)
 ```
+
+## Thinking Process & Tool Use Display
+
+### Extended Thinking
+
+Request the model's reasoning process by setting `thinking: true`:
+
+```bash
+curl -N -X POST http://localhost:9000/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Analyze this complex problem",
+    "stream": true,
+    "thinking": true,
+    "max_thinking_tokens": 5000
+  }'
+```
+
+When enabled, the SSE stream includes `thinking` events before `chunk` events:
+
+```text
+event: thinking
+data: {"text":"Let me break this down..."}
+
+event: thinking
+data: {"text":"First, I need to consider..."}
+
+event: chunk
+data: {"text":"Based on my analysis..."}
+```
+
+The `thinking` parameter requires `stream: true` to see thinking events. In non-streaming mode, thinking occurs internally but is not returned in the response.
+
+### Tool Use Display
+
+See which tools the agent invokes by setting `show_tool_use: true`:
+
+```bash
+curl -N -X POST http://localhost:9000/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Search for the latest news",
+    "stream": true,
+    "show_tool_use": true
+  }'
+```
+
+Tool invocations appear as `tool_use` events in the SSE stream:
+
+```text
+event: tool_use
+data: {"tool":"WebSearch","input":{"query":"latest news today"}}
+
+event: chunk
+data: {"text":"Here are the latest headlines..."}
+```
+
+Both options can be combined: `thinking: true, show_tool_use: true` shows the full agent reasoning and tool usage in the SSE stream.
 
 ## Session End Detection
 
@@ -336,6 +398,9 @@ The `status` field in chat responses can be:
 | `sender_name` | string | No | Display name (default: same as sender) |
 | `stream` | boolean | No | Enable SSE streaming (default: false) |
 | `max_execution_ms` | number | No | Per-request timeout (capped at `MAX_EXECUTION_MS`) |
+| `thinking` | boolean | No | Enable extended thinking (default: false) |
+| `max_thinking_tokens` | number | No | Max thinking tokens (default: 10000, only when `thinking=true`) |
+| `show_tool_use` | boolean | No | Stream tool invocation events (default: false) |
 
 ### POST /task
 

@@ -163,3 +163,82 @@ PicoClaw replaces this with:
 5. **MCP tool ownership**: non-main sessions can only manage tasks belonging to their conversation.
 
 See `docs/SECURITY.md` for the complete trust model.
+
+## NanoClaw to PicoClaw: Module Comparison
+
+For developers familiar with NanoClaw, this section maps how each NanoClaw module was transformed or replaced in PicoClaw.
+
+### Architecture Overview
+
+```
+NanoClaw (multi-channel + container isolation):
+  Channel Adapters (WhatsApp/Telegram/Slack/...)
+    → SQLite (message storage)
+    → Polling Loop (2s)
+    → GroupQueue (max 5 concurrent)
+    → Docker Container (one per group, isolated)
+      → Claude Agent SDK query()
+      → IPC file communication (input/output)
+    → Router (format + send back to channel)
+
+PicoClaw (HTTP API + single process):
+  HTTP Request
+    → Express Router + Auth
+    → SQLite (conversation/message storage)
+    → AgentEngine.run()
+      → Claude Agent SDK query() (same-process subprocess)
+      → MCP Server (stdio subprocess)
+    → HTTP Response (JSON / SSE)
+```
+
+### Module-by-Module Mapping
+
+| Module | NanoClaw | PicoClaw | Change |
+|--------|----------|----------|--------|
+| Entry point | `index.ts` (598 lines): message loop, trigger detection, group registration, container dispatch | `index.ts` (79 lines): boot + shutdown + start Express | Drastically simplified |
+| Agent engine | `container-runner.ts` (707 lines) + `container/agent-runner/src/index.ts` (558 lines) = two-layer architecture | `agent-engine.ts` (~500 lines) = single-layer SDK call | Docker IPC → same-process call |
+| Message input | Channel polling → IPC files → MessageStream | HTTP POST → SQLite → XML format → MessageStream | Input source changed; MessageStream pattern preserved |
+| Message output | stdout markers → container-runner parse → channel router | query() result → HTTP JSON/SSE response | Output channel simplified |
+| Database | 7 tables (messages, chats, registered_groups, sessions, router_state, scheduled_tasks, task_run_logs) | 5 tables (conversations, messages, outbound_messages, scheduled_tasks, task_run_logs) | Removed multi-group tables; added conversations/outbound |
+| Task scheduling | Internal 60s polling loop (`startSchedulerLoop`) | External cron calls `POST /task/check` | Push → pull inversion |
+| MCP tools | IPC file monitoring (`ipc-mcp-stdio.ts`), filesystem-based communication | SQLite direct access (`mcp-server.ts`), shared database | IPC files → shared SQLite |
+| Skills | Container-internal `.claude/skills/` per group | Three-tier sync: built-in → shared → user → `.claude/skills/`, with hot-reload | Enhanced with priority overlay |
+| Memory | Per-group CLAUDE.md (`/workspace/group/CLAUDE.md`) + global | Single-user CLAUDE.md (`/data/memory/CLAUDE.md`) + global | Multi-group → single-user |
+| Session resume | session_id stored in DB → passed to container | session_id + last_assistant_uuid → SDK `resume` + `resumeSessionAt` | Added precise message-level resume |
+| Security | Docker container isolation + Credential Proxy | Bearer Token + Bash env scrubbing + container boundary | OS isolation → process isolation |
+| Concurrency | GroupQueue (max 5 concurrent groups) | Per-conversation mutex lock (`conversation-lock.ts`), 409 on conflict | Queue-based → lock-based |
+
+### Code Reuse from NanoClaw
+
+| Component | Reuse | Notes |
+|-----------|-------|-------|
+| `MessageStream` | ~95% | Removed IPC polling logic |
+| `PreCompactHook` | ~90% | Archive path adapted to `/data/memory/conversations` |
+| `parseTranscript` / `formatTranscriptMarkdown` | ~95% | Nearly identical |
+| `skills-engine/` | 100% | Fully inherited |
+| Task scheduling logic | ~80% | Removed internal loop, kept calculation logic |
+| MCP tool definitions | ~70% | Changed from IPC files to SQLite direct access |
+
+### Features Intentionally Not Migrated
+
+| NanoClaw Feature | Reason |
+|------------------|--------|
+| IPC follow-up messages | Replaced by HTTP multi-turn conversation |
+| Container idle timeout | PicoClaw lifecycle controlled by external platform |
+| Group management | Single-user model, no group concept |
+| Channel adapter system | HTTP API is the only channel |
+| Credential Proxy | Environment variables injected directly + Bash hook scrubbing |
+| Mount Security | Volume mount boundaries provide equivalent isolation |
+| Sender Allowlist | Bearer Token authentication replaces sender validation |
+
+## Why Per-Conversation Locking
+
+SQLite in WAL mode tolerates concurrent reads but requires serialized writes. Since Claude Agent SDK `query()` executes tool calls that modify the database (via the MCP server subprocess), concurrent agent executions on the **same conversation** risk database corruption or inconsistent state.
+
+PicoClaw solves this with a per-conversation mutex lock (`conversation-lock.ts`):
+
+- **Different conversations can run fully in parallel** — the lock granularity is per-conversation, not global.
+- **Same-conversation concurrent requests return `409 Conflict` immediately** — the chat route uses `wait: false` to avoid hanging HTTP requests.
+- **Lock is always released** — `finally { releaseLock?.() }` ensures the lock is freed even on exceptions.
+
+This is a deliberate trade-off: we sacrifice concurrent writes to the same conversation (which is semantically meaningless anyway — a conversation is inherently sequential) to guarantee database integrity.

@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 
 import { Request, Response, Router } from 'express';
 
-import { AgentRunner } from '../agent-engine.js';
+import { AgentRunner, StreamCallbacks } from '../agent-engine.js';
 import {
   ASSISTANT_NAME,
   MAX_EXECUTION_MS,
@@ -36,6 +36,9 @@ interface ChatRequestBody {
   sender_name?: string;
   stream?: boolean;
   max_execution_ms?: number;
+  thinking?: boolean;
+  max_thinking_tokens?: number;
+  show_tool_use?: boolean;
 }
 
 function getExecutionTimeout(ms?: number): number {
@@ -113,6 +116,14 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
 
     const executionTimeout = getExecutionTimeout(body.max_execution_ms);
     const stream = body.stream === true;
+    const enableThinking = body.thinking === true;
+    const maxThinkingTokens =
+      enableThinking && body.max_thinking_tokens && body.max_thinking_tokens > 0
+        ? body.max_thinking_tokens
+        : enableThinking
+          ? 10000
+          : undefined;
+    const showToolUse = body.show_tool_use === true;
 
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -135,16 +146,8 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
       });
       setConversationStatus(conversationId, 'running');
 
-      const output = await agentEngine.run(
-        {
-          prompt,
-          conversationId,
-          sessionId: conversation.session_id,
-          resumeAt: conversation.last_assistant_uuid,
-          timeoutMs: executionTimeout,
-          assistantName: ASSISTANT_NAME,
-        },
-        async (chunkText: string) => {
+      const streamCallbacks: StreamCallbacks = {
+        onChunk: async (chunkText: string) => {
           const formatted = formatOutbound(chunkText);
           if (!formatted) {
             return;
@@ -155,6 +158,32 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
             writeSseEvent(res, 'chunk', { text: formatted });
           }
         },
+        onThinking:
+          stream && enableThinking
+            ? async (text: string) => {
+                writeSseEvent(res, 'thinking', { text });
+              }
+            : undefined,
+        onToolUse:
+          stream && showToolUse
+            ? async (tool: string, input: unknown) => {
+                writeSseEvent(res, 'tool_use', { tool, input });
+              }
+            : undefined,
+      };
+
+      const output = await agentEngine.run(
+        {
+          prompt,
+          conversationId,
+          sessionId: conversation.session_id,
+          resumeAt: conversation.last_assistant_uuid,
+          timeoutMs: executionTimeout,
+          assistantName: ASSISTANT_NAME,
+          maxThinkingTokens,
+          showToolUse,
+        },
+        streamCallbacks,
       );
 
       const finalResult = formatOutbound(

@@ -138,11 +138,17 @@ paths:
                     event: start
                     data: {"conversation_id":"conv-123","message_id":"msg-123"}
 
+                    event: thinking
+                    data: {"text":"Let me reason about this..."}
+
+                    event: tool_use
+                    data: {"tool":"WebSearch","input":{"query":"example"}}
+
                     event: chunk
-                    data: {"text":"部分输出"}
+                    data: {"text":"partial output"}
 
                     event: done
-                    data: {"status":"success","conversation_id":"conv-123","message_id":"msg-123","result":"最终结果","session_id":"session-123","duration_ms":3210,"error":null,"outbound_messages":[],"session_end_marker":"[[PICOCLAW_SESSION_END]]","session_end_marker_detected":true}
+                    data: {"status":"success","conversation_id":"conv-123","message_id":"msg-123","result":"final result","session_id":"session-123","duration_ms":3210,"error":null,"outbound_messages":[],"session_end_marker":"[[PICOCLAW_SESSION_END]]","session_end_marker_detected":true}
         '400':
           description: Invalid request body
           content:
@@ -710,6 +716,26 @@ components:
           description: |
             Request-level timeout in milliseconds.
             Effective timeout is min(max_execution_ms, env MAX_EXECUTION_MS).
+        thinking:
+          type: boolean
+          default: false
+          description: |
+            Enable extended thinking. When true, the model produces thinking
+            content before its final response. Requires stream=true to see
+            thinking events in SSE output.
+        max_thinking_tokens:
+          type: integer
+          minimum: 1
+          description: |
+            Maximum tokens for extended thinking. Only used when thinking=true.
+            Default: 10000.
+        show_tool_use:
+          type: boolean
+          default: false
+          description: |
+            Stream tool invocation events. When true and stream=true, SSE
+            output includes 'tool_use' events showing which tools the agent
+            calls and their inputs.
 
     OutboundMessage:
       type: object

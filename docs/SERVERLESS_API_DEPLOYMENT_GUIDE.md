@@ -80,6 +80,105 @@ Default paths (overridable via environment variables):
 
 All four `/data/*` paths must be on persistent storage (EFS, NAS, or local volumes) for cross-request state to survive.
 
+### 2.4 Persona & System Prompt
+
+PicoClaw assembles the agent's system prompt from a **two-tier CLAUDE.md** model. This determines the agent's identity, capabilities, and behavioral rules.
+
+**Tier 1 — User persona** (`/data/memory/CLAUDE.md`):
+
+The Claude Agent SDK's `query()` is called with `cwd: MEMORY_DIR` and `settingSources: ['project', 'user']`. The `'project'` setting source tells the SDK to discover and load `CLAUDE.md` from the working directory (`/data/memory/`). This is standard Claude Code behavior — any `CLAUDE.md` in the project root is loaded as project-level context.
+
+This file defines the agent's identity (name, role), capabilities, communication style, and user-specific rules. It is the primary persona file and should always exist.
+
+**Tier 2 — Global overlay** (`/data/memory/global/CLAUDE.md`, optional):
+
+PicoClaw's `loadGlobalClaudeMd()` function reads this file and passes it as `systemPrompt: { type: 'preset', preset: 'claude_code', append: globalClaudeMd }`. This appends organization-wide instructions to the Claude Code system prompt before the user persona takes effect.
+
+Use this for shared policies (compliance, output format standards, tool usage rules) that should apply to all users in a multi-user deployment. If this file does not exist, no global overlay is applied and the SDK uses the default Claude Code preset.
+
+**Assembly order:**
+
+```
+1. Claude Code preset system prompt (built-in, always present)
+2. Global CLAUDE.md content (appended via systemPrompt.append, if file exists)
+3. User CLAUDE.md content (loaded by SDK/CLI from cwd, standard Claude Code discovery)
+```
+
+**Example user persona** (`/data/memory/CLAUDE.md`):
+
+```markdown
+# Pico
+
+You are Pico, a helpful assistant for the engineering team.
+
+## Communication Style
+- Be concise — one or two sentences max
+- Use bullet points for lists
+
+## Tools
+- `mcp__picoclaw__send_message` — send a message to the caller
+- `mcp__picoclaw__schedule_task` — create a scheduled task
+```
+
+See `docs/SKILLS_AND_PERSONA_GUIDE.md` for detailed persona authoring guidance.
+
+### 2.5 Cloud Storage Mount Scheme (OSS / EFS / NAS)
+
+When deploying with cloud object storage or network-attached filesystems, map the user-specific and shared storage to PicoClaw volumes:
+
+```
+User-specific storage (per-user OSS bucket or subdirectory):
+├── memory/         → mount to /data/memory    (persona, agent workspace)
+│   ├── CLAUDE.md                              (user persona, required)
+│   ├── global/
+│   │   └── CLAUDE.md                          (global persona overlay, optional)
+│   ├── skills/                                (user-created skills, auto-discovered)
+│   ├── conversations/                         (archived transcripts, auto-created)
+│   └── [agent-managed files]                  (no enforced structure)
+├── store/          → mount to /data/store     (persistent SQLite)
+│   └── messages.db
+└── sessions/       → mount to /data/sessions  (SDK session state)
+    └── .claude/
+        ├── sessions/
+        └── settings.json
+
+Shared storage (global, read-only):
+└── skills/         → mount to /data/skills    (organization-wide skills)
+    ├── add-pdf-reader/
+    ├── add-image-vision/
+    └── ...
+```
+
+#### Persona loading order
+
+PicoClaw uses a **two-tier persona** model. Both files are optional, but at least the user persona is recommended:
+
+| Tier | Path | Mechanism | Purpose |
+|------|------|-----------|---------|
+| Global | `/data/memory/global/CLAUDE.md` | `loadGlobalClaudeMd()` → `systemPrompt.append` | Organization-wide policies, shared rules |
+| User | `/data/memory/CLAUDE.md` | SDK auto-discovery via `cwd` + `settingSources: ['project']` | Agent identity, user-specific instructions |
+
+The effective system prompt is assembled as: **Claude Code preset** → **global CLAUDE.md** (appended) → **user CLAUDE.md** (loaded by CLI). This mirrors NanoClaw's global + per-group persona stacking, adapted for PicoClaw's single-user model.
+
+For multi-user deployments, provision the global persona from shared storage into each user's memory volume at `global/CLAUDE.md`. The user persona at `CLAUDE.md` can be customized per user.
+
+Docker mount example with cloud storage paths:
+
+```bash
+docker run --rm -it \
+  -p 9000:9000 \
+  -v /oss/users/${USER_ID}/memory:/data/memory \
+  -v /oss/users/${USER_ID}/store:/data/store \
+  -v /oss/users/${USER_ID}/sessions:/data/sessions \
+  -v /oss/global/skills:/data/skills:ro \
+  -e API_TOKEN=${GENERATED_TOKEN} \
+  -e ANTHROPIC_BASE_URL=${API_BASE} \
+  -e ANTHROPIC_API_KEY=${API_KEY} \
+  picoclaw:latest
+```
+
+The `memory` directory does not enforce a subdirectory structure beyond the persona files. The `conversations/` subdirectory is created on-demand by the PreCompact hook when context compaction occurs. The `skills/` subdirectory is auto-discovered for user-created skills.
+
 ## 3. Lifecycle & State
 
 ### 3.1 Conversation State
@@ -278,6 +377,9 @@ Request body:
 | `sender_name` | string | No | Display name (default: same as sender) |
 | `stream` | boolean | No | Enable SSE streaming (default: `false`) |
 | `max_execution_ms` | number | No | Per-request timeout, capped at server `MAX_EXECUTION_MS` |
+| `thinking` | boolean | No | Enable extended thinking (default: `false`) |
+| `max_thinking_tokens` | number | No | Max thinking tokens when thinking is enabled (default: `10000`) |
+| `show_tool_use` | boolean | No | Stream tool invocation events (default: `false`) |
 
 Non-streaming response:
 
@@ -315,15 +417,23 @@ When `stream: true`, the response uses `Content-Type: text/event-stream`. Text i
 | Event | Data | When |
 |-------|------|------|
 | `start` | `{"conversation_id", "message_id"}` | Agent begins processing |
+| `thinking` | `{"text": "..."}` | Extended thinking output (requires `thinking: true`) |
+| `tool_use` | `{"tool": "...", "input": {...}}` | Tool invocation (requires `show_tool_use: true`) |
 | `chunk` | `{"text": "..."}` | Incremental text output (per-token granularity) |
 | `done` | Full response object | Agent finished |
 | `error` | `{"error": "..."}` | Processing failed |
 
-Example stream:
+Example stream (with thinking and tool use enabled):
 
 ```text
 event: start
 data: {"conversation_id":"conv-...","message_id":"msg-..."}
+
+event: thinking
+data: {"text":"Let me reason about this..."}
+
+event: tool_use
+data: {"tool":"WebSearch","input":{"query":"example"}}
 
 event: chunk
 data: {"text":"partial output"}

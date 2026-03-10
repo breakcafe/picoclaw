@@ -3,7 +3,7 @@
   "info": {
     "title": "PicoClaw Serverless API",
     "version": "1.0.0",
-    "description": "HTTP API for PicoClaw (serverless-oriented runtime).\n\nNotes:\n- All endpoints except `/health` require Bearer token authentication.\n- `POST /chat` supports both JSON response mode and SSE streaming mode.\n- Memory and conversation history are persisted via mounted storage and reused across separate requests.\n- Scheduled tasks are externally triggered by calling `/task/check`.\n- `POST /control/stop` can be used to request graceful save-and-exit.\n"
+    "description": "HTTP API for PicoClaw (serverless-oriented runtime).\n\nNotes:\n- All endpoints except `/health` require Bearer token authentication.\n- `POST /chat` supports both JSON response mode and SSE streaming mode.\n- Memory and conversation history are persisted via mounted storage and reused across separate requests.\n- Scheduled tasks are externally triggered by calling `/task/check`.\n- `POST /control/stop` can be used to request graceful save-and-exit.\n- Every response includes an `X-Request-ID` header for log correlation. If the caller sends an `X-Request-ID` header, the same value is echoed back; otherwise a new `req-<UUID>` is generated.\n"
   },
   "servers": [
     {
@@ -43,6 +43,11 @@
         "responses": {
           "200": {
             "description": "Service healthy",
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -165,7 +170,7 @@
                 },
                 "examples": {
                   "sse": {
-                    "value": "event: start\ndata: {\"conversation_id\":\"conv-123\",\"message_id\":\"msg-123\"}\n\nevent: chunk\ndata: {\"text\":\"部分输出\"}\n\nevent: done\ndata: {\"status\":\"success\",\"conversation_id\":\"conv-123\",\"message_id\":\"msg-123\",\"result\":\"最终结果\",\"session_id\":\"session-123\",\"duration_ms\":3210,\"error\":null,\"outbound_messages\":[],\"session_end_marker\":\"[[PICOCLAW_SESSION_END]]\",\"session_end_marker_detected\":true}\n"
+                    "value": "event: start\ndata: {\"conversation_id\":\"conv-123\",\"message_id\":\"msg-123\"}\n\nevent: thinking\ndata: {\"text\":\"Let me reason about this...\"}\n\nevent: tool_use\ndata: {\"tool\":\"WebSearch\",\"input\":{\"query\":\"example\"}}\n\nevent: chunk\ndata: {\"text\":\"partial output\"}\n\nevent: done\ndata: {\"status\":\"success\",\"conversation_id\":\"conv-123\",\"message_id\":\"msg-123\",\"result\":\"final result\",\"session_id\":\"session-123\",\"duration_ms\":3210,\"error\":null,\"outbound_messages\":[],\"session_end_marker\":\"[[PICOCLAW_SESSION_END]]\",\"session_end_marker_detected\":true}\n"
                   }
                 }
               }
@@ -868,9 +873,23 @@
         }
       }
     },
+    "headers": {
+      "X-Request-ID": {
+        "description": "Request tracking identifier for log correlation.\nEchoes the caller-provided `X-Request-ID` header, or a generated `req-<UUID>` if none was sent.\nPresent on every response, including error and unauthenticated responses.\n",
+        "schema": {
+          "type": "string",
+          "example": "req-a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        }
+      }
+    },
     "responses": {
       "Unauthorized": {
         "description": "Unauthorized (missing or invalid bearer token)",
+        "headers": {
+          "X-Request-ID": {
+            "$ref": "#/components/headers/X-Request-ID"
+          }
+        },
         "content": {
           "application/json": {
             "schema": {
@@ -1001,6 +1020,21 @@
             "type": "integer",
             "minimum": 1,
             "description": "Request-level timeout in milliseconds.\nEffective timeout is min(max_execution_ms, env MAX_EXECUTION_MS).\n"
+          },
+          "thinking": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable extended thinking. When true, the model produces thinking\ncontent before its final response. Requires stream=true to see\nthinking events in SSE output.\n"
+          },
+          "max_thinking_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximum tokens for extended thinking. Only used when thinking=true.\nDefault: 10000.\n"
+          },
+          "show_tool_use": {
+            "type": "boolean",
+            "default": false,
+            "description": "Stream tool invocation events. When true and stream=true, SSE\noutput includes 'tool_use' events showing which tools the agent\ncalls and their inputs.\n"
           }
         }
       },

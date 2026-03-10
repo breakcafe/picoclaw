@@ -5,7 +5,7 @@ import path from 'path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AgentRunner } from './agent-engine.js';
+import { AgentRunner, StreamCallbacks } from './agent-engine.js';
 
 describe('http server', () => {
   let closeDatabase: (() => void) | undefined;
@@ -239,6 +239,106 @@ describe('http server', () => {
       .get('/health')
       .set('X-Request-ID', 'caller-trace-42');
     expect(response.headers['x-request-id']).toBe('caller-trace-42');
+  });
+
+  it('streams thinking events when thinking=true and stream=true', async () => {
+    const thinkingEngine: AgentRunner = {
+      async run(_input, callbacksOrOnChunk) {
+        const callbacks: StreamCallbacks =
+          typeof callbacksOrOnChunk === 'function'
+            ? { onChunk: callbacksOrOnChunk }
+            : callbacksOrOnChunk || {};
+        if (callbacks.onThinking) {
+          await callbacks.onThinking('Let me think...');
+          await callbacks.onThinking('about this');
+        }
+        if (callbacks.onChunk) {
+          await callbacks.onChunk('The answer');
+        }
+        return {
+          status: 'success',
+          result: 'The answer',
+          newSessionId: 'session-think',
+          lastAssistantUuid: 'uuid-think',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const thinkApp = serverModule.createServer(thinkingEngine);
+
+    const response = await request(thinkApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'test', stream: true, thinking: true });
+
+    expect(response.status).toBe(200);
+    const text = response.text;
+    expect(text).toContain('event: thinking');
+    expect(text).toContain('"text":"Let me think..."');
+    expect(text).toContain('event: chunk');
+    expect(text).toContain('event: done');
+  });
+
+  it('streams tool_use events when show_tool_use=true and stream=true', async () => {
+    const toolEngine: AgentRunner = {
+      async run(_input, callbacksOrOnChunk) {
+        const callbacks: StreamCallbacks =
+          typeof callbacksOrOnChunk === 'function'
+            ? { onChunk: callbacksOrOnChunk }
+            : callbacksOrOnChunk || {};
+        if (callbacks.onToolUse) {
+          await callbacks.onToolUse('WebSearch', { query: 'test' });
+        }
+        if (callbacks.onChunk) {
+          await callbacks.onChunk('Search result');
+        }
+        return {
+          status: 'success',
+          result: 'Search result',
+          newSessionId: 'session-tool',
+          lastAssistantUuid: 'uuid-tool',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const toolApp = serverModule.createServer(toolEngine);
+
+    const response = await request(toolApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'test', stream: true, show_tool_use: true });
+
+    expect(response.status).toBe(200);
+    const text = response.text;
+    expect(text).toContain('event: tool_use');
+    expect(text).toContain('"tool":"WebSearch"');
+    expect(text).toContain('event: chunk');
+    expect(text).toContain('event: done');
+  });
+
+  it('passes maxThinkingTokens to engine when thinking is enabled', async () => {
+    let capturedInput: any;
+    const captureEngine: AgentRunner = {
+      async run(input) {
+        capturedInput = input;
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-cap',
+          lastAssistantUuid: 'uuid-cap',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'test', thinking: true, max_thinking_tokens: 5000 });
+
+    expect(capturedInput.maxThinkingTokens).toBe(5000);
+    expect(capturedInput.showToolUse).toBe(false);
   });
 
   it('accepts stop request and invokes shutdown callback', async () => {

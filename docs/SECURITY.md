@@ -87,6 +87,18 @@ The MCP server enforces ownership rules:
 - Use read-only root filesystem where possible.
 - Set memory and CPU limits at the cloud platform level.
 
+## Security Assessment
+
+| Area | Rating | Details |
+|------|--------|---------|
+| Authentication | Good | Bearer token; unauthenticated access limited to `/health` (version info only) |
+| Secret isolation | Good | PreToolUse hook scrubs `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `API_TOKEN` from Bash environment |
+| File isolation | Acceptable | Agent can access all files within the container (by design); volume mount boundaries limit scope |
+| Database security | Acceptable | No encryption at rest; relies on volume permission controls |
+| Injection protection | Good | Zod schema validation on MCP tool inputs; XML escaping on message output |
+| Log security | Good | Structured pino logging; full request bodies are not logged |
+| Concurrency safety | Good | Per-conversation mutex lock prevents concurrent agent execution on same conversation; different conversations run in parallel; conflict returns 409 |
+
 ## Known Limitations
 
 1. **Single-instance SQLite**: SQLite does not support multi-writer concurrency across instances. Cloud platform concurrency controls should limit to one active instance per conversation scope.
