@@ -149,8 +149,8 @@ PicoClaw (HTTP API + 单进程):
 | 3 | **Skills 无 hot-reload** | 新增 `POST /admin/reload-skills` 端点 + `GET /admin/skills`，重新同步 shared + user skills 到 `.claude/skills/` | **已修复** |
 | 4 | **无 conversation 列表 API** | 新增 `GET /chat` 端点，返回所有对话列表（按 `last_activity` 降序） | **已修复** |
 | 5 | **无消息历史 API** | 新增 `GET /chat/:id/messages` 端点，返回对话完整消息历史 | **已修复** |
-| 6 | **outbound_messages 未自动清理** | `cleanupStaleData()` 在 `syncDatabaseToVolume()` 前执行，删除 7 天前已投递的消息 | **已修复** (Phase 2) |
-| 7 | **task_run_logs 未限制** | `cleanupStaleData()` 每个 task 保留最近 100 条日志 | **已修复** (Phase 2) |
+| 6 | **outbound_messages 未自动清理** | `cleanupStaleData()` 在 `syncDatabaseToVolume()` 前执行，删除已投递的过期消息（`OUTBOUND_TTL_DAYS`，默认 7 天） | **已修复** (Phase 2) |
+| 7 | **task_run_logs 未限制** | `cleanupStaleData()` 每个 task 保留最近 N 条日志（`TASK_LOG_RETENTION`，默认 100 条） | **已修复** (Phase 2) |
 
 #### P2 - 优化建议（2/4 已修复）
 
@@ -383,8 +383,8 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 
 ### Phase 2：数据生命周期、内置 Skills、文档对齐 — 已完成
 
-- [x] Outbound Messages 7 天 TTL 自动清理（`cleanupStaleData()` → `syncDatabaseToVolume()`）
-- [x] Task Run Logs 保留策略（每个 task 保留最近 100 条）
+- [x] Outbound Messages TTL 自动清理（`OUTBOUND_TTL_DAYS`，默认 7 天，`cleanupStaleData()` → `syncDatabaseToVolume()`）
+- [x] Task Run Logs 保留策略（`TASK_LOG_RETENTION`，默认每个 task 保留最近 100 条）
 - [x] Conversation 删除 API（`DELETE /chat/:conversation_id`，204/404/409）
 - [x] agent-browser 作为内置 skill 打包到 Docker 镜像（`/app/built-in-skills/`）
 - [x] 三级 skill 优先级：built-in → shared → user
