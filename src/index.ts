@@ -17,8 +17,6 @@ import { ensureClaudeSettings, syncSkills } from './skills.js';
 function ensureDataDirectories(): void {
   const directories = [
     MEMORY_DIR,
-    path.join(MEMORY_DIR, 'global'),
-    path.join(MEMORY_DIR, 'conversations'),
     SKILLS_DIR,
     STORE_DIR,
     path.join(SESSIONS_DIR, '.claude'),

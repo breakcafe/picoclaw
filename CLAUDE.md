@@ -97,7 +97,7 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
 
 | Mount | Runtime access | Agent `cwd` | Purpose |
 |-------|---------------|-------------|---------|
-| `/data/memory` | Read/Write | **Yes** (set as cwd) | CLAUDE.md persona, conversation archives, global memory |
+| `/data/memory` | Read/Write | **Yes** (set as cwd) | CLAUDE.md persona, agent workspace (subdirs created on-demand) |
 | `/data/skills` | Read-only sync | No | SKILL.md definitions → synced to `.claude/skills/` at startup |
 | `/data/sessions` | Read/Write | No | `.claude/` session state for SDK resume |
 | `/data/store` | Write (sync target) | No | Persistent copy of SQLite DB |
