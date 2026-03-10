@@ -117,8 +117,8 @@ PicoClaw (HTTP API + 单进程):
 ### 4.1 构建与测试
 
 - **TypeScript 编译**：`npm run build` 零错误通过
-- **单元测试**：6 个测试文件、23 个测试用例全部通过（原 16 个 + 新增 7 个）
-- **E2E 测试**：`scripts/e2e-test.sh` 26/26 全部通过（含真实 Claude API 多轮对话、重启持久化、session resume）
+- **单元测试**：6 个测试文件、28 个测试用例全部通过（Phase 1: 23 个 + Phase 2: 5 个新增）
+- **E2E 测试**：`scripts/e2e-test.sh` 全部通过（含真实 Claude API 多轮对话、重启持久化、session resume、动态 skill 创建与重载）
 - **代码格式**：Prettier + Husky pre-commit hook，全部文件合规
 
 ### 4.2 架构优点
@@ -142,15 +142,15 @@ PicoClaw (HTTP API + 单进程):
 | 1 | **并发请求可能导致 SQLite 损坏** | 新增 `src/conversation-lock.ts`：per-conversation 互斥锁。集成到 `POST /chat`、`POST /task/trigger`、`POST /task/check`。同一对话并发请求返回 `409 Conflict`，不同对话可并发执行 | **已修复** |
 | 2 | **Conversation status 不阻塞并发** | `acquireConversationLock(id, { wait: false })` 在路由层实际阻止并发执行，不再仅依赖 status 标记 | **已修复** |
 
-#### P1 - 重要问题（5/7 已修复）
+#### P1 - 重要问题（7/7 已全部修复）
 
 | # | 问题 | 修复方案 | 状态 |
 |---|------|---------|------|
 | 3 | **Skills 无 hot-reload** | 新增 `POST /admin/reload-skills` 端点 + `GET /admin/skills`，重新同步 shared + user skills 到 `.claude/skills/` | **已修复** |
 | 4 | **无 conversation 列表 API** | 新增 `GET /chat` 端点，返回所有对话列表（按 `last_activity` 降序） | **已修复** |
 | 5 | **无消息历史 API** | 新增 `GET /chat/:id/messages` 端点，返回对话完整消息历史 | **已修复** |
-| 6 | **outbound_messages 未自动清理** | `delivered=1` 的消息永不删除，长期运行会导致表膨胀 | 待修复 — 建议在 `syncDatabaseToVolume()` 中添加 7 天 TTL |
-| 7 | **task_run_logs 未限制** | 每次任务执行都追加日志，无上限 | 待修复 — 建议每个 task 保留最近 100 条 |
+| 6 | **outbound_messages 未自动清理** | `cleanupStaleData()` 在 `syncDatabaseToVolume()` 前执行，删除 7 天前已投递的消息 | **已修复** (Phase 2) |
+| 7 | **task_run_logs 未限制** | `cleanupStaleData()` 每个 task 保留最近 100 条日志 | **已修复** (Phase 2) |
 
 #### P2 - 优化建议（2/4 已修复）
 
@@ -331,7 +331,7 @@ docker run --rm -it \
 
 MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fallback。
 
-### 8.6 测试覆盖增量
+### 8.6 测试覆盖增量（Phase 1）
 
 | 测试文件 | 新增测试 | 当前测试数 |
 |---------|---------|-----------|
@@ -339,6 +339,15 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 | `server.test.ts` | 3 个：对话列表、消息历史、409 并发 | 8 |
 | 其余文件 | 无变更 | 11 |
 | **合计** | **7 个新增** | **23** |
+
+### 8.7 测试覆盖增量（Phase 2）
+
+| 测试文件 | 新增测试 | 当前测试数 |
+|---------|---------|-----------|
+| `db.test.ts` | 3 个：outbound 清理、task_run_logs 保留、对话删除 | 6 |
+| `server.test.ts` | 2 个：DELETE 对话 204、DELETE 对话 404 | 10 |
+| 其余文件 | 无变更 | 12 |
+| **合计** | **5 个新增** | **28** |
 
 ## 9. 与 GPT 评审团队意见的对照
 
@@ -372,11 +381,18 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 - [x] 单元测试覆盖（23/23 pass）
 - [x] E2E 测试验证（26/26 pass）
 
-### Phase 2：数据生命周期管理 (中优先级)
+### Phase 2：数据生命周期、内置 Skills、文档对齐 — 已完成
 
-- Outbound Messages 自动清理（`syncDatabaseToVolume()` 中添加 7 天 TTL）
-- Task Run Logs 保留策略（每个 task 保留最近 100 条）
-- Conversation 删除 API（`DELETE /chat/:conversation_id`）
+- [x] Outbound Messages 7 天 TTL 自动清理（`cleanupStaleData()` → `syncDatabaseToVolume()`）
+- [x] Task Run Logs 保留策略（每个 task 保留最近 100 条）
+- [x] Conversation 删除 API（`DELETE /chat/:conversation_id`，204/404/409）
+- [x] agent-browser 作为内置 skill 打包到 Docker 镜像（`/app/built-in-skills/`）
+- [x] 三级 skill 优先级：built-in → shared → user
+- [x] 简化 memory 目录结构（移除 prescriptive subdirs，agent 按需创建）
+- [x] 文档中 `NANOCLAW_*` 引用全部更新为 `PICOCLAW_*`（含 fallback 说明）
+- [x] OpenAPI 规范补全：GET /chat、GET /chat/:id/messages、DELETE /chat/:id、admin 端点、409 响应
+- [x] E2E 测试新增动态 skill 创建与重载测试
+- [x] 单元测试 28/28 全部通过
 
 ### Phase 3：可观测性增强 (低优先级)
 
@@ -397,9 +413,9 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 
 | 测试文件 | 覆盖范围 | 测试数 |
 |---------|---------|--------|
-| `server.test.ts` | HTTP 端点、认证、多轮对话、任务 CRUD、关停、对话列表、消息历史、409 并发 | 8 |
+| `server.test.ts` | HTTP 端点、认证、多轮对话、任务 CRUD、关停、对话列表、消息历史、409 并发、DELETE 对话 | 10 |
 | `conversation-lock.test.ts` | 顺序访问、并发不同对话、ConversationBusyError、队列等待 | 4 |
-| `db.test.ts` | 数据库 CRUD | 3 |
+| `db.test.ts` | 数据库 CRUD、outbound 清理、task_run_logs 保留、对话删除 | 6 |
 | `router.test.ts` | XML 格式化 | 2 |
 | `task-scheduler.test.ts` | Cron/interval/once 调度计算 | 4 |
 | `openapi.test.ts` | OpenAPI 规范验证 | 2 |
@@ -437,8 +453,8 @@ MCP server env vars 从 `NANOCLAW_*` 改为 `PICOCLAW_*`，保留向后兼容 fa
 
 ---
 
-*文档版本: 2.0*
+*文档版本: 3.0*
 *评审日期: 2026-03-10*
 *更新日期: 2026-03-10*
 *基于 picoclaw v1.2.14, nanoclaw latest (commit on disk)*
-*变更：Phase 1 全部完成，新增第 8-9 节（变更清单、GPT 对照），修订总结*
+*变更：Phase 1 + Phase 2 全部完成。Phase 2 新增数据生命周期管理、内置 skills 三级优先级、memory 简化、OpenAPI 补全、E2E 动态 skill 测试。28 个单元测试全部通过。*
