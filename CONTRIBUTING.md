@@ -1,23 +1,35 @@
-# Contributing
+# Contributing to PicoClaw
 
 ## Source Code Changes
 
 **Accepted:** Bug fixes, security fixes, simplifications, reducing code.
 
-**Not accepted:** Features, capabilities, compatibility, enhancements. These should be skills.
+**Not accepted:** Features, capabilities, enhancements. These should be skills mounted at `/data/skills/`.
 
 ## Skills
 
-A [skill](https://code.claude.com/docs/en/skills) is a markdown file in `.claude/skills/` that teaches Claude Code how to transform a NanoClaw installation.
+A skill is a directory in `/data/skills/` that teaches the Claude agent new capabilities at runtime. Skills are loaded via volume mount — no source code changes required.
 
-A PR that contributes a skill should not modify any source files.
+Each skill directory should contain:
 
-Your skill should contain the **instructions** Claude follows to add the feature—not pre-built code. See `/add-telegram` for a good example.
+- `SKILL.md` — instructions the agent follows to use the skill (required)
+- Supporting files as needed (templates, configs, examples)
 
 ### Why?
 
-Every user should have clean and minimal code that does exactly what they need. Skills let users selectively add features to their fork without inheriting code for features they don't want.
+PicoClaw's core is intentionally minimal. Skills let operators extend the agent's capabilities without modifying the runtime. Different deployments can mount different skill sets for different use cases.
 
 ### Testing
 
-Test your skill by running it on a fresh clone before submitting.
+Test your skill by mounting it into a running PicoClaw container and verifying the agent can follow the instructions in `SKILL.md`.
+
+```bash
+# Mount your skill alongside existing skills
+docker run ... -v ./my-skill:/data/skills/my-skill picoclaw:latest
+```
+
+## Persona (CLAUDE.md)
+
+The agent's persona is defined by `/data/memory/CLAUDE.md`. Persona changes are not source code changes — they are mounted at runtime.
+
+See `docs/SKILLS_AND_PERSONA_GUIDE.md` for authoring instructions.

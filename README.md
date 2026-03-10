@@ -1,88 +1,202 @@
-# PicoClaw (Serverless)
+# PicoClaw
 
-PicoClaw is a serverless-friendly variant of NanoClaw. It keeps Claude Agent SDK as the execution core, but switches from long-running multi-channel orchestration to request-driven HTTP APIs.
+Serverless-first Claude Agent runtime. Request-driven HTTP API with persistent memory, multi-turn conversations, and scheduled tasks.
 
-## What Changed
+Forked from [NanoClaw](https://github.com/qwibitai/nanoclaw) — replaces the always-on multi-channel orchestrator with a single-container, per-request execution model designed for AWS Lambda, Alibaba Cloud FC, and similar platforms.
 
-- Agent execution now runs in the same container/process as PicoClaw (no per-request `docker run` child container).
-- Skills and memory are mounted from volumes (`/data/skills`, `/data/memory`, `/data/sessions`, `/data/store`).
-- HTTP API replaces Telegram/WhatsApp/Slack channel adapters.
-- Multi-turn state is persisted in SQLite + Claude session resume metadata.
-- Scheduled tasks are externally triggered by `/task/check` (EventBridge/FC timer).
+## Architecture
 
-Detailed operations and deployment guide: `docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md`.
-
-## API Overview
-
-- `GET /health`
-- `POST /chat`
-- `GET /chat/:conversation_id`
-- `POST /task`
-- `GET /tasks`
-- `PUT /task/:task_id`
-- `DELETE /task/:task_id`
-- `POST /task/trigger`
-- `POST /task/check`
-- `POST /control/stop`
-
-All routes except `/health` require:
-
-```http
-Authorization: Bearer <API_TOKEN>
+```
+HTTP Client / API Gateway / Cron Trigger
+              |
+              v
+      PicoClaw (Node.js + Express)
+      |                           |
+      v                           v
+  AgentEngine                  Routes
+  (Claude Agent SDK)       /chat  /task  /control
+      |                           |
+      v                           v
+  MCP Server (stdio)          SQLite (/tmp)
+  - send_message                  |
+  - schedule_task            DB Sync on
+  - list/pause/cancel        every response
+      |                           |
+      v                           v
+  Shared SQLite           Persistent Volume
+                          /data/store/messages.db
 ```
 
-Memory and conversation history are part of the core design in serverless mode.
-Cross-request personalization is achieved by persisting `/data/memory`, `/data/store`, and `/data/sessions` on mounted storage (for example OSS/NAS/EFS-backed paths).
+**Key difference from NanoClaw**: No Docker child containers. The agent runs in the same process as the HTTP server. Skills and memory are volume-mounted, not installed into the source tree.
 
-## Local Development
+## Quick Start
+
+### Option 1: One-click script
+
+```bash
+git clone git@github.com:breakcafe/picoclaw.git
+cd picoclaw
+./picoclaw.sh
+```
+
+The script will prompt for `ANTHROPIC_API_KEY`, generate an `API_TOKEN`, build the Docker image, start the container, and run a smoke test.
+
+### Option 2: Docker manually
+
+```bash
+# Build
+docker build --platform linux/amd64 -t picoclaw:latest .
+
+# Run
+docker run --rm -it \
+  -p 9000:9000 \
+  -e API_TOKEN=your-token \
+  -e ANTHROPIC_API_KEY=sk-ant-xxx \
+  -v $(pwd)/dev-data/memory:/data/memory \
+  -v $(pwd)/dev-data/skills:/data/skills \
+  -v $(pwd)/dev-data/store:/data/store \
+  -v $(pwd)/dev-data/sessions:/data/sessions \
+  picoclaw:latest
+```
+
+### Option 3: Local Node.js
 
 ```bash
 npm ci
 npm run build
-npm start
+API_TOKEN=dev-token ANTHROPIC_API_KEY=sk-ant-xxx npm start
 ```
 
-or with Docker:
+### Verify
 
 ```bash
-make docker-build
-make docker-run
+# Health check
+curl http://localhost:9000/health
+
+# Send a message
+curl -X POST http://localhost:9000/chat \
+  -H "Authorization: Bearer your-token" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello, what can you do?"}'
 ```
 
-One-command startup and smoke test script:
+## API Overview
 
-```bash
-./picoclaw.sh
+All routes except `/health` require `Authorization: Bearer <API_TOKEN>`.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/health` | Liveness check |
+| POST | `/chat` | Send message, get response (supports SSE) |
+| GET | `/chat/:id` | Get conversation metadata |
+| POST | `/task` | Create scheduled task (cron/interval/once) |
+| GET | `/tasks` | List all tasks |
+| PUT | `/task/:id` | Update task |
+| DELETE | `/task/:id` | Delete task |
+| POST | `/task/trigger` | Manually trigger a task |
+| POST | `/task/check` | Execute next due task (for external cron) |
+| POST | `/control/stop` | Graceful shutdown with data sync |
+
+Full API documentation: [`docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md`](docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md)
+
+OpenAPI spec: `openapi.yaml` / `openapi.json`
+
+Postman collection: `postman_collection.json`
+
+## Data Persistence
+
+PicoClaw stores all state on mounted volumes. The container process itself is stateless.
+
+```
+/data/
+  memory/           # Agent persona (CLAUDE.md) + conversation archives
+    CLAUDE.md        # Main persona definition
+    global/          # Global shared memory
+    conversations/   # Archived transcripts
+  skills/           # Skill definitions (read by agent at startup)
+  sessions/         # Claude session state (.claude/)
+  store/            # Persistent SQLite (synced from /tmp on every response)
+    messages.db
 ```
 
-Graceful stop via API:
+On every HTTP response, the local database (`/tmp/messages.db`) is synced to the persistent volume. On shutdown (`SIGTERM` or `POST /control/stop`), a final sync runs before the process exits.
 
-```bash
-./picoclaw.sh stop-api
-```
+## Skills
 
-## Required Environment Variables
+Skills are directories mounted at `/data/skills/`. Each skill contains a `SKILL.md` that teaches the agent new capabilities — no source code changes needed.
 
-- `ANTHROPIC_API_KEY` (or Claude Code OAuth token equivalent)
-- `API_TOKEN`
+At container startup, skills are synced to `.claude/skills/` so the Claude agent can discover and use them.
 
-Optional:
+See [`docs/SKILLS_AND_PERSONA_GUIDE.md`](docs/SKILLS_AND_PERSONA_GUIDE.md) for how to write skills and configure the agent persona.
 
-- `PORT` (default `9000`)
-- `MAX_EXECUTION_MS` (default `300000`)
-- `ASSISTANT_NAME` (default `Pico`)
-- `TZ` (default system timezone)
+## Serverless Deployment
 
-## Build Image
-
-```bash
-docker build --platform linux/amd64 -t picoclaw:latest .
-```
-
-For AWS Lambda Web Adapter:
+### AWS Lambda
 
 ```bash
 docker build --platform linux/amd64 \
   --build-arg ENABLE_LAMBDA_ADAPTER=true \
   -t picoclaw:lambda .
 ```
+
+- Mount EFS to `/data`
+- Set `MAX_EXECUTION_MS` below Lambda timeout (e.g., 270000 for 5-min Lambda)
+- Use EventBridge Scheduler to call `POST /task/check` every minute
+
+### Alibaba Cloud FC
+
+- Deploy as custom-container with port 9000
+- Mount NAS to `/data`
+- Configure timer trigger for `/task/check`
+
+See [`docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md`](docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md) for detailed deployment instructions.
+
+## Downstream Integration
+
+For developers building systems that call PicoClaw's HTTP API, see [`docs/API_INTEGRATION_GUIDE.md`](docs/API_INTEGRATION_GUIDE.md).
+
+## Development
+
+```bash
+npm ci                    # install dependencies
+npm run build             # compile TypeScript
+npm test                  # run tests
+npm run dev               # development mode (tsx watch)
+npm run typecheck         # type checking only
+```
+
+Docker workflow:
+
+```bash
+make docker-build         # build image
+make docker-run           # run with volume mounts
+make test-chat            # smoke test /chat endpoint
+make test-e2e             # full build + run + test pipeline
+```
+
+## Environment Variables
+
+### Required
+
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Claude API key (or OAuth token equivalent) |
+| `API_TOKEN` | Bearer token for HTTP API authentication |
+
+### Optional
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `9000` | HTTP server port |
+| `MAX_EXECUTION_MS` | `300000` | Maximum agent execution time (5 min) |
+| `ASSISTANT_NAME` | `Pico` | Agent display name |
+| `TZ` | System | Timezone for cron scheduling |
+| `LOG_LEVEL` | `info` | Pino log level |
+| `STORE_DIR` | `/data/store` | Persistent database volume |
+| `MEMORY_DIR` | `/data/memory` | Memory and persona volume |
+| `SKILLS_DIR` | `/data/skills` | Skills volume |
+| `SESSIONS_DIR` | `/data/sessions` | Session state volume |
+
+## License
+
+See [LICENSE](LICENSE).

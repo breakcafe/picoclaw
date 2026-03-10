@@ -1,123 +1,93 @@
-# NanoClaw Security Model
+# PicoClaw Security Model
 
 ## Trust Model
 
 | Entity | Trust Level | Rationale |
 |--------|-------------|-----------|
-| Main group | Trusted | Private self-chat, admin control |
-| Non-main groups | Untrusted | Other users may be malicious |
-| Container agents | Sandboxed | Isolated execution environment |
-| WhatsApp messages | User input | Potential prompt injection |
+| HTTP caller (with valid token) | Trusted | Bearer token authenticates the caller |
+| HTTP caller (no token) | Untrusted | Only `/health` is accessible |
+| Agent (Claude SDK) | Sandboxed | Runs with controlled tool set, no direct secret access |
+| MCP Server subprocess | Internal | Shares SQLite, scoped by conversation ownership |
+| External cron trigger | Trusted | Must provide Bearer token for `/task/check` |
 
 ## Security Boundaries
 
-### 1. Container Isolation (Primary Boundary)
+### 1. HTTP API Authentication (Primary Boundary)
 
-Agents execute in containers (lightweight Linux VMs), providing:
-- **Process isolation** - Container processes cannot affect the host
-- **Filesystem isolation** - Only explicitly mounted directories are visible
-- **Non-root execution** - Runs as unprivileged `node` user (uid 1000)
-- **Ephemeral containers** - Fresh environment per invocation (`--rm`)
+All endpoints except `/health` require a Bearer token:
 
-This is the primary security boundary. Rather than relying on application-level permission checks, the attack surface is limited by what's mounted.
-
-### 2. Mount Security
-
-**External Allowlist** - Mount permissions stored at `~/.config/nanoclaw/mount-allowlist.json`, which is:
-- Outside project root
-- Never mounted into containers
-- Cannot be modified by agents
-
-**Default Blocked Patterns:**
-```
-.ssh, .gnupg, .aws, .azure, .gcloud, .kube, .docker,
-credentials, .env, .netrc, .npmrc, id_rsa, id_ed25519,
-private_key, .secret
+```http
+Authorization: Bearer <API_TOKEN>
 ```
 
-**Protections:**
-- Symlink resolution before validation (prevents traversal attacks)
-- Container path validation (rejects `..` and absolute paths)
-- `nonMainReadOnly` option forces read-only for non-main groups
+- `API_TOKEN` is set via environment variable at deployment time.
+- Missing or invalid tokens receive `401 Unauthorized`.
+- If `API_TOKEN` is not configured, the server returns `500` to prevent open access.
 
-**Read-Only Project Root:**
+### 2. Secret Isolation
 
-The main group's project root is mounted read-only. Writable paths the agent needs (group folder, IPC, `.claude/`) are mounted separately. This prevents the agent from modifying host application code (`src/`, `dist/`, `package.json`, etc.) which would bypass the sandbox entirely on next restart.
+The agent never sees deployment secrets:
 
-### 3. Session Isolation
+- `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` are unset from the Bash environment in the `preToolUse` hook before any shell command executes.
+- `API_TOKEN` is only used by the Express middleware; the agent cannot read it.
+- Secrets must be injected via environment variables or cloud secret managers — never baked into the Docker image.
 
-Each group has isolated Claude sessions at `data/sessions/{group}/.claude/`:
-- Groups cannot see other groups' conversation history
-- Session data includes full message history and file contents read
-- Prevents cross-group information disclosure
+### 3. Filesystem Boundaries
 
-### 4. IPC Authorization
+PicoClaw operates within well-defined mounted volumes:
 
-Messages and task operations are verified against group identity:
+| Path | Purpose | Access |
+|------|---------|--------|
+| `/data/memory` | CLAUDE.md, conversation archives | Read/Write |
+| `/data/skills` | Skill definitions | Read-only (synced to session) |
+| `/data/sessions` | Claude session state (.claude/) | Read/Write |
+| `/data/store` | Persistent SQLite database | Read/Write |
+| `/tmp` | Local working database | Read/Write (ephemeral) |
 
-| Operation | Main Group | Non-Main Group |
-|-----------|------------|----------------|
-| Send message to own chat | ✓ | ✓ |
-| Send message to other chats | ✓ | ✗ |
-| Schedule task for self | ✓ | ✓ |
-| Schedule task for others | ✓ | ✗ |
-| View all tasks | ✓ | Own only |
-| Manage other groups | ✓ | ✗ |
+The agent has full Bash access within the container, but the container itself limits the blast radius.
 
-### 5. Credential Handling
+### 4. MCP Tool Ownership
 
-**Mounted Credentials:**
-- Claude auth tokens (filtered from `.env`, read-only)
+The MCP server enforces ownership rules:
 
-**NOT Mounted:**
-- WhatsApp session (`store/auth/`) - host only
-- Mount allowlist - external, never mounted
-- Any credentials matching blocked patterns
+- **Main session** (`NANOCLAW_IS_MAIN=1`): Can list and manage all tasks across conversations.
+- **Non-main sessions**: Can only manage tasks belonging to their `conversation_id`.
+- `send_message` writes are scoped to the current conversation.
 
-**Credential Filtering:**
-Only these environment variables are exposed to containers:
-```typescript
-const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'];
-```
+### 5. Database Integrity
 
-> **Note:** Anthropic credentials are mounted so that Claude Code can authenticate when the agent runs. However, this means the agent itself can discover these credentials via Bash or file operations. Ideally, Claude Code would authenticate without exposing credentials to the agent's execution environment, but I couldn't figure this out. **PRs welcome** if you have ideas for credential isolation.
+- Foreign key constraints are enforced (`PRAGMA foreign_keys = ON`).
+- WAL mode prevents corruption from concurrent reads during sync.
+- Database sync uses `wal_checkpoint(TRUNCATE)` before file copy to ensure consistency.
 
-## Privilege Comparison
+## Deployment Recommendations
 
-| Capability | Main Group | Non-Main Group |
-|------------|------------|----------------|
-| Project root access | `/workspace/project` (ro) | None |
-| Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
-| Global memory | Implicit via project | `/workspace/global` (ro) |
-| Additional mounts | Configurable | Read-only unless allowed |
-| Network access | Unrestricted | Unrestricted |
-| MCP tools | All | All |
+### Network
 
-## Security Architecture Diagram
+- Place PicoClaw behind an API Gateway or reverse proxy (AWS API Gateway, ALB, Nginx).
+- Use TLS termination at the gateway level.
+- Restrict direct access to the container port.
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        UNTRUSTED ZONE                             │
-│  WhatsApp Messages (potentially malicious)                        │
-└────────────────────────────────┬─────────────────────────────────┘
-                                 │
-                                 ▼ Trigger check, input escaping
-┌──────────────────────────────────────────────────────────────────┐
-│                     HOST PROCESS (TRUSTED)                        │
-│  • Message routing                                                │
-│  • IPC authorization                                              │
-│  • Mount validation (external allowlist)                          │
-│  • Container lifecycle                                            │
-│  • Credential filtering                                           │
-└────────────────────────────────┬─────────────────────────────────┘
-                                 │
-                                 ▼ Explicit mounts only
-┌──────────────────────────────────────────────────────────────────┐
-│                CONTAINER (ISOLATED/SANDBOXED)                     │
-│  • Agent execution                                                │
-│  • Bash commands (sandboxed)                                      │
-│  • File operations (limited to mounts)                            │
-│  • Network access (unrestricted)                                  │
-│  • Cannot modify security config                                  │
-└──────────────────────────────────────────────────────────────────┘
-```
+### Secrets
+
+- Use cloud secret managers (AWS Secrets Manager, Alibaba Cloud KMS) for `ANTHROPIC_API_KEY` and `API_TOKEN`.
+- Rotate `API_TOKEN` periodically.
+- Never commit `.env` to version control.
+
+### Monitoring
+
+- Monitor `status=timeout` and `status=error` rates.
+- Alert on unexpected `401` patterns (potential brute force).
+- Track `/task/check remaining` to detect task backlog.
+
+### Container Hardening
+
+- Run as non-root user (`node`, uid 1000) — already configured in Dockerfile.
+- Use read-only root filesystem where possible.
+- Set memory and CPU limits at the cloud platform level.
+
+## Known Limitations
+
+1. **Single-instance SQLite**: SQLite does not support multi-writer concurrency across instances. Cloud platform concurrency controls should limit to one active instance per conversation scope.
+2. **No request-level rate limiting**: Rate limiting should be implemented at the API Gateway layer.
+3. **Agent Bash access**: The agent can execute arbitrary commands within the container. This is by design (Claude Code requires it), but the container boundary limits impact.

@@ -1,0 +1,301 @@
+# PicoClaw API Integration Guide
+
+Guide for downstream developers building systems that call PicoClaw's HTTP API.
+
+## Authentication
+
+All endpoints except `GET /health` require a Bearer token:
+
+```http
+Authorization: Bearer <API_TOKEN>
+```
+
+The token is configured via the `API_TOKEN` environment variable on the PicoClaw server.
+
+## Conversation Lifecycle
+
+### Start a new conversation
+
+```bash
+curl -X POST http://localhost:9000/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello"}'
+```
+
+Response:
+
+```json
+{
+  "status": "success",
+  "conversation_id": "conv-a1b2c3d4",
+  "message_id": "msg-e5f6g7h8",
+  "result": "Hello! How can I help you?",
+  "session_id": "sess-xxx",
+  "duration_ms": 3200,
+  "outbound_messages": [],
+  "session_end_marker": "[[PICOCLAW_SESSION_END]]",
+  "session_end_marker_detected": false
+}
+```
+
+Save `conversation_id` for follow-up messages.
+
+### Continue a conversation
+
+```bash
+curl -X POST http://localhost:9000/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Can you elaborate on that?",
+    "conversation_id": "conv-a1b2c3d4"
+  }'
+```
+
+The agent resumes from the previous session state. Conversation history and Claude session metadata are persisted across requests.
+
+### Check conversation status
+
+```bash
+curl http://localhost:9000/chat/conv-a1b2c3d4 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns `message_count`, `last_activity`, and `status` (idle/running).
+
+If the conversation does not exist, returns `404`.
+
+## SSE Streaming
+
+For real-time output, set `stream: true`:
+
+```bash
+curl -N -X POST http://localhost:9000/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Write a poem", "stream": true}'
+```
+
+SSE events:
+
+| Event | Data | When |
+|-------|------|------|
+| `start` | `{"conversation_id", "message_id"}` | Agent starts processing |
+| `chunk` | `{"text": "..."}` | Incremental text output |
+| `done` | Full response object | Agent finished |
+| `error` | `{"error": "..."}` | Processing failed |
+
+### Client example (Node.js)
+
+```javascript
+import EventSource from 'eventsource';
+
+const response = await fetch('http://localhost:9000/chat', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer your-token',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ message: 'Hello', stream: true }),
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+
+  const text = decoder.decode(value);
+  for (const line of text.split('\n')) {
+    if (line.startsWith('data: ')) {
+      const data = JSON.parse(line.slice(6));
+      // Handle event data
+    }
+  }
+}
+```
+
+### Client example (Python)
+
+```python
+import requests
+import json
+
+response = requests.post(
+    'http://localhost:9000/chat',
+    headers={
+        'Authorization': 'Bearer your-token',
+        'Content-Type': 'application/json',
+    },
+    json={'message': 'Hello', 'stream': True},
+    stream=True,
+)
+
+for line in response.iter_lines():
+    line = line.decode('utf-8')
+    if line.startswith('data: '):
+        data = json.loads(line[6:])
+        if 'text' in data:
+            print(data['text'], end='', flush=True)
+```
+
+## Session End Detection
+
+PicoClaw supports a session-end marker mechanism. When the agent determines that the conversation is complete, the response includes:
+
+```json
+{
+  "session_end_marker": "[[PICOCLAW_SESSION_END]]",
+  "session_end_marker_detected": true
+}
+```
+
+**Recommended caller flow:**
+
+1. Send message via `POST /chat`.
+2. Check `session_end_marker_detected` in the response.
+3. If `true` and no further interaction is needed, call `POST /control/stop` to trigger graceful shutdown (data sync + process exit).
+4. If `false`, continue the conversation normally.
+
+This is particularly useful in serverless environments where you want the container to shut down after completing a task.
+
+## Scheduled Tasks
+
+### Create a task
+
+```bash
+curl -X POST http://localhost:9000/task \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "daily-summary",
+    "prompt": "Summarize the latest news",
+    "schedule_type": "cron",
+    "schedule_value": "0 9 * * 1-5",
+    "context_mode": "isolated"
+  }'
+```
+
+**Schedule types:**
+
+| Type | `schedule_value` format | Example |
+|------|------------------------|---------|
+| `cron` | Standard 5-field cron expression | `0 9 * * 1-5` (weekdays 9am) |
+| `interval` | Milliseconds as string | `3600000` (every hour) |
+| `once` | Local time string (no timezone suffix) | `2026-03-15T14:00:00` |
+
+**Context modes:**
+
+| Mode | Behavior |
+|------|----------|
+| `group` | Runs within an existing conversation (requires `conversation_id`) |
+| `isolated` | Creates a fresh temporary conversation for each execution |
+
+### Trigger tasks externally
+
+PicoClaw does not run an internal scheduler. Tasks are triggered by external cron (EventBridge, FC timer):
+
+```bash
+# Execute the next due task (call every 1 minute from external cron)
+curl -X POST http://localhost:9000/task/check \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Response when a task was executed:
+
+```json
+{
+  "checked": 3,
+  "executed": {
+    "status": "success",
+    "task_id": "daily-summary",
+    "result": "Here is today's summary...",
+    "duration_ms": 12000,
+    "next_run": "2026-03-11T09:00:00.000Z"
+  },
+  "remaining": 2
+}
+```
+
+Each call to `/task/check` executes at most **one** due task. If multiple tasks are due, call it repeatedly or increase cron frequency.
+
+### Manually trigger a specific task
+
+```bash
+curl -X POST http://localhost:9000/task/trigger \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "daily-summary"}'
+```
+
+## Graceful Shutdown
+
+```bash
+curl -X POST http://localhost:9000/control/stop \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "end-of-session"}'
+```
+
+The server will:
+1. Sync the database to the persistent volume.
+2. Close database connections.
+3. Exit the process.
+
+Alternatively, send `SIGTERM` to the container (the default serverless platform behavior). Both paths execute the same sync-and-exit sequence.
+
+## Error Handling
+
+### HTTP Status Codes
+
+| Code | Meaning |
+|------|---------|
+| 200 | Success |
+| 204 | Success (no content, e.g., DELETE) |
+| 400 | Invalid request (missing fields, bad schedule) |
+| 401 | Missing or invalid Bearer token |
+| 404 | Conversation or task not found |
+| 500 | Server error |
+
+### Response status field
+
+The `status` field in chat responses can be:
+
+| Value | Meaning | Action |
+|-------|---------|--------|
+| `success` | Agent completed normally | Use `result` |
+| `timeout` | Agent hit execution time limit | Partial result may be available; retry with same `conversation_id` to continue |
+| `error` | Agent encountered an error | Check `error` field for details |
+
+### Timeout behavior
+
+- Default timeout: 300 seconds (configurable via `MAX_EXECUTION_MS`).
+- Per-request override: pass `max_execution_ms` in the chat request body (capped at server maximum).
+- On timeout, the agent is aborted and any partial result is returned with `status: "timeout"`.
+- The caller can resume by sending a new message to the same `conversation_id`.
+
+## Request Fields Reference
+
+### POST /chat
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `message` | string | Yes | User message text |
+| `conversation_id` | string | No | Existing conversation to continue (creates new if omitted) |
+| `sender` | string | No | Sender identifier (default: `user`) |
+| `sender_name` | string | No | Display name (default: same as sender) |
+| `stream` | boolean | No | Enable SSE streaming (default: false) |
+| `max_execution_ms` | number | No | Per-request timeout (capped at `MAX_EXECUTION_MS`) |
+
+### POST /task
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | No | Custom task ID (auto-generated if omitted) |
+| `prompt` | string | Yes | Task instruction for the agent |
+| `schedule_type` | string | Yes | `cron`, `interval`, or `once` |
+| `schedule_value` | string | Yes | Schedule expression (see table above) |
+| `context_mode` | string | No | `group` or `isolated` (default: `isolated`) |
+| `conversation_id` | string | No | Target conversation (required for `group` mode) |

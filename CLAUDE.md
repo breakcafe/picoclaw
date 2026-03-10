@@ -66,11 +66,31 @@ It is now a trimmed runtime named **PicoClaw** focused on:
 
 Callers can use marker detection to decide when to invoke `/control/stop`.
 
+## Skills System
+
+PicoClaw supports two levels of skill extensibility:
+
+### Runtime skills (primary)
+
+Directories mounted at `/data/skills/`. Each contains a `SKILL.md` with agent instructions.
+These are synced to `.claude/skills/` at container startup via `entrypoint.sh` and `src/skills.ts`.
+No source code changes needed. See `docs/SKILLS_AND_PERSONA_GUIDE.md`.
+
+### Source-level skills (advanced)
+
+The `skills-engine/` directory provides deterministic skill application for changes that modify
+PicoClaw's source code (new channels, container config changes, npm dependencies).
+Uses three-way merge with manifest.yaml tracking in `.nanoclaw/state.yaml`.
+Skill definitions live in `.claude/skills/` with `manifest.yaml` + `add/` + `modify/` structure.
+
 ## Tooling and Docs
 
-- Main operations guide: `docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md`
-- OpenAPI spec: `openapi.yaml`
-- OpenAPI JSON export: `openapi.json`
+- Operations guide: `docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md`
+- API integration guide: `docs/API_INTEGRATION_GUIDE.md`
+- Skills & persona guide: `docs/SKILLS_AND_PERSONA_GUIDE.md`
+- Security model: `docs/SECURITY.md`
+- SDK internals: `docs/SDK_DEEP_DIVE.md`
+- OpenAPI spec: `openapi.yaml` / `openapi.json`
 - Postman collection: `postman_collection.json`
 - One-click startup: `picoclaw.sh`
 
@@ -91,6 +111,18 @@ Docker flow:
 ./picoclaw.sh down
 ```
 
+## Testing
+
+```bash
+npm test                  # all tests
+npm run test:watch        # watch mode
+npm run typecheck         # type checking only
+```
+
+Test files follow the `*.test.ts` pattern next to the source files they test.
+Key test areas: `db.test.ts` (persistence), `server.test.ts` (API integration),
+`router.test.ts` (message formatting), `task-scheduler.test.ts` (scheduling logic).
+
 ## Change Guardrails
 
 When modifying runtime behavior, always validate:
@@ -99,3 +131,4 @@ When modifying runtime behavior, always validate:
 - OpenAPI remains valid and exports are regenerated
 - stop path still persists data and exits cleanly
 - memory/history persistence assumptions are not weakened
+- CHANGELOG.md updated for user-visible changes
