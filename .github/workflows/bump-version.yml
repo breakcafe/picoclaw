@@ -1,6 +1,13 @@
 name: Bump version
 
 on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Validate bump logic without commit/push
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths: ['src/**', 'container/**']
@@ -17,6 +24,11 @@ jobs:
       - name: Bump patch version
         run: |
           npm version patch --no-git-tag-version
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "dry-run mode: skipping commit/push"
+            git restore package.json package-lock.json
+            exit 0
+          fi
           git add package.json package-lock.json
           git diff --cached --quiet && exit 0
           git config user.name "github-actions[bot]"
