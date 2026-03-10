@@ -103,6 +103,29 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
 | `/data/store` | Write (sync target) | No | Persistent copy of SQLite DB |
 | `/tmp` | Read/Write | No | Local runtime DB (ephemeral, fast) |
 
+### Persona and system prompt
+
+PicoClaw uses a **two-tier CLAUDE.md** model for the agent's persona and system prompt,
+implemented in `src/agent-engine.ts`:
+
+| Tier | File | Code mechanism | Purpose |
+|------|------|----------------|---------|
+| User | `/data/memory/CLAUDE.md` | `cwd: MEMORY_DIR` + `settingSources: ['project']` → SDK auto-discovers | Agent identity, capabilities, user-specific rules |
+| Global | `/data/memory/global/CLAUDE.md` | `loadGlobalClaudeMd()` → `systemPrompt: { preset: 'claude_code', append }` | Organization-wide policies, shared rules |
+
+Assembly order: **Claude Code preset** → **global CLAUDE.md** (appended to system prompt) →
+**user CLAUDE.md** (loaded by CLI from `cwd`). Both files are optional; at minimum the user
+persona should exist.
+
+Key implementation details:
+
+- `settingSources: ['project', 'user']` is required for the SDK to discover CLAUDE.md in `cwd`.
+  Without it, the SDK loads no filesystem settings (isolation by default).
+- When `/data/memory/global/CLAUDE.md` does not exist, `systemPrompt` is `undefined` and the
+  SDK falls back to the default Claude Code preset. The user CLAUDE.md still loads either way.
+- The `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1'` setting in `.claude/settings.json`
+  also enables CLAUDE.md discovery in `additionalDirectories` (skill paths from `SKILLS_DIR`).
+
 ### Adding a new route
 
 1. Create `src/routes/myroute.ts` with `export function myRoutes(): Router`

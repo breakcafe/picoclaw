@@ -80,7 +80,49 @@ Default paths (overridable via environment variables):
 
 All four `/data/*` paths must be on persistent storage (EFS, NAS, or local volumes) for cross-request state to survive.
 
-### 2.4 Cloud Storage Mount Scheme (OSS / EFS / NAS)
+### 2.4 Persona & System Prompt
+
+PicoClaw assembles the agent's system prompt from a **two-tier CLAUDE.md** model. This determines the agent's identity, capabilities, and behavioral rules.
+
+**Tier 1 — User persona** (`/data/memory/CLAUDE.md`):
+
+The Claude Agent SDK's `query()` is called with `cwd: MEMORY_DIR` and `settingSources: ['project', 'user']`. The `'project'` setting source tells the SDK to discover and load `CLAUDE.md` from the working directory (`/data/memory/`). This is standard Claude Code behavior — any `CLAUDE.md` in the project root is loaded as project-level context.
+
+This file defines the agent's identity (name, role), capabilities, communication style, and user-specific rules. It is the primary persona file and should always exist.
+
+**Tier 2 — Global overlay** (`/data/memory/global/CLAUDE.md`, optional):
+
+PicoClaw's `loadGlobalClaudeMd()` function reads this file and passes it as `systemPrompt: { type: 'preset', preset: 'claude_code', append: globalClaudeMd }`. This appends organization-wide instructions to the Claude Code system prompt before the user persona takes effect.
+
+Use this for shared policies (compliance, output format standards, tool usage rules) that should apply to all users in a multi-user deployment. If this file does not exist, no global overlay is applied and the SDK uses the default Claude Code preset.
+
+**Assembly order:**
+
+```
+1. Claude Code preset system prompt (built-in, always present)
+2. Global CLAUDE.md content (appended via systemPrompt.append, if file exists)
+3. User CLAUDE.md content (loaded by SDK/CLI from cwd, standard Claude Code discovery)
+```
+
+**Example user persona** (`/data/memory/CLAUDE.md`):
+
+```markdown
+# Pico
+
+You are Pico, a helpful assistant for the engineering team.
+
+## Communication Style
+- Be concise — one or two sentences max
+- Use bullet points for lists
+
+## Tools
+- `mcp__picoclaw__send_message` — send a message to the caller
+- `mcp__picoclaw__schedule_task` — create a scheduled task
+```
+
+See `docs/SKILLS_AND_PERSONA_GUIDE.md` for detailed persona authoring guidance.
+
+### 2.5 Cloud Storage Mount Scheme (OSS / EFS / NAS)
 
 When deploying with cloud object storage or network-attached filesystems, map the user-specific and shared storage to PicoClaw volumes:
 
