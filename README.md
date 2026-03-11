@@ -16,7 +16,7 @@ HTTP Request
       ├── POST /control/stop ───► Sync DB + Exit
       │
       ▼
-  SQLite (/tmp/messages.db) ◄────────────┐
+  SQLite (/tmp/messages.db) ◄─────────────┐
       │                                   │
       │  Invoke agent                     │  MCP tools write back
       ▼                                   │
@@ -37,20 +37,20 @@ HTTP Request
 
 ```
   Read-Only (optional)          Read/Write
-┌─────────────────────┐   ┌──────────────────────────────────────┐
+┌──────────────────────┐   ┌──────────────────────────────────────┐
 │  /data/org           │   │  /data/memory                        │
 │   Org persona        │   │   User persona + agent workspace     │
 │   Org skills         │   ├──────────────────────────────────────┤
 │   managed-mcp.json   │   │  /data/sessions                      │
-└─────────────────────┘   │   .claude/ session state              │
+└──────────────────────┘   │   .claude/ session state              │
                            ├──────────────────────────────────────┤
   Ephemeral                │  /data/store                          │
-┌─────────────────────┐   │   Persistent SQLite                   │
+┌──────────────────────┐   │   Persistent SQLite                   │
 │  /tmp/messages.db    │   └──────────────────────────────────────┘
 │   Runtime DB         │           ▲
-└──────────┬──────────┘           │
-           └──── sync after ──────┘
-                 response
+└──────────┬───────────┘           │
+           └───── sync after ──────┘
+                   response
 ```
 
 | Volume | Purpose |
