@@ -6,34 +6,51 @@ Forked from [NanoClaw](https://github.com/qwibitai/nanoclaw) — replaces the al
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    A[HTTP Request] --> B[Express Router + Auth]
-    B -->|GET /health| C["{ status, version }"]
-    B -->|POST /control/stop| D[Sync DB + Exit]
-    B -->|POST /chat\nPOST /task/trigger\nPOST /task/check| E[SQLite /tmp/messages.db]
-    E -->|Invoke agent| F["AgentEngine\n(Claude Agent SDK query())"]
-    F -->|Spawns subprocess| G["MCP Server (stdio)"]
-    G -->|Write back| E
-    E -->|After response| H["syncDatabaseToVolume()\n/tmp → /data/store"]
+```
+HTTP Request
+      │
+      ▼
+  Express Router + Auth Middleware
+      │
+      ├── GET /health ──────────► { status, version }
+      ├── POST /control/stop ───► Sync DB + Exit
+      │
+      ▼
+  SQLite (/tmp/messages.db) ◄────────────┐
+      │                                   │
+      │  Invoke agent                     │  MCP tools write back
+      ▼                                   │
+  AgentEngine                             │
+  (Claude Agent SDK query())              │
+      │                                   │
+      │  Spawns subprocess                │
+      ▼                                   │
+  MCP Server (stdio) ────────────────────►┘
+      ·
+      ·  After response
+      ▼
+  syncDatabaseToVolume()
+  /tmp/messages.db  ──►  /data/store/messages.db
 ```
 
 ### Volume Layout
 
-```mermaid
-graph LR
-    subgraph "Read-Only (optional)"
-        ORG["/data/org\nOrg persona + skills + managed MCP"]
-    end
-    subgraph "Read/Write"
-        MEM["/data/memory\nUser persona + agent workspace (cwd)"]
-        SES["/data/sessions\n.claude/ session state"]
-        STO["/data/store\nPersistent SQLite"]
-    end
-    TMP["/tmp/messages.db\nRuntime DB (ephemeral)"]
-
-    STO -->|startup copy| TMP
-    TMP -->|sync after response| STO
+```
+  Read-Only (optional)          Read/Write
+┌─────────────────────┐   ┌──────────────────────────────────────┐
+│  /data/org           │   │  /data/memory                        │
+│   Org persona        │   │   User persona + agent workspace     │
+│   Org skills         │   ├──────────────────────────────────────┤
+│   managed-mcp.json   │   │  /data/sessions                      │
+└─────────────────────┘   │   .claude/ session state              │
+                           ├──────────────────────────────────────┤
+  Ephemeral                │  /data/store                          │
+┌─────────────────────┐   │   Persistent SQLite                   │
+│  /tmp/messages.db    │   └──────────────────────────────────────┘
+│   Runtime DB         │           ▲
+└──────────┬──────────┘           │
+           └──── sync after ──────┘
+                 response
 ```
 
 | Volume | Purpose |
@@ -157,18 +174,16 @@ On every HTTP response, the local database (`/tmp/messages.db`) is synced to the
 
 PicoClaw assembles the agent's system prompt from a **two-tier CLAUDE.md** model:
 
-```mermaid
-block-beta
-    columns 1
-    block:layer1["Layer 1: Claude Code Preset (built-in)"]
-        A["SDK auto-injected"]
-    end
-    block:layer2["Layer 2: Org Persona (appended)"]
-        B["$ORG_DIR/CLAUDE.md — read-only, org-wide policies"]
-    end
-    block:layer3["Layer 3: User Persona (SDK auto-discovery)"]
-        C["/data/memory/CLAUDE.md — agent identity, user rules"]
-    end
+```
+┌─────────────────────────────────────────────┐
+│ Layer 1: Claude Code Preset (built-in)      │  SDK auto-injected
+├─────────────────────────────────────────────┤
+│ Layer 2: Org Persona (appended)             │  $ORG_DIR/CLAUDE.md
+│   Organization-wide policies, shared rules  │  (read-only, optional)
+├─────────────────────────────────────────────┤
+│ Layer 3: User Persona (SDK auto-discovery)  │  /data/memory/CLAUDE.md
+│   Agent identity, user-specific rules       │  (read/write)
+└─────────────────────────────────────────────┘
 ```
 
 | Tier | Source | Mechanism |
@@ -184,11 +199,10 @@ Skills are directories containing `SKILL.md` files that teach the agent new capa
 
 **Three-tier merge** (org skills take priority):
 
-```mermaid
-flowchart LR
-    A["Built-in\n(/app/built-in-skills)"] -->|copy| D[".claude/skills/"]
-    B["Org\n($ORG_DIR/skills)"] -->|override built-in| D
-    C["User\n(/data/memory/skills)"] -->|additive only| D
+```
+Built-in (/app/built-in-skills)  ──copy──►  .claude/skills/
+Org ($ORG_DIR/skills)            ──override built-in──►  ↑
+User (/data/memory/skills)       ──additive only──►      ↑
 ```
 
 User skills supplement the merged set — they cannot override org or built-in skills of the same name.
