@@ -380,6 +380,7 @@ Request body:
 | `thinking` | boolean | No | Enable extended thinking (default: `false`) |
 | `max_thinking_tokens` | number | No | Max thinking tokens when thinking is enabled (default: `10000`) |
 | `show_tool_use` | boolean | No | Stream tool invocation events (default: `false`) |
+| `mcp_servers` | object | No | Per-request MCP servers (see Dynamic MCP Servers below) |
 
 Non-streaming response:
 
@@ -441,6 +442,36 @@ data: {"text":"partial output"}
 event: done
 data: {"status":"success","conversation_id":"conv-...","session_end_marker":"[[PICOCLAW_SESSION_END]]","session_end_marker_detected":false}
 ```
+
+### 6.3.1 Dynamic MCP Servers
+
+The `mcp_servers` field allows callers to attach additional MCP servers to a specific request. These are merged with the built-in `picoclaw` MCP server and passed to the Claude Agent SDK's `query()`.
+
+Supported transports:
+
+| Transport | Required fields | Optional |
+|-----------|----------------|----------|
+| `http` (default) | `url` | `headers` |
+| `sse` | `url` | `headers` |
+| `stdio` | `command` | `args`, `env` |
+
+If `type` is omitted, it defaults to `http`.
+
+Example:
+
+```json
+{
+  "message": "分析最近一周的支出",
+  "mcp_servers": {
+    "finance": {
+      "type": "http",
+      "url": "http://example.com/mcp-server/mcp"
+    }
+  }
+}
+```
+
+The agent will see tools from all MCP servers as `mcp__<name>__<tool>`. Invalid entries (missing required fields) are silently ignored.
 
 ### 6.4 List All Conversations
 

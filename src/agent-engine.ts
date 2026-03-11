@@ -16,6 +16,20 @@ import {
   SKILLS_DIR,
 } from './config.js';
 
+/**
+ * MCP server configuration for stdio, SSE, or HTTP transports.
+ * Maps directly to the Claude Agent SDK McpServerConfig type.
+ */
+export type McpServerConfig =
+  | {
+      type?: 'stdio';
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    }
+  | { type: 'sse'; url: string; headers?: Record<string, string> }
+  | { type: 'http'; url: string; headers?: Record<string, string> };
+
 export interface AgentRunInput {
   prompt: string;
   conversationId: string;
@@ -26,6 +40,8 @@ export interface AgentRunInput {
   isScheduledTask?: boolean;
   maxThinkingTokens?: number;
   showToolUse?: boolean;
+  /** Per-request MCP servers merged with the built-in picoclaw server. */
+  mcpServers?: Record<string, McpServerConfig>;
 }
 
 export interface AgentRunOutput {
@@ -380,6 +396,43 @@ export class AgentEngine implements AgentRunner {
       promptStream.push(prompt);
       promptStream.end();
 
+      // Merge built-in picoclaw MCP server with per-request MCP servers.
+      const mergedMcpServers: Record<string, McpServerConfig> = {
+        picoclaw: {
+          command: 'node',
+          args: [mcpServerPath],
+          env: {
+            PICOCLAW_CONVERSATION_ID: input.conversationId,
+            PICOCLAW_DB_PATH: LOCAL_DB_PATH,
+            PICOCLAW_IS_MAIN: '1',
+          },
+        },
+        ...input.mcpServers,
+      };
+
+      // Build allowedTools with wildcards for each MCP server.
+      const allowedTools = [
+        'Bash',
+        'Read',
+        'Write',
+        'Edit',
+        'Glob',
+        'Grep',
+        'WebSearch',
+        'WebFetch',
+        'Task',
+        'TaskOutput',
+        'TaskStop',
+        'TeamCreate',
+        'TeamDelete',
+        'SendMessage',
+        'TodoWrite',
+        'ToolSearch',
+        'Skill',
+        'NotebookEdit',
+        ...Object.keys(mergedMcpServers).map((name) => `mcp__${name}__*`),
+      ];
+
       for await (const message of query({
         prompt: promptStream,
         options: {
@@ -398,44 +451,14 @@ export class AgentEngine implements AgentRunner {
                 append: globalClaudeMd,
               }
             : undefined,
-          allowedTools: [
-            'Bash',
-            'Read',
-            'Write',
-            'Edit',
-            'Glob',
-            'Grep',
-            'WebSearch',
-            'WebFetch',
-            'Task',
-            'TaskOutput',
-            'TaskStop',
-            'TeamCreate',
-            'TeamDelete',
-            'SendMessage',
-            'TodoWrite',
-            'ToolSearch',
-            'Skill',
-            'NotebookEdit',
-            'mcp__picoclaw__*',
-          ],
+          allowedTools,
           includePartialMessages: true,
           maxThinkingTokens: input.maxThinkingTokens,
           env: sdkEnv,
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
           settingSources: ['project', 'user'],
-          mcpServers: {
-            picoclaw: {
-              command: 'node',
-              args: [mcpServerPath],
-              env: {
-                PICOCLAW_CONVERSATION_ID: input.conversationId,
-                PICOCLAW_DB_PATH: LOCAL_DB_PATH,
-                PICOCLAW_IS_MAIN: '1',
-              },
-            },
-          },
+          mcpServers: mergedMcpServers,
           hooks: {
             PreCompact: [
               {

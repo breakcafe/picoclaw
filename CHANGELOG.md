@@ -4,17 +4,21 @@ All notable changes to PicoClaw will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Dynamic MCP server support**: `POST /chat` accepts `mcp_servers` field for
+  per-request MCP server configuration (HTTP, SSE, and stdio transports).
+  Servers are merged with the built-in picoclaw MCP server and their tools are
+  automatically added to the agent's allowedTools list.
+- `.dockerignore` for faster build context transfer
+- Developer documentation: API integration guide, Skills & Persona authoring guide
+- Rewritten SECURITY.md for HTTP API trust model
+- Cleaned up legacy NanoClaw docs from `docs/` directory
+
 ### Changed
 - Dockerfile converted to multi-stage build: TypeScript compiles inside Docker,
   no local Node.js required for image builds
 - Makefile `docker-build` no longer depends on local `build-ts` target
 - `picoclaw.sh` build step no longer requires local `npm run build`
-
-### Added
-- `.dockerignore` for faster build context transfer
-- Developer documentation: API integration guide, Skills & Persona authoring guide
-- Rewritten SECURITY.md for HTTP API trust model
-- Cleaned up legacy NanoClaw docs from `docs/` directory
 
 ## [1.2.12] — 2026-03-09
 

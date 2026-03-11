@@ -223,6 +223,37 @@ PicoClaw supports a session-end marker mechanism. When the agent determines that
 
 This is particularly useful in serverless environments where you want the container to shut down after completing a task.
 
+## Dynamic MCP Servers
+
+PicoClaw can connect to external MCP servers on a per-request basis. Pass `mcp_servers` in the chat request to give the agent access to additional tools:
+
+```bash
+curl -X POST http://localhost:9000/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "请帮我分析一下最近一周的支出情况",
+    "mcp_servers": {
+      "finance": {
+        "type": "http",
+        "url": "http://example.com/mcp-server/mcp"
+      }
+    }
+  }'
+```
+
+Supported transport types:
+
+| Transport | Config | Example |
+|-----------|--------|---------|
+| HTTP (Streamable HTTP) | `{ "type": "http", "url": "...", "headers": {...} }` | Remote MCP servers |
+| SSE | `{ "type": "sse", "url": "...", "headers": {...} }` | SSE-based MCP servers |
+| stdio | `{ "type": "stdio", "command": "...", "args": [...], "env": {...} }` | Local subprocess |
+
+Per-request MCP servers are merged with the built-in `picoclaw` MCP server. The agent sees tools from all servers with the naming pattern `mcp__<server_name>__<tool_name>`.
+
+If `type` is omitted, it defaults to `http`. Invalid entries (missing required fields) are silently ignored.
+
 ## Scheduled Tasks
 
 ### Create a task
@@ -401,6 +432,7 @@ The `status` field in chat responses can be:
 | `thinking` | boolean | No | Enable extended thinking (default: false) |
 | `max_thinking_tokens` | number | No | Max thinking tokens (default: 10000, only when `thinking=true`) |
 | `show_tool_use` | boolean | No | Stream tool invocation events (default: false) |
+| `mcp_servers` | object | No | Per-request MCP servers (HTTP/SSE/stdio transports) |
 
 ### POST /task
 
