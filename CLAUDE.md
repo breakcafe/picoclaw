@@ -139,6 +139,38 @@ Key implementation details:
 3. Read/write via the shared SQLite `db` instance
 4. Tool is auto-discovered by agent as `mcp__picoclaw__<tool_name>`
 
+### Dynamic MCP servers (per-request)
+
+`POST /chat` accepts an optional `mcp_servers` field that lets callers attach
+additional MCP servers to a specific request. These are merged with the built-in
+`picoclaw` MCP server and passed to the SDK's `query()` call.
+
+Supported transport types (maps to SDK `McpServerConfig`):
+
+| Transport | Required fields |
+|-----------|----------------|
+| `http` | `url` (and optional `headers`) |
+| `sse` | `url` (and optional `headers`) |
+| `stdio` | `command` (and optional `args`, `env`) |
+
+Example request with an HTTP MCP server:
+
+```json
+{
+  "message": "请帮我分析一下最近一周的支出情况",
+  "mcp_servers": {
+    "kapii": {
+      "type": "http",
+      "url": "http://example.com/kapii-mcp-server/mcp"
+    }
+  }
+}
+```
+
+The agent will see tools from all configured MCP servers. Tool names follow the
+pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
+`mcp__kapii__*` tools alongside the built-in `mcp__picoclaw__*` tools.
+
 ## Non-Negotiable Principles
 
 1. **Memory and conversation history are core** — never treat as optional. Cross-request

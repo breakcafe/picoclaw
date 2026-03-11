@@ -120,6 +120,17 @@
                     "stream": true,
                     "max_execution_ms": 120000
                   }
+                },
+                "withMcpServer": {
+                  "value": {
+                    "message": "请帮我分析一下最近一周的支出情况",
+                    "mcp_servers": {
+                      "kapii": {
+                        "type": "http",
+                        "url": "http://example.com/mcp-server"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1035,6 +1046,68 @@
             "type": "boolean",
             "default": false,
             "description": "Stream tool invocation events. When true and stream=true, SSE\noutput includes 'tool_use' events showing which tools the agent\ncalls and their inputs.\n"
+          },
+          "mcp_servers": {
+            "type": "object",
+            "description": "Per-request MCP servers merged with the built-in picoclaw server.\nEach key is a server name; the value defines the transport config.\nSupports stdio, SSE, and HTTP transports (maps to SDK McpServerConfig).\n",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "url"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "http",
+                        "sse"
+                      ]
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "headers": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "command"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "stdio"
+                      ]
+                    },
+                    "command": {
+                      "type": "string"
+                    },
+                    "args": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "env": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
           }
         }
       },

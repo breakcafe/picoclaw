@@ -341,6 +341,107 @@ describe('http server', () => {
     expect(capturedInput.showToolUse).toBe(false);
   });
 
+  it('passes mcp_servers to engine when provided in chat request', async () => {
+    let capturedInput: any;
+    const captureEngine: AgentRunner = {
+      async run(input) {
+        capturedInput = input;
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-mcp',
+          lastAssistantUuid: 'uuid-mcp',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        message: 'use mcp',
+        mcp_servers: {
+          kapii: {
+            type: 'http',
+            url: 'http://example.com/mcp',
+          },
+          analytics: {
+            type: 'sse',
+            url: 'http://example.com/sse',
+            headers: { Authorization: 'Bearer tok' },
+          },
+        },
+      });
+
+    expect(capturedInput.mcpServers).toEqual({
+      kapii: { type: 'http', url: 'http://example.com/mcp' },
+      analytics: {
+        type: 'sse',
+        url: 'http://example.com/sse',
+        headers: { Authorization: 'Bearer tok' },
+      },
+    });
+  });
+
+  it('ignores invalid mcp_servers entries', async () => {
+    let capturedInput: any;
+    const captureEngine: AgentRunner = {
+      async run(input) {
+        capturedInput = input;
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-mcp2',
+          lastAssistantUuid: 'uuid-mcp2',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        message: 'test invalid',
+        mcp_servers: {
+          bad1: { type: 'http' },
+          bad2: 'not-an-object',
+          good: { type: 'http', url: 'http://valid.com/mcp' },
+        },
+      });
+
+    expect(capturedInput.mcpServers).toEqual({
+      good: { type: 'http', url: 'http://valid.com/mcp' },
+    });
+  });
+
+  it('does not pass mcpServers when mcp_servers is omitted', async () => {
+    let capturedInput: any;
+    const captureEngine: AgentRunner = {
+      async run(input) {
+        capturedInput = input;
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-none',
+          lastAssistantUuid: 'uuid-none',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'no mcp' });
+
+    expect(capturedInput.mcpServers).toBeUndefined();
+  });
+
   it('accepts stop request and invokes shutdown callback', async () => {
     const response = await request(app)
       .post('/control/stop')

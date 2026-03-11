@@ -97,6 +97,13 @@ paths:
                   sender_name: Verifier
                   stream: true
                   max_execution_ms: 120000
+              withMcpServer:
+                value:
+                  message: 请帮我分析一下最近一周的支出情况
+                  mcp_servers:
+                    kapii:
+                      type: http
+                      url: http://example.com/mcp-server
       responses:
         '200':
           description: Chat processed successfully (JSON or SSE stream)
@@ -736,6 +743,48 @@ components:
             Stream tool invocation events. When true and stream=true, SSE
             output includes 'tool_use' events showing which tools the agent
             calls and their inputs.
+        mcp_servers:
+          type: object
+          description: |
+            Per-request MCP servers merged with the built-in picoclaw server.
+            Each key is a server name; the value defines the transport config.
+            Supports stdio, SSE, and HTTP transports (maps to SDK McpServerConfig).
+          additionalProperties:
+            oneOf:
+              - type: object
+                required:
+                  - url
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - http
+                      - sse
+                  url:
+                    type: string
+                    format: uri
+                  headers:
+                    type: object
+                    additionalProperties:
+                      type: string
+              - type: object
+                required:
+                  - command
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - stdio
+                  command:
+                    type: string
+                  args:
+                    type: array
+                    items:
+                      type: string
+                  env:
+                    type: object
+                    additionalProperties:
+                      type: string
 
     OutboundMessage:
       type: object

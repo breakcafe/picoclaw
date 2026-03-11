@@ -2,7 +2,11 @@ import { randomUUID } from 'crypto';
 
 import { Request, Response, Router } from 'express';
 
-import { AgentRunner, StreamCallbacks } from '../agent-engine.js';
+import {
+  AgentRunner,
+  McpServerConfig,
+  StreamCallbacks,
+} from '../agent-engine.js';
 import {
   ASSISTANT_NAME,
   MAX_EXECUTION_MS,
@@ -39,6 +43,7 @@ interface ChatRequestBody {
   thinking?: boolean;
   max_thinking_tokens?: number;
   show_tool_use?: boolean;
+  mcp_servers?: Record<string, McpServerConfig>;
 }
 
 function getExecutionTimeout(ms?: number): number {
@@ -63,6 +68,73 @@ function resolveConversation(body: ChatRequestBody): {
   }
 
   return { id: body.conversation_id, isNew: false };
+}
+
+function validateMcpServers(
+  raw: unknown,
+): Record<string, McpServerConfig> | null {
+  if (raw === undefined || raw === null) {
+    return null;
+  }
+
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return null;
+  }
+
+  const result: Record<string, McpServerConfig> = {};
+  for (const [name, config] of Object.entries(raw as Record<string, unknown>)) {
+    if (
+      typeof config !== 'object' ||
+      config === null ||
+      Array.isArray(config)
+    ) {
+      continue;
+    }
+
+    const cfg = config as Record<string, unknown>;
+    const type = (cfg.type as string) || 'http';
+
+    if (type === 'http' || type === 'sse') {
+      if (typeof cfg.url !== 'string' || !cfg.url) {
+        continue;
+      }
+      const entry: {
+        type: 'http' | 'sse';
+        url: string;
+        headers?: Record<string, string>;
+      } = {
+        type,
+        url: cfg.url,
+      };
+      if (
+        cfg.headers &&
+        typeof cfg.headers === 'object' &&
+        !Array.isArray(cfg.headers)
+      ) {
+        entry.headers = cfg.headers as Record<string, string>;
+      }
+      result[name] = entry;
+    } else if (type === 'stdio') {
+      if (typeof cfg.command !== 'string' || !cfg.command) {
+        continue;
+      }
+      const entry: {
+        type: 'stdio';
+        command: string;
+        args?: string[];
+        env?: Record<string, string>;
+      } = { type: 'stdio', command: cfg.command };
+      if (Array.isArray(cfg.args)) {
+        entry.args = cfg.args as string[];
+      }
+      if (cfg.env && typeof cfg.env === 'object' && !Array.isArray(cfg.env)) {
+        entry.env = cfg.env as Record<string, string>;
+      }
+      result[name] = entry;
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 function containsSessionEndMarker(text: string | null | undefined): boolean {
@@ -124,6 +196,7 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
           ? 10000
           : undefined;
     const showToolUse = body.show_tool_use === true;
+    const mcpServers = validateMcpServers(body.mcp_servers);
 
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -182,6 +255,7 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
           assistantName: ASSISTANT_NAME,
           maxThinkingTokens,
           showToolUse,
+          mcpServers: mcpServers ?? undefined,
         },
         streamCallbacks,
       );
