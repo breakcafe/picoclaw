@@ -159,9 +159,9 @@ Example request with an HTTP MCP server:
 {
   "message": "请帮我分析一下最近一周的支出情况",
   "mcp_servers": {
-    "kapii": {
+    "finance": {
       "type": "http",
-      "url": "http://example.com/kapii-mcp-server/mcp"
+      "url": "http://example.com/mcp-server/mcp"
     }
   }
 }
@@ -169,7 +169,7 @@ Example request with an HTTP MCP server:
 
 The agent will see tools from all configured MCP servers. Tool names follow the
 pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
-`mcp__kapii__*` tools alongside the built-in `mcp__picoclaw__*` tools.
+`mcp__finance__*` tools alongside the built-in `mcp__picoclaw__*` tools.
 
 ## Non-Negotiable Principles
 

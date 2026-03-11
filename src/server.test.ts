@@ -363,7 +363,7 @@ describe('http server', () => {
       .send({
         message: 'use mcp',
         mcp_servers: {
-          kapii: {
+          finance: {
             type: 'http',
             url: 'http://example.com/mcp',
           },
@@ -376,7 +376,7 @@ describe('http server', () => {
       });
 
     expect(capturedInput.mcpServers).toEqual({
-      kapii: { type: 'http', url: 'http://example.com/mcp' },
+      finance: { type: 'http', url: 'http://example.com/mcp' },
       analytics: {
         type: 'sse',
         url: 'http://example.com/sse',

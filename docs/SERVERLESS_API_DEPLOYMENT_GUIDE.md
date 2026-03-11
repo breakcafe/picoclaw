@@ -455,21 +455,23 @@ Supported transports:
 | `sse` | `url` | `headers` |
 | `stdio` | `command` | `args`, `env` |
 
+If `type` is omitted, it defaults to `http`.
+
 Example:
 
 ```json
 {
   "message": "分析最近一周的支出",
   "mcp_servers": {
-    "analytics": {
+    "finance": {
       "type": "http",
-      "url": "http://analytics.example.com/mcp"
+      "url": "http://example.com/mcp-server/mcp"
     }
   }
 }
 ```
 
-The agent will see tools from all MCP servers as `mcp__<name>__<tool>`. Invalid entries are silently ignored.
+The agent will see tools from all MCP servers as `mcp__<name>__<tool>`. Invalid entries (missing required fields) are silently ignored.
 
 ### 6.4 List All Conversations
 

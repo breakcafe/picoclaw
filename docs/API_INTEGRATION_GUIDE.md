@@ -234,9 +234,9 @@ curl -X POST http://localhost:9000/chat \
   -d '{
     "message": "请帮我分析一下最近一周的支出情况",
     "mcp_servers": {
-      "kapii": {
+      "finance": {
         "type": "http",
-        "url": "http://example.com/kapii-mcp-server/mcp"
+        "url": "http://example.com/mcp-server/mcp"
       }
     }
   }'
