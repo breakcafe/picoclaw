@@ -64,6 +64,9 @@ fi
 # The SDK writes auto-memory to $HOME/.claude/projects/<cwd-slug>/memory/
 # but the agent's cwd is /data/memory. Without this link, auto-memory
 # writes go to an isolated directory that the agent never sees.
+# NOTE: As of SDK 0.2.34, auto-memory is gated behind an internal feature
+# flag (tengu_herring_clock, default false) and is non-functional in
+# SDK/non-interactive mode. This symlink is a forward-compatibility measure.
 MEMORY_DIR="${MEMORY_DIR:-/data/memory}"
 PROJECT_SLUG=$(echo "${MEMORY_DIR}" | sed 's|/|-|g')
 AUTO_MEMORY_DIR="${CLAUDE_HOME}/projects/${PROJECT_SLUG}/memory"

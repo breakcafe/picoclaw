@@ -41,7 +41,11 @@ function runScript(script: string): void {
 describe('entrypoint auto-memory symlink', () => {
   let tmpDir: string;
 
-  function setup(): { claudeHome: string; memoryDir: string; autoMemoryDir: string } {
+  function setup(): {
+    claudeHome: string;
+    memoryDir: string;
+    autoMemoryDir: string;
+  } {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'picoclaw-entrypoint-'));
     const claudeHome = path.join(tmpDir, '.claude');
     const memoryDir = path.join(tmpDir, 'data', 'memory');
@@ -50,7 +54,12 @@ describe('entrypoint auto-memory symlink', () => {
 
     // Compute the auto-memory path the same way entrypoint.sh does
     const projectSlug = memoryDir.replace(/\//g, '-');
-    const autoMemoryDir = path.join(claudeHome, 'projects', projectSlug, 'memory');
+    const autoMemoryDir = path.join(
+      claudeHome,
+      'projects',
+      projectSlug,
+      'memory',
+    );
 
     return { claudeHome, memoryDir, autoMemoryDir };
   }

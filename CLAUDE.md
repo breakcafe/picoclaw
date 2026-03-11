@@ -97,7 +97,7 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
 
 | Mount | Runtime access | Agent `cwd` | Purpose |
 |-------|---------------|-------------|---------|
-| `/data/memory` | Read/Write | **Yes** (set as cwd) | CLAUDE.md persona, agent workspace (subdirs created on-demand) |
+| `/data/memory` | Read/Write | **Yes** (set as cwd) | CLAUDE.md persona (optional), agent workspace (subdirs created on-demand) |
 | `/data/skills` | Read-only sync | No | SKILL.md definitions → synced to `.claude/skills/` at startup |
 | `/data/sessions` | Read/Write | No | `.claude/` session state for SDK resume |
 | `/data/store` | Write (sync target) | No | Persistent copy of SQLite DB |
@@ -114,8 +114,8 @@ implemented in `src/agent-engine.ts`:
 | Global | `/data/memory/global/CLAUDE.md` | `loadGlobalClaudeMd()` → `systemPrompt: { preset: 'claude_code', append }` | Organization-wide policies, shared rules |
 
 Assembly order: **Claude Code preset** → **global CLAUDE.md** (appended to system prompt) →
-**user CLAUDE.md** (loaded by CLI from `cwd`). Both files are optional; at minimum the user
-persona should exist.
+**user CLAUDE.md** (loaded by CLI from `cwd`). Both files are optional. All `/data/*` volumes
+can be mounted as empty directories — the container starts and functions without a persona file.
 
 Key implementation details:
 
@@ -221,11 +221,14 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
   `ensureConversationExists()` before creating a task to avoid FK constraint violations.
 - **`format` vs `format:fix`**: Both run Prettier write. The pre-commit hook calls `format:fix`.
   Use `format:check` to verify without modifying.
-- **Auto-memory symlink**: Claude Code writes auto-memory to
-  `$HOME/.claude/projects/<cwd-slug>/memory/MEMORY.md`. Because the agent's `cwd` is
-  `/data/memory`, those writes would land in an isolated directory the agent never reads.
-  `entrypoint.sh` replaces this directory with a symlink to `/data/memory/` so auto-memory
-  content (e.g., `MEMORY.md`) is visible in the agent's working directory.
+- **Auto-memory is non-functional**: Claude Code's auto-memory feature (`MEMORY.md`
+  auto-generation) is gated behind an internal feature flag (`tengu_herring_clock`,
+  default `false`) in the CLI. In SDK/non-interactive mode, the auto-memory system prompt
+  is never injected, so `MEMORY.md` is never written — regardless of the
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY` setting. `entrypoint.sh` sets up a symlink from the
+  SDK's auto-memory path to `/data/memory/` as a forward-compatibility measure, but the
+  feature is currently inert. Cross-session memory must be implemented in the persona
+  (`CLAUDE.md`) by instructing the agent to read/write files in `/data/memory/` explicitly.
 
 ## Change Guardrails
 

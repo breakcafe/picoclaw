@@ -80,7 +80,9 @@ Default paths (overridable via environment variables):
 
 All four `/data/*` paths must be on persistent storage (EFS, NAS, or local volumes) for cross-request state to survive.
 
-**Auto-memory symlink:** Claude Code's auto-memory feature writes `MEMORY.md` to `$HOME/.claude/projects/<cwd-slug>/memory/`. Because the agent's `cwd` is `/data/memory`, these writes would go to an isolated path the agent never reads from. The `entrypoint.sh` script automatically replaces this directory with a symlink to `/data/memory/`, ensuring auto-memory content is visible in the agent's working directory. Any pre-existing `MEMORY.md` is preserved during the migration.
+**Auto-memory (non-functional):** Claude Code's auto-memory feature (`MEMORY.md` auto-generation) is gated behind an internal CLI feature flag (`tengu_herring_clock`, default `false`). In SDK/non-interactive mode, the auto-memory system prompt is never injected, so `MEMORY.md` is never automatically written — regardless of the `CLAUDE_CODE_DISABLE_AUTO_MEMORY` setting. The `entrypoint.sh` script sets up a symlink from the SDK's internal auto-memory path to `/data/memory/` as a forward-compatibility measure, but the feature is currently inert. If cross-session memory is needed, instruct the agent via the persona (`CLAUDE.md`) to explicitly read/write files in `/data/memory/`.
+
+**Empty directory startup:** All four `/data/*` volumes can be mounted as empty directories. The container creates the necessary internal structures (`/data/sessions/.claude/`, database, skill sync) automatically at startup. No `CLAUDE.md` is required — the agent runs with the default Claude Code system prompt. Adding a `CLAUDE.md` persona is recommended but optional.
 
 ### 2.4 Persona & System Prompt
 
@@ -131,11 +133,11 @@ When deploying with cloud object storage or network-attached filesystems, map th
 ```
 User-specific storage (per-user OSS bucket or subdirectory):
 ├── memory/         → mount to /data/memory    (persona, agent workspace)
-│   ├── CLAUDE.md                              (user persona, required)
+│   ├── CLAUDE.md                              (user persona, recommended)
 │   ├── global/
 │   │   └── CLAUDE.md                          (global persona overlay, optional)
 │   ├── skills/                                (user-created skills, auto-discovered)
-│   ├── conversations/                         (archived transcripts, auto-created)
+│   ├── conversations/                         (archived transcripts, auto-created on compaction)
 │   └── [agent-managed files]                  (no enforced structure)
 ├── store/          → mount to /data/store     (persistent SQLite)
 │   └── messages.db
