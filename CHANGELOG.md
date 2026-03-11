@@ -5,6 +5,12 @@ All notable changes to PicoClaw will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Org directory (`ORG_DIR`)**: single env var + read-only mount consolidates org
+  persona (`CLAUDE.md`), org skills (`skills/`), and managed MCP servers
+  (`managed-mcp.json`) into one directory. Replaces the previous
+  `/data/memory/global/CLAUDE.md` convention.
+- **Org MCP servers**: when `$ORG_DIR/managed-mcp.json` exists, it is copied to
+  `/etc/claude-code/managed-mcp.json` at startup for Claude Code CLI auto-discovery.
 - **Dynamic MCP server support**: `POST /chat` accepts `mcp_servers` field for
   per-request MCP server configuration (HTTP, SSE, and stdio transports).
   Servers are merged with the built-in picoclaw MCP server and their tools are
@@ -15,10 +21,24 @@ All notable changes to PicoClaw will be documented in this file.
 - Cleaned up legacy NanoClaw docs from `docs/` directory
 
 ### Changed
+- **Skill merge strategy**: user skills (`/data/memory/skills/`) are now additive
+  only — they supplement org and built-in skills but cannot override same-name
+  skills. Priority: built-in → org (authoritative) → user (additive).
+- **Terminology**: "global persona" → "org persona", "shared skills" → "org skills"
+  throughout code and documentation.
+- `SKILLS_DIR` default changes when `ORG_DIR` is set: derives from `$ORG_DIR/skills`
+  instead of fixed `/data/skills`. Explicit `SKILLS_DIR` env var still overrides.
+- `loadGlobalClaudeMd()` renamed to `loadOrgClaudeMd()` in `agent-engine.ts`.
+- Skills API response field renamed: `shared` → `org` in `GET /admin/skills` and
+  `POST /admin/reload-skills`.
 - Dockerfile converted to multi-stage build: TypeScript compiles inside Docker,
   no local Node.js required for image builds
 - Makefile `docker-build` no longer depends on local `build-ts` target
 - `picoclaw.sh` build step no longer requires local `npm run build`
+
+### Removed
+- `/data/memory/global/CLAUDE.md` path convention (NanoClaw legacy, never used
+  in PicoClaw production deployments). Use `$ORG_DIR/CLAUDE.md` instead.
 
 ## [1.2.12] — 2026-03-09
 

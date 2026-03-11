@@ -33,7 +33,6 @@ docker-run: _ensure-data-dirs ## Run container interactively with volume mounts
 		-p $(PORT):9000 \
 		--env-file .env \
 		-v $(CURDIR)/dev-data/memory:/data/memory \
-		-v $(CURDIR)/dev-data/skills:/data/skills \
 		-v $(CURDIR)/dev-data/store:/data/store \
 		-v $(CURDIR)/dev-data/sessions:/data/sessions \
 		$(IMAGE_NAME):$(IMAGE_TAG)
@@ -44,7 +43,6 @@ docker-run-bg: _ensure-data-dirs ## Run container in background
 		-p $(PORT):9000 \
 		--env-file .env \
 		-v $(CURDIR)/dev-data/memory:/data/memory \
-		-v $(CURDIR)/dev-data/skills:/data/skills \
 		-v $(CURDIR)/dev-data/store:/data/store \
 		-v $(CURDIR)/dev-data/sessions:/data/sessions \
 		$(IMAGE_NAME):$(IMAGE_TAG)
@@ -94,14 +92,13 @@ clean: docker-stop ## Stop container and remove images
 	docker rmi $(IMAGE_NAME):$(IMAGE_TAG) 2>/dev/null || true
 	docker rmi $(IMAGE_NAME):lambda 2>/dev/null || true
 
-clean-data: ## Remove local dev store and sessions (keeps memory and skills)
+clean-data: ## Remove local dev store and sessions (keeps memory)
 	rm -rf dev-data/store dev-data/sessions
 
 # ── Internal ─────────────────────────────────────────────
 
 _ensure-data-dirs:
-	@mkdir -p dev-data/memory/global dev-data/memory/conversations
-	@mkdir -p dev-data/skills
+	@mkdir -p dev-data/memory dev-data/memory/conversations
 	@mkdir -p dev-data/store
 	@mkdir -p dev-data/sessions/.claude/skills
 	@test -f dev-data/memory/CLAUDE.md || printf '# PicoClaw Memory\n\nYou are a helpful assistant.\n' > dev-data/memory/CLAUDE.md

@@ -519,7 +519,7 @@ paths:
         - Admin
       summary: Reload skills from all tiers
       description: |
-        Re-syncs skills from built-in, shared, and user directories to `.claude/skills/`.
+        Re-syncs skills from built-in, org, and user directories to `.claude/skills/`.
         Returns the updated skills summary.
       operationId: reloadSkills
       responses:
@@ -1245,7 +1245,7 @@ components:
       additionalProperties: false
       required:
         - builtIn
-        - shared
+        - org
         - user
         - effective
       properties:
@@ -1253,7 +1253,7 @@ components:
           type: array
           items:
             type: string
-        shared:
+        org:
           type: array
           items:
             type: string

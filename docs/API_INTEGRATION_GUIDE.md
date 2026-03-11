@@ -375,7 +375,7 @@ curl -X POST http://localhost:9000/admin/reload-skills \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-Re-syncs skills from all three tiers (built-in, shared, user) to `.claude/skills/`.
+Re-syncs skills from all three tiers (built-in, org, user) to `.claude/skills/`.
 
 ### Get skills summary
 

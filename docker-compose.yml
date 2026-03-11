@@ -5,9 +5,10 @@ services:
       - '9000:9000'
     volumes:
       - ./dev-data/memory:/data/memory
-      - ./dev-data/skills:/data/skills
       - ./dev-data/store:/data/store
       - ./dev-data/sessions:/data/sessions
+      # Uncomment to mount org directory (read-only):
+      # - ./dev-data/org:/data/org:ro
     environment:
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -16,3 +17,5 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_EXECUTION_MS=${MAX_EXECUTION_MS:-300000}
       - TZ=${TZ:-Asia/Shanghai}
+      # Uncomment to enable org directory:
+      # - ORG_DIR=/data/org

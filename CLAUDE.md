@@ -97,8 +97,8 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
 
 | Mount | Runtime access | Agent `cwd` | Purpose |
 |-------|---------------|-------------|---------|
-| `/data/memory` | Read/Write | **Yes** (set as cwd) | CLAUDE.md persona (optional), agent workspace (subdirs created on-demand) |
-| `/data/skills` | Read-only sync | No | SKILL.md definitions → synced to `.claude/skills/` at startup |
+| `/data/org` | Read-only | No | Org persona, org skills, managed MCP config (optional) |
+| `/data/memory` | Read/Write | **Yes** (set as cwd) | User persona (`CLAUDE.md`), agent workspace |
 | `/data/sessions` | Read/Write | No | `.claude/` session state for SDK resume |
 | `/data/store` | Write (sync target) | No | Persistent copy of SQLite DB |
 | `/tmp` | Read/Write | No | Local runtime DB (ephemeral, fast) |
@@ -110,15 +110,15 @@ implemented in `src/agent-engine.ts`:
 
 | Tier | File | Code mechanism | Purpose |
 |------|------|----------------|---------|
+| Org | `$ORG_DIR/CLAUDE.md` | `loadOrgClaudeMd()` → `systemPrompt: { preset: 'claude_code', append }` | Organization-wide policies, shared rules |
 | User | `/data/memory/CLAUDE.md` | `cwd: MEMORY_DIR` + `settingSources: ['project']` → SDK auto-discovers | Agent identity, capabilities, user-specific rules |
-| Global | `/data/memory/global/CLAUDE.md` | `loadGlobalClaudeMd()` → `systemPrompt: { preset: 'claude_code', append }` | Organization-wide policies, shared rules |
 
-Assembly order (default): **Claude Code preset** → **global CLAUDE.md** (appended) →
+Assembly order (default): **Claude Code preset** → **org CLAUDE.md** (appended, if `ORG_DIR` is set) →
 **user CLAUDE.md** (loaded by CLI from `cwd`). Both files are optional. All `/data/*` volumes
 can be mounted as empty directories — the container starts and functions without a persona file.
 
 **System prompt override:** Set `SYSTEM_PROMPT_OVERRIDE` env var to completely replace the
-Claude Code preset + global CLAUDE.md with a custom system prompt. The user CLAUDE.md
+Claude Code preset + org CLAUDE.md with a custom system prompt. The user CLAUDE.md
 (from `cwd`) is still loaded on top. When unset (default), the standard two-tier append
 model is used.
 
@@ -126,13 +126,25 @@ Key implementation details:
 
 - `settingSources: ['project', 'user']` is required for the SDK to discover CLAUDE.md in `cwd`.
   Without it, the SDK loads no filesystem settings (isolation by default).
-- When `/data/memory/global/CLAUDE.md` does not exist, `systemPrompt` is `undefined` and the
-  SDK falls back to the default Claude Code preset. The user CLAUDE.md still loads either way.
-- When `SYSTEM_PROMPT_OVERRIDE` is set, it takes precedence over both the preset and global
+- When `ORG_DIR` is empty or `$ORG_DIR/CLAUDE.md` does not exist, `systemPrompt` is `undefined`
+  and the SDK falls back to the default Claude Code preset. The user CLAUDE.md still loads.
+- When `SYSTEM_PROMPT_OVERRIDE` is set, it takes precedence over both the preset and org
   CLAUDE.md. The value is passed as a plain string to `systemPrompt`, fully replacing the
   built-in Claude Code prompt. Use with caution — this removes built-in tool instructions.
 - The `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1'` setting in `.claude/settings.json`
   also enables CLAUDE.md discovery in `additionalDirectories` (skill paths from `SKILLS_DIR`).
+
+### Org MCP servers (`managed-mcp.json`)
+
+When `ORG_DIR` is set and `$ORG_DIR/managed-mcp.json` exists, `entrypoint.sh` copies it
+to `/etc/claude-code/managed-mcp.json`. The Claude Code CLI subprocess auto-discovers this
+file and loads the MCP servers — no code changes needed.
+
+MCP servers come from three sources:
+
+1. `managed-mcp.json` (from `$ORG_DIR`) — org-level, CLI auto-discovers
+2. Built-in `picoclaw` — always present, hardcoded in `agent-engine.ts`
+3. Per-request `mcp_servers` — passed via `POST /chat` body
 
 ### Adding a new route
 
@@ -183,8 +195,8 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 
 1. **Memory and conversation history are core** — never treat as optional. Cross-request
    personalization depends on persistent mounted paths.
-2. **Persistent data model** — `MEMORY_DIR`, `STORE_DIR`, `SESSIONS_DIR`, `SKILLS_DIR`
-   must all be preserved on mounted volumes.
+2. **Persistent data model** — `MEMORY_DIR`, `STORE_DIR`, `SESSIONS_DIR`
+   must all be preserved on mounted volumes. `ORG_DIR` is read-only and optional.
 3. **Graceful stop must sync data** — both `POST /control/stop` and `SIGTERM`/`SIGINT`
    trigger `syncDatabaseToVolume()` → `closeDatabase()` → exit.
 4. **SDK version alignment** — `@anthropic-ai/claude-agent-sdk`: `0.2.34`,
@@ -202,11 +214,13 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 | `PORT` | `9000` | `src/config.ts` |
 | `MAX_EXECUTION_MS` | `300000` | `src/config.ts` → AbortController timeout |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | `src/config.ts` → chat response |
+| `ORG_DIR` | (empty) | `src/config.ts` → org persona, org skills, managed MCP config |
+| `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` | `src/config.ts` → org skills directory |
 | `PICOCLAW_DB_PATH` | `/tmp/messages.db` | MCP server env var (set by agent-engine; `NANOCLAW_DB_PATH` as fallback) |
 | `PICOCLAW_CONVERSATION_ID` | per-request | MCP server env var (set by agent-engine; `NANOCLAW_CONVERSATION_ID` as fallback) |
 | `PICOCLAW_IS_MAIN` | `1` | MCP server env var — enables cross-conversation task management |
-| `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces Claude Code preset + global CLAUDE.md |
-| `USER_SKILLS_DIR` | `/data/memory/skills` | User-created skills directory (overlay on SKILLS_DIR) |
+| `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces Claude Code preset + org CLAUDE.md |
+| `USER_SKILLS_DIR` | `/data/memory/skills` | User-created skills directory (additive supplement to org skills) |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |
 | `TASK_LOG_RETENTION` | `100` | Max task run logs kept per task (oldest pruned on sync) |
 
@@ -221,8 +235,9 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
   triggers `syncDatabaseToVolume()` which does `wal_checkpoint(TRUNCATE)` + file copy to
   `STORE_DIR`. Never write directly to the volume path.
 - **Pre-compact hook**: `agent-engine.ts` archives transcripts to
-  `/data/memory/conversations/` when Claude compacts context. This creates markdown files
-  from NDJSON session data.
+  `/data/memory/conversations/` when Claude compacts context. This rarely triggers in
+  PicoClaw's request-driven model — only when a single `query()` execution approaches the
+  context window limit.
 - **MessageStream wrapping**: Prompts are wrapped in an `AsyncIterable` (not passed as strings)
   to prevent the SDK from prematurely closing stdin and killing subagents. See
   `MessageStream` class in `agent-engine.ts`.
@@ -238,6 +253,9 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
   SDK's auto-memory path to `/data/memory/` as a forward-compatibility measure, but the
   feature is currently inert. Cross-session memory must be implemented in the persona
   (`CLAUDE.md`) by instructing the agent to read/write files in `/data/memory/` explicitly.
+- **Org skills are authoritative**: User skills (from `USER_SKILLS_DIR`) are additive only —
+  they cannot override org or built-in skills of the same name. This ensures org policies
+  remain the authoritative source.
 
 ## Change Guardrails
 

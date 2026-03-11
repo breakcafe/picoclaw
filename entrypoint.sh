@@ -5,7 +5,7 @@ CLAUDE_HOME="/home/node/.claude"
 SESSION_CLAUDE_DIR="/data/sessions/.claude"
 SETTINGS_FILE="${CLAUDE_HOME}/settings.json"
 
-mkdir -p /data/memory /data/skills /data/store /data/sessions
+mkdir -p /data/memory /data/store /data/sessions
 
 if [ -d "${SESSION_CLAUDE_DIR}" ]; then
   rm -rf "${CLAUDE_HOME}"
@@ -25,7 +25,19 @@ if [ ! -f "${SETTINGS_FILE}" ]; then
 JSON
 fi
 
-# Three-tier skill sync: built-in → shared → user (each overrides previous)
+# ── Org directory setup ──────────────────────────────────────────
+# When ORG_DIR is set, copy managed-mcp.json to the Claude Code CLI
+# system path so the CLI subprocess auto-discovers org MCP servers.
+ORG_DIR="${ORG_DIR:-}"
+if [ -n "${ORG_DIR}" ] && [ -d "${ORG_DIR}" ]; then
+  if [ -f "${ORG_DIR}/managed-mcp.json" ]; then
+    mkdir -p /etc/claude-code
+    cp "${ORG_DIR}/managed-mcp.json" /etc/claude-code/managed-mcp.json
+  fi
+fi
+
+# ── Three-tier skill sync ────────────────────────────────────────
+# Load order: built-in → org (authoritative) → user (additive only)
 SKILLS_DST="${CLAUDE_HOME}/skills"
 mkdir -p "${SKILLS_DST}"
 find "${SKILLS_DST}" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
@@ -40,9 +52,18 @@ if [ -d "${BUILTIN_SRC}" ]; then
   done
 fi
 
-# 2. Shared skills (read-only mount)
-SKILLS_SRC="/data/skills"
-if [ -d "${SKILLS_SRC}" ]; then
+# 2. Org skills (from ORG_DIR or SKILLS_DIR fallback — overrides built-in)
+if [ -n "${ORG_DIR}" ] && [ -d "${ORG_DIR}/skills" ]; then
+  SKILLS_SRC="${ORG_DIR}/skills"
+elif [ -n "${SKILLS_DIR:-}" ] && [ -d "${SKILLS_DIR:-}" ]; then
+  SKILLS_SRC="${SKILLS_DIR}"
+elif [ -d "/data/skills" ]; then
+  SKILLS_SRC="/data/skills"
+else
+  SKILLS_SRC=""
+fi
+
+if [ -n "${SKILLS_SRC}" ]; then
   for dir in "${SKILLS_SRC}"/*; do
     if [ -d "${dir}" ]; then
       cp -r "${dir}" "${SKILLS_DST}/$(basename "${dir}")"
@@ -50,16 +71,20 @@ if [ -d "${SKILLS_SRC}" ]; then
   done
 fi
 
-# 3. User skills (user's private volume, highest priority)
+# 3. User skills (additive only — skip skills that already exist)
 USER_SKILLS_SRC="${USER_SKILLS_DIR:-/data/memory/skills}"
 if [ -d "${USER_SKILLS_SRC}" ]; then
   for dir in "${USER_SKILLS_SRC}"/*; do
     if [ -d "${dir}" ]; then
-      cp -r "${dir}" "${SKILLS_DST}/$(basename "${dir}")"
+      skill_name="$(basename "${dir}")"
+      if [ ! -d "${SKILLS_DST}/${skill_name}" ]; then
+        cp -r "${dir}" "${SKILLS_DST}/${skill_name}"
+      fi
     fi
   done
 fi
 
+# ── Auto-memory symlink ─────────────────────────────────────────
 # Link Claude Code auto-memory directory to the actual memory volume.
 # The SDK writes auto-memory to $HOME/.claude/projects/<cwd-slug>/memory/
 # but the agent's cwd is /data/memory. Without this link, auto-memory
