@@ -5,7 +5,8 @@
 # Tests multi-turn conversations, memory persistence, skill sync,
 # conversation isolation, task CRUD, auth, container restart recovery,
 # built-in agent-browser skill, SSE streaming, thinking/tool display,
-# and agent background execution — all against a running Docker container.
+# agent background execution, and cross-session memory recall —
+# all against a running Docker container.
 #
 # Prerequisites:
 #   - Docker running
@@ -1033,8 +1034,68 @@ else
   fail "Conversation 404" "expected 404, got $CODE"
 fi
 
-# ── 14. Graceful Shutdown ────────────────────────────────
-section "14. Final Graceful Shutdown"
+# ── 14. Cross-Session Memory (Auto-Memory) ────────────────
+section "14. Cross-Session Memory"
+
+if [ "$SKIP_CHAT" = true ]; then
+  skip "Cross-session memory: teach fact (--no-chat)"
+  skip "Cross-session memory: recall in new session (--no-chat)"
+else
+  # Use a unique, unmistakable fact that the agent is unlikely to hallucinate
+  MEMORY_FACT="PicoTestCode7749"
+
+  # 14a. Teach the agent a unique fact in a fresh conversation
+  cat > "$TMP_DIR/mem1.json" << JSON
+{"message":"Please remember this important code for me: $MEMORY_FACT. Write it to a file at /data/memory/notes/e2e-memory-test.txt so you can find it later. Confirm you saved it.","sender":"test","sender_name":"Tester"}
+JSON
+  MEM1=$(api POST /chat -d @"$TMP_DIR/mem1.json")
+  MEM1_STATUS=$(echo "$MEM1" | jq -r '.status')
+  MEM1_CONV=$(echo "$MEM1" | jq -r '.conversation_id')
+
+  if [ "$MEM1_STATUS" = "success" ]; then
+    pass "Cross-session memory: taught fact in conversation $MEM1_CONV"
+  else
+    fail "Cross-session memory: teach" "status=$MEM1_STATUS"
+  fi
+
+  # Verify the file was actually written (agent may or may not have done it)
+  FILE_EXISTS=$(docker exec "$CONTAINER_NAME" cat /data/memory/notes/e2e-memory-test.txt 2>/dev/null || echo "")
+  if echo "$FILE_EXISTS" | grep -q "$MEMORY_FACT"; then
+    pass "Cross-session memory: fact persisted to /data/memory/notes/"
+  else
+    echo -e "  ${YELLOW}WARN${NC} Agent did not write the file (will rely on conversation context if resumed)"
+  fi
+
+  # 14b. Start a completely new conversation and ask for the fact
+  # Note: when the agent reads files, the JSON response may contain unescaped
+  # control characters from tool output, breaking jq. We use grep on the raw
+  # response for content checks and only use jq for simple top-level fields.
+  cat > "$TMP_DIR/mem2.json" << JSON
+{"message":"I previously asked you to remember an important code and save it to a file in /data/memory/notes/. Can you find and tell me what that code was? Check the file at /data/memory/notes/e2e-memory-test.txt","sender":"test","sender_name":"Tester"}
+JSON
+  MEM2=$(api POST /chat -d @"$TMP_DIR/mem2.json")
+  # Use grep on raw response to avoid jq control-char parse errors
+  MEM2_STATUS=$(echo "$MEM2" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
+  MEM2_CONV=$(echo "$MEM2" | grep -o '"conversation_id":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+  if [ -n "$MEM2_CONV" ] && [ "$MEM2_CONV" != "$MEM1_CONV" ]; then
+    pass "Cross-session memory: new conversation created ($MEM2_CONV)"
+  else
+    fail "Cross-session memory: isolation" "reused same conversation_id or empty"
+  fi
+
+  if [ "$MEM2_STATUS" = "success" ] && echo "$MEM2" | grep -q "$MEMORY_FACT"; then
+    pass "Cross-session memory: agent recalled '$MEMORY_FACT' in new session"
+  else
+    fail "Cross-session memory: recall" "expected '$MEMORY_FACT' in response (status=$MEM2_STATUS)"
+  fi
+
+  # Cleanup
+  docker exec "$CONTAINER_NAME" rm -rf /data/memory/notes/e2e-memory-test.txt 2>/dev/null || true
+fi
+
+# ── 15. Graceful Shutdown ────────────────────────────────
+section "15. Final Graceful Shutdown"
 
 FINAL_STOP=$(api POST /control/stop -d '{"reason":"e2e-complete"}')
 FINAL_STATUS=$(echo "$FINAL_STOP" | jq -r '.status')
