@@ -221,6 +221,11 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
   `ensureConversationExists()` before creating a task to avoid FK constraint violations.
 - **`format` vs `format:fix`**: Both run Prettier write. The pre-commit hook calls `format:fix`.
   Use `format:check` to verify without modifying.
+- **Auto-memory symlink**: Claude Code writes auto-memory to
+  `$HOME/.claude/projects/<cwd-slug>/memory/MEMORY.md`. Because the agent's `cwd` is
+  `/data/memory`, those writes would land in an isolated directory the agent never reads.
+  `entrypoint.sh` replaces this directory with a symlink to `/data/memory/` so auto-memory
+  content (e.g., `MEMORY.md`) is visible in the agent's working directory.
 
 ## Change Guardrails
 

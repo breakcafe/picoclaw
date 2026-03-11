@@ -80,6 +80,8 @@ Default paths (overridable via environment variables):
 
 All four `/data/*` paths must be on persistent storage (EFS, NAS, or local volumes) for cross-request state to survive.
 
+**Auto-memory symlink:** Claude Code's auto-memory feature writes `MEMORY.md` to `$HOME/.claude/projects/<cwd-slug>/memory/`. Because the agent's `cwd` is `/data/memory`, these writes would go to an isolated path the agent never reads from. The `entrypoint.sh` script automatically replaces this directory with a symlink to `/data/memory/`, ensuring auto-memory content is visible in the agent's working directory. Any pre-existing `MEMORY.md` is preserved during the migration.
+
 ### 2.4 Persona & System Prompt
 
 PicoClaw assembles the agent's system prompt from a **two-tier CLAUDE.md** model. This determines the agent's identity, capabilities, and behavioral rules.

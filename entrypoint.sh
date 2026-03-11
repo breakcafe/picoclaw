@@ -60,4 +60,21 @@ if [ -d "${USER_SKILLS_SRC}" ]; then
   done
 fi
 
+# Link Claude Code auto-memory directory to the actual memory volume.
+# The SDK writes auto-memory to $HOME/.claude/projects/<cwd-slug>/memory/
+# but the agent's cwd is /data/memory. Without this link, auto-memory
+# writes go to an isolated directory that the agent never sees.
+MEMORY_DIR="${MEMORY_DIR:-/data/memory}"
+PROJECT_SLUG=$(echo "${MEMORY_DIR}" | sed 's|/|-|g')
+AUTO_MEMORY_DIR="${CLAUDE_HOME}/projects/${PROJECT_SLUG}/memory"
+if [ -d "${AUTO_MEMORY_DIR}" ] && [ ! -L "${AUTO_MEMORY_DIR}" ]; then
+  # Move any existing auto-memory content to the real volume
+  if [ -f "${AUTO_MEMORY_DIR}/MEMORY.md" ]; then
+    cp -n "${AUTO_MEMORY_DIR}/MEMORY.md" "${MEMORY_DIR}/MEMORY.md" 2>/dev/null || true
+  fi
+  rm -rf "${AUTO_MEMORY_DIR}"
+fi
+mkdir -p "$(dirname "${AUTO_MEMORY_DIR}")"
+ln -sf "${MEMORY_DIR}" "${AUTO_MEMORY_DIR}"
+
 exec node /app/dist/index.js "$@"
