@@ -100,13 +100,15 @@ PicoClaw's `loadGlobalClaudeMd()` function reads this file and passes it as `sys
 
 Use this for shared policies (compliance, output format standards, tool usage rules) that should apply to all users in a multi-user deployment. If this file does not exist, no global overlay is applied and the SDK uses the default Claude Code preset.
 
-**Assembly order:**
+**Assembly order (default):**
 
 ```
 1. Claude Code preset system prompt (built-in, always present)
 2. Global CLAUDE.md content (appended via systemPrompt.append, if file exists)
 3. User CLAUDE.md content (loaded by SDK/CLI from cwd, standard Claude Code discovery)
 ```
+
+**Full override mode:** Set `SYSTEM_PROMPT_OVERRIDE` to completely replace steps 1 + 2 with a custom system prompt string. Step 3 (user CLAUDE.md) still loads on top. This is useful when you want full control over the system prompt without inheriting Claude Code's built-in instructions. Note: overriding removes the built-in tool usage guidelines, safety rules, and formatting instructions — ensure your custom prompt covers these if needed.
 
 **Example user persona** (`/data/memory/CLAUDE.md`):
 
@@ -289,6 +291,7 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | `SESSIONS_DIR` | `/data/sessions` | Session state volume |
 | `LOCAL_DB_PATH` | `/tmp/messages.db` | Local runtime database path |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | Marker string for session completion |
+| `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces the Claude Code preset system prompt and global CLAUDE.md with this string. User CLAUDE.md still loads on top. |
 | `PICOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable path (legacy `NANOCLAW_MCP_SERVER_PATH` accepted as fallback) |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before automatic cleanup |
 | `TASK_LOG_RETENTION` | `100` | Maximum task run log entries retained per task (oldest pruned) |

@@ -113,9 +113,14 @@ implemented in `src/agent-engine.ts`:
 | User | `/data/memory/CLAUDE.md` | `cwd: MEMORY_DIR` + `settingSources: ['project']` → SDK auto-discovers | Agent identity, capabilities, user-specific rules |
 | Global | `/data/memory/global/CLAUDE.md` | `loadGlobalClaudeMd()` → `systemPrompt: { preset: 'claude_code', append }` | Organization-wide policies, shared rules |
 
-Assembly order: **Claude Code preset** → **global CLAUDE.md** (appended to system prompt) →
+Assembly order (default): **Claude Code preset** → **global CLAUDE.md** (appended) →
 **user CLAUDE.md** (loaded by CLI from `cwd`). Both files are optional. All `/data/*` volumes
 can be mounted as empty directories — the container starts and functions without a persona file.
+
+**System prompt override:** Set `SYSTEM_PROMPT_OVERRIDE` env var to completely replace the
+Claude Code preset + global CLAUDE.md with a custom system prompt. The user CLAUDE.md
+(from `cwd`) is still loaded on top. When unset (default), the standard two-tier append
+model is used.
 
 Key implementation details:
 
@@ -123,6 +128,9 @@ Key implementation details:
   Without it, the SDK loads no filesystem settings (isolation by default).
 - When `/data/memory/global/CLAUDE.md` does not exist, `systemPrompt` is `undefined` and the
   SDK falls back to the default Claude Code preset. The user CLAUDE.md still loads either way.
+- When `SYSTEM_PROMPT_OVERRIDE` is set, it takes precedence over both the preset and global
+  CLAUDE.md. The value is passed as a plain string to `systemPrompt`, fully replacing the
+  built-in Claude Code prompt. Use with caution — this removes built-in tool instructions.
 - The `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1'` setting in `.claude/settings.json`
   also enables CLAUDE.md discovery in `additionalDirectories` (skill paths from `SKILLS_DIR`).
 
@@ -197,6 +205,7 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 | `PICOCLAW_DB_PATH` | `/tmp/messages.db` | MCP server env var (set by agent-engine; `NANOCLAW_DB_PATH` as fallback) |
 | `PICOCLAW_CONVERSATION_ID` | per-request | MCP server env var (set by agent-engine; `NANOCLAW_CONVERSATION_ID` as fallback) |
 | `PICOCLAW_IS_MAIN` | `1` | MCP server env var — enables cross-conversation task management |
+| `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces Claude Code preset + global CLAUDE.md |
 | `USER_SKILLS_DIR` | `/data/memory/skills` | User-created skills directory (overlay on SKILLS_DIR) |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |
 | `TASK_LOG_RETENTION` | `100` | Max task run logs kept per task (oldest pruned on sync) |

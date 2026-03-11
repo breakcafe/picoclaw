@@ -40,5 +40,7 @@ export const TASK_LOG_RETENTION = parseIntWithDefault(
   100,
 );
 
+export const SYSTEM_PROMPT_OVERRIDE = process.env.SYSTEM_PROMPT_OVERRIDE || '';
+
 export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
