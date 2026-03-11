@@ -14,6 +14,7 @@ import {
   MAX_EXECUTION_MS,
   MEMORY_DIR,
   SKILLS_DIR,
+  SYSTEM_PROMPT_OVERRIDE,
 } from './config.js';
 
 /**
@@ -444,13 +445,15 @@ export class AgentEngine implements AgentRunner {
               : undefined,
           resume: input.sessionId,
           resumeSessionAt: input.resumeAt,
-          systemPrompt: globalClaudeMd
-            ? {
-                type: 'preset',
-                preset: 'claude_code',
-                append: globalClaudeMd,
-              }
-            : undefined,
+          systemPrompt: SYSTEM_PROMPT_OVERRIDE
+            ? SYSTEM_PROMPT_OVERRIDE
+            : globalClaudeMd
+              ? {
+                  type: 'preset',
+                  preset: 'claude_code',
+                  append: globalClaudeMd,
+                }
+              : undefined,
           allowedTools,
           includePartialMessages: true,
           maxThinkingTokens: input.maxThinkingTokens,
