@@ -4,7 +4,7 @@ How to customize PicoClaw's behavior by writing skills and defining agent person
 
 ## Persona Configuration
 
-The agent persona is defined by `CLAUDE.md` files in the memory volume. PicoClaw supports a **two-tier persona** model where a global (organization-level) persona and a user-level persona are stacked together.
+The agent persona is defined by `CLAUDE.md` files. PicoClaw supports a **two-tier persona** model where an organization-level (org) persona and a user-level persona are stacked together.
 
 ### How persona loading works
 
@@ -12,7 +12,7 @@ The Claude Agent SDK discovers and loads CLAUDE.md files through two complementa
 
 1. **User persona** (`/data/memory/CLAUDE.md`): The agent engine sets `cwd: MEMORY_DIR` and `settingSources: ['project', 'user']`. The Claude Code CLI automatically discovers `CLAUDE.md` in its working directory — this is standard Claude Code behavior. This file defines the agent's identity, capabilities, and behavioral rules for the specific user.
 
-2. **Global persona** (`/data/memory/global/CLAUDE.md`): PicoClaw explicitly loads this file via `loadGlobalClaudeMd()` and passes it as `systemPrompt: { type: 'preset', preset: 'claude_code', append: globalClaudeMd }`. This appends organization-wide instructions to the Claude Code system prompt. Useful for shared policies, compliance rules, or default behavior across all users.
+2. **Org persona** (`$ORG_DIR/CLAUDE.md`): When the `ORG_DIR` environment variable is set and the file exists, PicoClaw loads it via `loadOrgClaudeMd()` and passes it as `systemPrompt: { type: 'preset', preset: 'claude_code', append: orgClaudeMd }`. This appends organization-wide instructions to the Claude Code system prompt. Useful for shared policies, compliance rules, or default behavior across all users.
 
 The effective system prompt is assembled in this order:
 
@@ -20,24 +20,26 @@ The effective system prompt is assembled in this order:
 ┌─────────────────────────────────────────────┐
 │ Claude Code preset system prompt (built-in) │
 ├─────────────────────────────────────────────┤
-│ Global persona (append)                     │  ← /data/memory/global/CLAUDE.md
-│ Organization-wide rules, shared policies    │    (loaded by loadGlobalClaudeMd())
+│ Org persona (append)                        │  ← $ORG_DIR/CLAUDE.md
+│ Organization-wide rules, shared policies    │    (loaded by loadOrgClaudeMd() when ORG_DIR is set)
 ├─────────────────────────────────────────────┤
 │ User persona (project CLAUDE.md)            │  ← /data/memory/CLAUDE.md
 │ Agent identity, user-specific instructions  │    (discovered by SDK via cwd)
 └─────────────────────────────────────────────┘
 ```
 
-Both files are optional. If only the user persona exists, no global overlay is applied. If neither exists, the agent runs with the default Claude Code system prompt.
+Both files are optional. If `ORG_DIR` is not set or the file does not exist, no org overlay is applied. If neither persona exists, the agent runs with the default Claude Code system prompt.
 
 This two-tier design mirrors NanoClaw's global + per-group CLAUDE.md pattern, adapted for PicoClaw's single-user model.
+
+> **Deprecation note:** The previous convention of placing the org persona at `/data/memory/global/CLAUDE.md` is deprecated and no longer loaded. Use `$ORG_DIR/CLAUDE.md` with the `ORG_DIR` environment variable instead.
 
 ### File locations
 
 | File | Purpose | Loaded by |
 |------|---------|-----------|
 | `/data/memory/CLAUDE.md` | User persona (identity, capabilities, rules) | SDK/CLI auto-discovery (`cwd` + `settingSources`) |
-| `/data/memory/global/CLAUDE.md` | Global persona overlay (shared policies) | `loadGlobalClaudeMd()` → `systemPrompt.append` |
+| `$ORG_DIR/CLAUDE.md` | Org persona overlay (shared policies) | `loadOrgClaudeMd()` → `systemPrompt.append` (requires `ORG_DIR` env var) |
 
 The agent's working directory is `/data/memory`, so it can read and write any file under this path.
 
@@ -80,9 +82,9 @@ You have access to MCP tools:
 4. **List available MCP tools.** The agent performs better when it knows what tools are available.
 5. **Let the agent organize its own workspace.** Don't prescribe a rigid directory hierarchy — the agent can create subdirectories as needed under `/data/memory/`.
 
-### Global persona (optional)
+### Org persona (optional)
 
-For multi-user deployments, create `/data/memory/global/CLAUDE.md` with organization-wide instructions:
+For multi-user deployments, create `$ORG_DIR/CLAUDE.md` with organization-wide instructions:
 
 ```markdown
 # Organization Policy
@@ -98,9 +100,26 @@ For multi-user deployments, create `/data/memory/global/CLAUDE.md` with organiza
 - Include source attribution when citing external data
 ```
 
-The global persona is appended to the system prompt before the user persona is loaded. This ensures organization-wide rules are always present regardless of the user's CLAUDE.md content.
+The org persona is appended to the system prompt before the user persona is loaded. This ensures organization-wide rules are always present regardless of the user's CLAUDE.md content.
 
-In cloud deployments, the global persona can be provisioned from shared storage (e.g., an organization-wide OSS bucket or NAS path) and mounted into each user's memory volume at `global/CLAUDE.md`.
+In cloud deployments, the org persona is provisioned from shared storage (e.g., an organization-wide OSS bucket or NAS path) and mounted as the `ORG_DIR` volume.
+
+### Org MCP servers (`managed-mcp.json`)
+
+When `ORG_DIR` is set and `$ORG_DIR/managed-mcp.json` exists, PicoClaw copies it to `/etc/claude-code/managed-mcp.json` at startup. The Claude Code CLI auto-discovers managed MCP server configurations from this well-known path, making the servers available to the agent without any per-user configuration.
+
+This is the recommended way to provision organization-wide MCP servers. The file follows the standard Claude Code managed MCP format:
+
+```json
+{
+  "mcpServers": {
+    "org-tools": {
+      "type": "http",
+      "url": "https://mcp.example.com/org-tools/mcp"
+    }
+  }
+}
+```
 
 ### Memory structure
 
@@ -109,31 +128,55 @@ Keep the memory volume simple and SDK-native. The agent creates subdirectories a
 ```
 /data/memory/
   CLAUDE.md              # User persona (recommended, not required)
-  global/
-    CLAUDE.md            # Global persona overlay (optional, org-wide)
-  conversations/         # Archived transcripts (auto-generated by PreCompact hook)
-  skills/                # User-created skills (auto-discovered)
+  skills/                # User-created skills (auto-discovered, hot-reloadable)
+  conversations/         # Archived transcripts (rare — see note below)
   [agent-managed files]  # The agent organizes its own workspace
+
+$ORG_DIR/                # Org directory (set via ORG_DIR env var, optional)
+  CLAUDE.md              # Org persona overlay (shared policies)
+  managed-mcp.json       # Org MCP server definitions (optional)
+  skills/                # Org skills (optional)
 ```
 
-No prescriptive subdirectory structure is enforced. All four `/data/*` volumes can be mounted as empty directories — the container creates the necessary internal structures automatically at startup. The `conversations/` directory is created on-demand by the PreCompact hook when context compaction occurs.
+No prescriptive subdirectory structure is enforced. All `/data/*` volumes can be mounted as empty directories — the container creates the necessary internal structures automatically at startup.
+
+> **Note on `conversations/`:** This directory is created on-demand by the PreCompact hook when context compaction occurs. In practice, compaction only fires within a single `query()` call when the conversation exceeds the context window — which rarely happens in PicoClaw's request-driven model where each HTTP request starts a fresh `query()`. Most deployments will never see files here.
 
 > **Note on auto-memory:** Claude Code's built-in auto-memory feature (`MEMORY.md` auto-generation) is gated behind an internal CLI feature flag and is currently non-functional in SDK/non-interactive mode. `MEMORY.md` will not be auto-generated. If cross-session memory is needed, instruct the agent via the persona (`CLAUDE.md`) to explicitly read/write files in `/data/memory/`.
 
 ## Writing Skills
 
-Skills extend the agent's capabilities without modifying PicoClaw's source code. They are directories mounted at `/data/skills/`.
+Skills extend the agent's capabilities without modifying PicoClaw's source code. PicoClaw supports a three-tier skill system with well-defined merge semantics.
+
+### Skill tiers and merge strategy
+
+Skills are loaded from three sources and merged at startup:
+
+| Tier | Source | Override behavior |
+|------|--------|-------------------|
+| Built-in | Bundled with PicoClaw image | Base layer |
+| Org | `$ORG_DIR/skills/` (when `ORG_DIR` is set) | Overrides built-in skills of the same name |
+| User | `/data/memory/skills/` | **Additive only** — cannot override org or built-in skills of the same name; same-name skills are skipped |
+
+The merge priority is: **built-in** → **org** (overrides built-in) → **user** (additive only). This ensures that organization-level skill policies cannot be bypassed by user-created skills.
+
+User skills from `/data/memory/skills/` are pre-loaded at startup and can be hot-reloaded via `POST /admin/reload-skills` without restarting the container.
 
 ### Skill directory structure
 
 ```
-/data/skills/
+$ORG_DIR/skills/           # Org skills (read-only, requires ORG_DIR env var)
   my-skill/
-    SKILL.md             # Required: instructions for the agent
-    [supporting files]   # Optional: templates, configs, examples
+    SKILL.md               # Required: instructions for the agent
+    [supporting files]     # Optional: templates, configs, examples
+
+/data/memory/skills/       # User skills (read/write, hot-reloadable)
+  my-custom-skill/
+    SKILL.md
+    [supporting files]
 ```
 
-At container startup, skills are synced to `.claude/skills/` where the Claude agent discovers them.
+At container startup and on each `POST /admin/reload-skills` call, the effective skill set in `.claude/skills/` is fully reconciled — the destination is cleared and rebuilt from all three source tiers. Removing a skill from its source directory removes it from the effective set after reload. The agent only reads from the effective `.claude/skills/` directory, never directly from source directories.
 
 ### SKILL.md format
 
@@ -279,7 +322,7 @@ Create a daily report at 9am:
 
 ```bash
 docker run --rm -it \
-  -v ./my-skill:/data/skills/my-skill \
+  -v ./my-skill:/data/memory/skills/my-skill \
   -e API_TOKEN=test -e ANTHROPIC_BASE_URL=https://api.anthropic.com -e ANTHROPIC_API_KEY=xxx \
   picoclaw:latest
 ```
@@ -288,7 +331,7 @@ docker run --rm -it \
 
 PicoClaw includes a `skills-engine/` directory inherited from NanoClaw. This engine supports deterministic skill application with three-way merging, state tracking, and rollback — primarily used for skills that modify the PicoClaw source code itself (adding new channels, changing container configuration, etc.).
 
-For most use cases, the simpler file-based skill approach described above (SKILL.md in `/data/skills/`) is sufficient and recommended.
+For most use cases, the simpler file-based skill approach described above (SKILL.md in `$ORG_DIR/skills/` or `/data/memory/skills/`) is sufficient and recommended.
 
 ### When to use the skills engine
 

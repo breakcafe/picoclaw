@@ -8,45 +8,57 @@ Forked from [NanoClaw](https://github.com/qwibitai/nanoclaw) — replaces the al
 
 ```
 HTTP Request
-      |
-      v
+      │
+      ▼
   Express Router + Auth Middleware
-      |
-      |--- GET  /health -----> { status, version }
-      |--- POST /control/stop -> sync DB, exit
-      |
-      v
-  POST /chat  (or /task/trigger, /task/check)
-      |
-      |  1. Read/write conversation state
-      v
-    SQLite (/tmp/messages.db)  <----+
-      |                             |
-      |  2. Invoke agent            |  4. MCP tools write back
-      v                             |
-  AgentEngine                       |
-  (Claude Agent SDK query())        |
-      |                             |
-      |  3. Spawns subprocess       |
-      v                             |
-  MCP Server (stdio) -------->------+
-  - send_message
-  - schedule_task
-  - list/pause/cancel_task
-      .
-      .  5. After response
-      v
+      │
+      ├── GET /health ──────────► { status, version }
+      ├── POST /control/stop ───► Sync DB + Exit
+      │
+      ▼
+  SQLite (/tmp/messages.db) ◄─────────────┐
+      │                                   │
+      │  Invoke agent                     │  MCP tools write back
+      ▼                                   │
+  AgentEngine                             │
+  (Claude Agent SDK query())              │
+      │                                   │
+      │  Spawns subprocess                │
+      ▼                                   │
+  MCP Server (stdio) ────────────────────►┘
+      ·
+      ·  After response
+      ▼
   syncDatabaseToVolume()
-  /tmp/messages.db  -->  /data/store/messages.db
+  /tmp/messages.db  ──►  /data/store/messages.db
 ```
 
+### Volume Layout
+
 ```
-Mounted Volumes:
-  /data/memory     CLAUDE.md, conversation archives, global memory
-  /data/skills     Skill definitions (synced to .claude/skills/ at startup)
-  /data/sessions   Claude session state (.claude/)
-  /data/store      Persistent SQLite database
+  Read-Only (optional)          Read/Write
+┌──────────────────────┐   ┌──────────────────────────────────────┐
+│  /data/org           │   │  /data/memory                        │
+│   Org persona        │   │   User persona + agent workspace     │
+│   Org skills         │   ├──────────────────────────────────────┤
+│   managed-mcp.json   │   │  /data/sessions                      │
+└──────────────────────┘   │   .claude/ session state             │
+                           ├──────────────────────────────────────┤
+  Ephemeral                │  /data/store                         │
+┌──────────────────────┐   │   Persistent SQLite                  │
+│  /tmp/messages.db    │   └──────────────────────────────────────┘
+│   Runtime DB         │           ▲
+└──────────┬───────────┘           │
+           └───── sync after ──────┘
+                   response
 ```
+
+| Volume | Purpose |
+|--------|---------|
+| `/data/org` | Org persona (`CLAUDE.md`), org skills, `managed-mcp.json` — read-only, optional |
+| `/data/memory` | User persona (`CLAUDE.md`), agent workspace (cwd) — read/write |
+| `/data/sessions` | Claude session state (`.claude/`) — read/write |
+| `/data/store` | Persistent SQLite database — read/write |
 
 **Key difference from NanoClaw**: No Docker child containers. The agent runs in the same process as the HTTP server. Skills and memory are volume-mounted, not installed into the source tree.
 
@@ -68,14 +80,26 @@ The script will prompt for `ANTHROPIC_BASE_URL` and `ANTHROPIC_API_KEY`, generat
 # Build
 docker build --platform linux/amd64 -t picoclaw:latest .
 
-# Run
+# Run (minimal — no org directory)
 docker run --rm -it \
   -p 9000:9000 \
   -e API_TOKEN=your-token \
   -e ANTHROPIC_BASE_URL=https://api.anthropic.com \
   -e ANTHROPIC_API_KEY=sk-ant-xxx \
   -v $(pwd)/dev-data/memory:/data/memory \
-  -v $(pwd)/dev-data/skills:/data/skills \
+  -v $(pwd)/dev-data/store:/data/store \
+  -v $(pwd)/dev-data/sessions:/data/sessions \
+  picoclaw:latest
+
+# Run (with org directory)
+docker run --rm -it \
+  -p 9000:9000 \
+  -e API_TOKEN=your-token \
+  -e ANTHROPIC_BASE_URL=https://api.anthropic.com \
+  -e ANTHROPIC_API_KEY=sk-ant-xxx \
+  -e ORG_DIR=/data/org \
+  -v $(pwd)/dev-data/org:/data/org:ro \
+  -v $(pwd)/dev-data/memory:/data/memory \
   -v $(pwd)/dev-data/store:/data/store \
   -v $(pwd)/dev-data/sessions:/data/sessions \
   picoclaw:latest
@@ -131,11 +155,14 @@ PicoClaw stores all state on mounted volumes. The container process itself is st
 
 ```
 /data/
-  memory/           # Agent persona (CLAUDE.md) + conversation archives
-    CLAUDE.md        # Main persona definition
-    global/          # Global shared memory
-    conversations/   # Archived transcripts
-  skills/           # Skill definitions (read by agent at startup)
+  org/              # (optional) Org-level resources — read-only mount
+    CLAUDE.md         # Org persona (organization-wide policies)
+    managed-mcp.json  # Org MCP servers (Claude Code native format)
+    skills/           # Org skills (authoritative)
+  memory/           # User persona + agent workspace (cwd)
+    CLAUDE.md         # User persona definition
+    skills/           # User-created skills (additive, supplements org skills)
+    conversations/    # Archived transcripts (rare — only on context compaction)
   sessions/         # Claude session state (.claude/)
   store/            # Persistent SQLite (synced from /tmp on every response)
     messages.db
@@ -143,11 +170,42 @@ PicoClaw stores all state on mounted volumes. The container process itself is st
 
 On every HTTP response, the local database (`/tmp/messages.db`) is synced to the persistent volume. On shutdown (`SIGTERM` or `POST /control/stop`), a final sync runs before the process exits.
 
+## Persona & System Prompt
+
+PicoClaw assembles the agent's system prompt from a **two-tier CLAUDE.md** model:
+
+```
+┌─────────────────────────────────────────────┐
+│ Layer 1: Claude Code Preset (built-in)      │  SDK auto-injected
+├─────────────────────────────────────────────┤
+│ Layer 2: Org Persona (appended)             │  $ORG_DIR/CLAUDE.md
+│   Organization-wide policies, shared rules  │  (read-only, optional)
+├─────────────────────────────────────────────┤
+│ Layer 3: User Persona (SDK auto-discovery)  │  /data/memory/CLAUDE.md
+│   Agent identity, user-specific rules       │  (read/write)
+└─────────────────────────────────────────────┘
+```
+
+| Tier | Source | Mechanism |
+|------|--------|-----------|
+| Org | `$ORG_DIR/CLAUDE.md` | `loadOrgClaudeMd()` → `systemPrompt.append` |
+| User | `/data/memory/CLAUDE.md` | SDK auto-discovery via `cwd` + `settingSources` |
+
+Both tiers are optional. Set `SYSTEM_PROMPT_OVERRIDE` to fully replace layers 1 + 2 with a custom string (layer 3 still loads).
+
 ## Skills
 
-Skills are directories mounted at `/data/skills/`. Each skill contains a `SKILL.md` that teaches the agent new capabilities — no source code changes needed.
+Skills are directories containing `SKILL.md` files that teach the agent new capabilities — no source code changes needed.
 
-At container startup, skills are synced to `.claude/skills/` so the Claude agent can discover and use them.
+**Three-tier merge** (org skills take priority):
+
+```
+Built-in (/app/built-in-skills)  ──copy──►  .claude/skills/
+Org ($ORG_DIR/skills)            ──override built-in──►  ↑
+User (/data/memory/skills)       ──additive only──►      ↑
+```
+
+User skills supplement the merged set — they cannot override org or built-in skills of the same name.
 
 See [`docs/SKILLS_AND_PERSONA_GUIDE.md`](docs/SKILLS_AND_PERSONA_GUIDE.md) for how to write skills and configure the agent persona.
 
@@ -202,7 +260,7 @@ make test-e2e             # full build + run + test pipeline
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_BASE_URL` | Anthropic API base URL (default: `https://api.anthropic.com`). Set this when using a third-party API proxy or custom endpoint. |
+| `ANTHROPIC_BASE_URL` | Anthropic API base URL (SDK defaults to `https://api.anthropic.com` when unset). Set for third-party API proxies. |
 | `ANTHROPIC_API_KEY` | Claude API key (or OAuth token equivalent) |
 | `API_TOKEN` | Bearer token for HTTP API authentication |
 
@@ -215,9 +273,10 @@ make test-e2e             # full build + run + test pipeline
 | `ASSISTANT_NAME` | `Pico` | Agent display name |
 | `TZ` | System | Timezone for cron scheduling |
 | `LOG_LEVEL` | `info` | Pino log level |
+| `ORG_DIR` | (empty) | Org directory path — contains `CLAUDE.md`, `managed-mcp.json`, `skills/` |
 | `STORE_DIR` | `/data/store` | Persistent database volume |
-| `MEMORY_DIR` | `/data/memory` | Memory and persona volume |
-| `SKILLS_DIR` | `/data/skills` | Skills volume |
+| `MEMORY_DIR` | `/data/memory` | User memory and persona volume (agent cwd) |
+| `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` (fallback) | Org skills directory |
 | `SESSIONS_DIR` | `/data/sessions` | Session state volume |
 
 ## License

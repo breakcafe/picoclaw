@@ -1,3 +1,5 @@
+import path from 'path';
+
 const parseIntWithDefault = (
   value: string | undefined,
   fallback: number,
@@ -23,8 +25,23 @@ export const SESSION_END_MARKER =
 
 export const STORE_DIR = process.env.STORE_DIR || '/data/store';
 export const MEMORY_DIR = process.env.MEMORY_DIR || '/data/memory';
-export const SKILLS_DIR = process.env.SKILLS_DIR || '/data/skills';
 export const SESSIONS_DIR = process.env.SESSIONS_DIR || '/data/sessions';
+
+/**
+ * Organization directory — a single read-only mount containing
+ * CLAUDE.md (org persona), managed-mcp.json, and skills/.
+ * When set, SKILLS_DIR defaults to $ORG_DIR/skills.
+ */
+export const ORG_DIR = process.env.ORG_DIR || '';
+
+/**
+ * Org-level skills directory.
+ * Explicit SKILLS_DIR env var takes precedence; otherwise derived from ORG_DIR.
+ * Falls back to /data/skills for backward compatibility.
+ */
+export const SKILLS_DIR =
+  process.env.SKILLS_DIR ||
+  (ORG_DIR ? path.join(ORG_DIR, 'skills') : '/data/skills');
 
 export const BUILT_IN_SKILLS_DIR =
   process.env.BUILT_IN_SKILLS_DIR || '/app/built-in-skills';

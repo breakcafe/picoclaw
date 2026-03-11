@@ -757,7 +757,7 @@
           "Admin"
         ],
         "summary": "Reload skills from all tiers",
-        "description": "Re-syncs skills from built-in, shared, and user directories to `.claude/skills/`.\nReturns the updated skills summary.\n",
+        "description": "Re-syncs skills from built-in, org, and user directories to `.claude/skills/`.\nReturns the updated skills summary.\n",
         "operationId": "reloadSkills",
         "responses": {
           "200": {
@@ -1709,7 +1709,7 @@
         "additionalProperties": false,
         "required": [
           "builtIn",
-          "shared",
+          "org",
           "user",
           "effective"
         ],
@@ -1720,7 +1720,7 @@
               "type": "string"
             }
           },
-          "shared": {
+          "org": {
             "type": "array",
             "items": {
               "type": "string"

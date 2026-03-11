@@ -95,14 +95,34 @@ The four-volume model (`memory`, `skills`, `sessions`, `store`) separates concer
 | Volume | Lifecycle | Write Pattern | Sharing |
 |--------|-----------|---------------|---------|
 | `memory` | Long-lived | Agent writes (persona, archives) | Shared across deploys |
-| `skills` | Deploy-time | Human/CI writes skill definitions | Read-only at runtime |
+| `org` | Deploy-time (optional) | Human/CI writes org resources | Read-only at runtime; when `ORG_DIR` is set, provides org persona, skills, and MCP config |
 | `sessions` | Per-instance | SDK writes `.claude/` state | Instance-specific |
 | `store` | Long-lived | Sync from `/tmp` after each request | Shared across deploys |
 
 This separation enables:
-- **Skills as deployment artifacts**: update skills by mounting a new volume, no image rebuild.
-- **Independent backup policies**: `store` (critical) vs `skills` (reproducible).
+- **Org resources as deployment artifacts**: update org persona, skills, or MCP config by mounting a new volume at `/data/org`, no image rebuild.
+- **Independent backup policies**: `store` (critical) vs org resources (reproducible).
 - **Session isolation**: each container instance can have its own `.claude/` state without conflicts.
+
+## Why ORG_DIR
+
+Earlier versions of PicoClaw used three separate concepts to manage organization-level resources: a global persona path (`/data/memory/global/CLAUDE.md`), a shared skills volume (`/data/skills`), and ad-hoc org MCP configuration. This created deployment friction and cognitive overhead.
+
+`ORG_DIR` consolidates all org resources under a single environment variable and mount point:
+
+```
+$ORG_DIR/
+  CLAUDE.md              # Org persona (policies, compliance, shared rules)
+  managed-mcp.json       # Org-managed MCP servers (Claude Code native format)
+  skills/                # Org skill definitions
+```
+
+**Design principles:**
+
+- **Single env var, single mount.** One `ORG_DIR=/data/org` replaces three separate configuration paths. Operators mount one read-only volume for all org resources.
+- **Naming: "org" over "global."** "Global" is ambiguous (global to the process? the cluster? the world?). "Org" is semantically precise and forms a natural pair with "user" — org resources are shared across users, user resources are per-user.
+- **User skills are additive-only.** User-created skills (from `$MEMORY_DIR/skills/`) are merged with org skills, but user skills cannot override or shadow org skill definitions. This prevents users from circumventing org policies embedded in skills.
+- **`managed-mcp.json` leverages Claude Code's native enterprise MCP management.** The CLI reads `/etc/claude-code/managed-mcp.json` for managed MCP server definitions. PicoClaw copies `$ORG_DIR/managed-mcp.json` to this path at startup, reusing the CLI's built-in enforcement (always-on servers, no user opt-out) without custom plumbing.
 
 ## Why External Cron for Task Scheduling
 
@@ -202,8 +222,8 @@ PicoClaw (HTTP API + single process):
 | Database | 7 tables (messages, chats, registered_groups, sessions, router_state, scheduled_tasks, task_run_logs) | 5 tables (conversations, messages, outbound_messages, scheduled_tasks, task_run_logs) | Removed multi-group tables; added conversations/outbound |
 | Task scheduling | Internal 60s polling loop (`startSchedulerLoop`) | External cron calls `POST /task/check` | Push → pull inversion |
 | MCP tools | IPC file monitoring (`ipc-mcp-stdio.ts`), filesystem-based communication | SQLite direct access (`mcp-server.ts`), shared database | IPC files → shared SQLite |
-| Skills | Container-internal `.claude/skills/` per group | Three-tier sync: built-in → shared → user → `.claude/skills/`, with hot-reload | Enhanced with priority overlay |
-| Memory | Per-group CLAUDE.md (`/workspace/group/CLAUDE.md`) + global | Single-user CLAUDE.md (`/data/memory/CLAUDE.md`) + global | Multi-group → single-user |
+| Skills | Container-internal `.claude/skills/` per group | Three-tier sync: built-in → org → user (additive) → `.claude/skills/`, with hot-reload | Enhanced with priority overlay |
+| Memory | Per-group CLAUDE.md (`/workspace/group/CLAUDE.md`) + global | Single-user CLAUDE.md (`/data/memory/CLAUDE.md`) + org (`$ORG_DIR/CLAUDE.md`) | Multi-group → single-user |
 | Session resume | session_id stored in DB → passed to container | session_id + last_assistant_uuid → SDK `resume` + `resumeSessionAt` | Added precise message-level resume |
 | Security | Docker container isolation + Credential Proxy | Bearer Token + Bash env scrubbing + container boundary | OS isolation → process isolation |
 | Concurrency | GroupQueue (max 5 concurrent groups) | Per-conversation mutex lock (`conversation-lock.ts`), 409 on conflict | Queue-based → lock-based |
@@ -215,7 +235,7 @@ PicoClaw (HTTP API + single process):
 | `MessageStream` | ~95% | Removed IPC polling logic |
 | `PreCompactHook` | ~90% | Archive path adapted to `/data/memory/conversations` |
 | `parseTranscript` / `formatTranscriptMarkdown` | ~95% | Nearly identical |
-| `skills-engine/` | 100% | Fully inherited |
+| Skills sync | ~75% | Additive merge replaces priority overlay; org/user tier separation added |
 | Task scheduling logic | ~80% | Removed internal loop, kept calculation logic |
 | MCP tool definitions | ~70% | Changed from IPC files to SQLite direct access |
 

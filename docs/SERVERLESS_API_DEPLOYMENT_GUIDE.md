@@ -73,7 +73,8 @@ Default paths (overridable via environment variables):
 | Path | Env Var | Purpose |
 |------|---------|---------|
 | `/data/memory` | `MEMORY_DIR` | CLAUDE.md persona, conversation archives, working directory |
-| `/data/skills` | `SKILLS_DIR` | SKILL.md skill definitions |
+| `/data/org` | `ORG_DIR` | Org CLAUDE.md, managed-mcp.json, org skills (optional, read-only) |
+| `$ORG_DIR/skills` | `SKILLS_DIR` | Org skill definitions (legacy fallback: `/data/skills` when `ORG_DIR` is unset) |
 | `/data/sessions` | `SESSIONS_DIR` | `.claude/` session state |
 | `/data/store` | `STORE_DIR` | Persistent SQLite database |
 | `/tmp/messages.db` | `LOCAL_DB_PATH` | Local runtime database (ephemeral) |
@@ -92,23 +93,23 @@ PicoClaw assembles the agent's system prompt from a **two-tier CLAUDE.md** model
 
 The Claude Agent SDK's `query()` is called with `cwd: MEMORY_DIR` and `settingSources: ['project', 'user']`. The `'project'` setting source tells the SDK to discover and load `CLAUDE.md` from the working directory (`/data/memory/`). This is standard Claude Code behavior — any `CLAUDE.md` in the project root is loaded as project-level context.
 
-This file defines the agent's identity (name, role), capabilities, communication style, and user-specific rules. It is the primary persona file and should always exist.
+This file defines the agent's identity (name, role), capabilities, communication style, and user-specific rules. It is the primary persona file — recommended but not required. If absent, the agent runs with the default Claude Code system prompt.
 
-**Tier 2 — Global overlay** (`/data/memory/global/CLAUDE.md`, optional):
+**Tier 2 — Org persona** (`$ORG_DIR/CLAUDE.md`, optional):
 
-PicoClaw's `loadGlobalClaudeMd()` function reads this file and passes it as `systemPrompt: { type: 'preset', preset: 'claude_code', append: globalClaudeMd }`. This appends organization-wide instructions to the Claude Code system prompt before the user persona takes effect.
+PicoClaw's `loadOrgClaudeMd()` function reads this file and passes it as `systemPrompt: { type: 'preset', preset: 'claude_code', append: orgClaudeMd }`. This appends organization-wide instructions to the Claude Code system prompt before the user persona takes effect.
 
-Use this for shared policies (compliance, output format standards, tool usage rules) that should apply to all users in a multi-user deployment. If this file does not exist, no global overlay is applied and the SDK uses the default Claude Code preset.
+Use this for shared policies (compliance, output format standards, tool usage rules) that should apply to all users in a multi-user deployment. If this file does not exist, no org overlay is applied and the SDK uses the default Claude Code preset.
 
 **Assembly order (default):**
 
 ```
 1. Claude Code preset system prompt (built-in, always present)
-2. Global CLAUDE.md content (appended via systemPrompt.append, if file exists)
+2. Org CLAUDE.md content (appended via systemPrompt.append, if file exists)
 3. User CLAUDE.md content (loaded by SDK/CLI from cwd, standard Claude Code discovery)
 ```
 
-**Full override mode:** Set `SYSTEM_PROMPT_OVERRIDE` to completely replace steps 1 + 2 with a custom system prompt string. Step 3 (user CLAUDE.md) still loads on top. This is useful when you want full control over the system prompt without inheriting Claude Code's built-in instructions. Note: overriding removes the built-in tool usage guidelines, safety rules, and formatting instructions — ensure your custom prompt covers these if needed.
+**Full override mode:** Set `SYSTEM_PROMPT_OVERRIDE` to completely replace the Claude Code preset + org CLAUDE.md with a custom system prompt string. Step 3 (user CLAUDE.md) still loads on top. This is useful when you want full control over the system prompt without inheriting Claude Code's built-in instructions. Note: overriding removes the built-in tool usage guidelines, safety rules, and formatting instructions — ensure your custom prompt covers these if needed.
 
 **Example user persona** (`/data/memory/CLAUDE.md`):
 
@@ -130,29 +131,27 @@ See `docs/SKILLS_AND_PERSONA_GUIDE.md` for detailed persona authoring guidance.
 
 ### 2.5 Cloud Storage Mount Scheme (OSS / EFS / NAS)
 
-When deploying with cloud object storage or network-attached filesystems, map the user-specific and shared storage to PicoClaw volumes:
+When deploying with cloud object storage or network-attached filesystems, map the org-level and user-specific storage to PicoClaw volumes:
 
 ```
-User-specific storage (per-user OSS bucket or subdirectory):
-├── memory/         → mount to /data/memory    (persona, agent workspace)
-│   ├── CLAUDE.md                              (user persona, recommended)
-│   ├── global/
-│   │   └── CLAUDE.md                          (global persona overlay, optional)
-│   ├── skills/                                (user-created skills, auto-discovered)
-│   ├── conversations/                         (archived transcripts, auto-created on compaction)
-│   └── [agent-managed files]                  (no enforced structure)
-├── store/          → mount to /data/store     (persistent SQLite)
-│   └── messages.db
-└── sessions/       → mount to /data/sessions  (SDK session state)
-    └── .claude/
-        ├── sessions/
-        └── settings.json
+Org storage (shared, read-only):
+└── org/              → mount to /data/org:ro
+    ├── CLAUDE.md                              (org persona)
+    ├── managed-mcp.json                       (org MCP servers)
+    └── skills/                                (org skills)
 
-Shared storage (global, read-only):
-└── skills/         → mount to /data/skills    (organization-wide skills)
-    ├── add-pdf-reader/
-    ├── add-image-vision/
-    └── ...
+User storage (per-user, read/write):
+└── users/{user_id}/
+    ├── memory/       → mount to /data/memory  (persona, agent workspace)
+    │   ├── CLAUDE.md                          (user persona, recommended)
+    │   ├── skills/                            (user-created skills — additive)
+    │   └── [agent-managed files]              (no enforced structure)
+    ├── store/        → mount to /data/store   (persistent SQLite)
+    │   └── messages.db
+    └── sessions/     → mount to /data/sessions (SDK session state)
+        └── .claude/
+            ├── sessions/
+            └── settings.json
 ```
 
 #### Persona loading order
@@ -161,29 +160,30 @@ PicoClaw uses a **two-tier persona** model. Both files are optional, but at leas
 
 | Tier | Path | Mechanism | Purpose |
 |------|------|-----------|---------|
-| Global | `/data/memory/global/CLAUDE.md` | `loadGlobalClaudeMd()` → `systemPrompt.append` | Organization-wide policies, shared rules |
-| User | `/data/memory/CLAUDE.md` | SDK auto-discovery via `cwd` + `settingSources: ['project']` | Agent identity, user-specific instructions |
+| Org | `$ORG_DIR/CLAUDE.md` | `loadOrgClaudeMd()` → `systemPrompt.append` | Organization-wide policies, shared rules |
+| User | `/data/memory/CLAUDE.md` | SDK auto-discovery via `cwd` + `settingSources: ['project', 'user']` | Agent identity, user-specific instructions |
 
-The effective system prompt is assembled as: **Claude Code preset** → **global CLAUDE.md** (appended) → **user CLAUDE.md** (loaded by CLI). This mirrors NanoClaw's global + per-group persona stacking, adapted for PicoClaw's single-user model.
+The effective system prompt is assembled as: **Claude Code preset** → **org CLAUDE.md** (appended) → **user CLAUDE.md** (loaded by CLI). This mirrors NanoClaw's global + per-group persona stacking, adapted for PicoClaw's single-user model.
 
-For multi-user deployments, provision the global persona from shared storage into each user's memory volume at `global/CLAUDE.md`. The user persona at `CLAUDE.md` can be customized per user.
+For multi-user deployments, mount the org directory from shared storage as read-only. The user persona at `/data/memory/CLAUDE.md` can be customized per user.
 
 Docker mount example with cloud storage paths:
 
 ```bash
 docker run --rm -it \
   -p 9000:9000 \
+  -v /oss/org:/data/org:ro \
   -v /oss/users/${USER_ID}/memory:/data/memory \
   -v /oss/users/${USER_ID}/store:/data/store \
   -v /oss/users/${USER_ID}/sessions:/data/sessions \
-  -v /oss/global/skills:/data/skills:ro \
+  -e ORG_DIR=/data/org \
   -e API_TOKEN=${GENERATED_TOKEN} \
   -e ANTHROPIC_BASE_URL=${API_BASE} \
   -e ANTHROPIC_API_KEY=${API_KEY} \
   picoclaw:latest
 ```
 
-The `memory` directory does not enforce a subdirectory structure beyond the persona files. The `conversations/` subdirectory is created on-demand by the PreCompact hook when context compaction occurs. The `skills/` subdirectory is auto-discovered for user-created skills.
+The `memory` directory does not enforce a subdirectory structure beyond the persona file. The `conversations/` subdirectory is created on-demand by the PreCompact hook when context compaction occurs, though this rarely happens in practice (compaction only fires within a single query execution). The `skills/` subdirectory is auto-discovered for user-created skills.
 
 ## 3. Lifecycle & State
 
@@ -272,7 +272,7 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_BASE_URL` | Anthropic API base URL (default: `https://api.anthropic.com`). Set this when using a third-party API proxy or custom endpoint (e.g. `https://your-proxy.com/anthropic`). |
+| `ANTHROPIC_BASE_URL` | Anthropic API base URL (SDK defaults to `https://api.anthropic.com` when unset). Set for third-party API proxies (e.g., `https://your-proxy.com/anthropic`). |
 | `ANTHROPIC_API_KEY` | Claude API key (or equivalent OAuth token) |
 | `API_TOKEN` | Bearer token for HTTP API authentication |
 
@@ -287,11 +287,12 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | `LOG_LEVEL` | `info` | Pino log level (`debug`, `info`, `warn`, `error`) |
 | `STORE_DIR` | `/data/store` | Persistent database volume |
 | `MEMORY_DIR` | `/data/memory` | Memory and persona volume |
-| `SKILLS_DIR` | `/data/skills` | Skills volume |
+| `ORG_DIR` | (empty) | Org directory path (CLAUDE.md, managed-mcp.json, skills/) |
+| `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` | Org skills directory (canonical: `$ORG_DIR/skills`; `/data/skills` is legacy fallback) |
 | `SESSIONS_DIR` | `/data/sessions` | Session state volume |
 | `LOCAL_DB_PATH` | `/tmp/messages.db` | Local runtime database path |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | Marker string for session completion |
-| `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces the Claude Code preset system prompt and global CLAUDE.md with this string. User CLAUDE.md still loads on top. |
+| `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces the Claude Code preset + org CLAUDE.md with this string. User CLAUDE.md still loads on top. |
 | `PICOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable path (legacy `NANOCLAW_MCP_SERVER_PATH` accepted as fallback) |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before automatic cleanup |
 | `TASK_LOG_RETENTION` | `100` | Maximum task run log entries retained per task (oldest pruned) |
@@ -672,14 +673,14 @@ Each call executes at most **one** due task. Call repeatedly or increase externa
 
 `POST /admin/reload-skills`
 
-Re-syncs skills from all three tiers (built-in, shared, user) to `.claude/skills/`.
+Re-syncs skills from all three tiers (built-in, org, user) to `.claude/skills/`.
 
 ```json
 {
   "status": "reloaded",
   "skills": {
     "builtIn": ["agent-browser"],
-    "shared": ["math-skill"],
+    "org": ["math-skill"],
     "user": ["custom-skill"],
     "effective": ["agent-browser", "custom-skill", "math-skill"]
   }
@@ -690,7 +691,7 @@ Re-syncs skills from all three tiers (built-in, shared, user) to `.claude/skills
 
 `GET /admin/skills`
 
-Returns the current skills from all three tiers.
+Returns the current skills from all three tiers (built-in, org, user).
 
 ### 6.16 Graceful Shutdown
 
@@ -765,7 +766,6 @@ docker run --rm -it \
   -e ANTHROPIC_BASE_URL=https://api.anthropic.com \
   -e ANTHROPIC_API_KEY=sk-ant-xxx \
   -v $(pwd)/dev-data/memory:/data/memory \
-  -v $(pwd)/dev-data/skills:/data/skills \
   -v $(pwd)/dev-data/store:/data/store \
   -v $(pwd)/dev-data/sessions:/data/sessions \
   picoclaw:latest
@@ -862,8 +862,8 @@ Recommended backup targets:
 |------|----------|----------|
 | `/data/store/messages.db` | Critical | All conversations, messages, tasks |
 | `/data/sessions/.claude` | High | Claude session state for resume |
-| `/data/memory` | High | Persona, archives, global memory |
-| `/data/skills` | Medium | Skill definitions (can be redeployed) |
+| `/data/memory` | High | Persona, archives, agent workspace |
+| `/data/org` | Medium | Org persona, MCP config, skills (can be redeployed from shared storage) |
 
 On restore, ensure version compatibility and restore `store` + `sessions` together for consistent session resume.
 

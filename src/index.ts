@@ -17,13 +17,24 @@ import { ensureClaudeSettings, syncSkills } from './skills.js';
 function ensureDataDirectories(): void {
   const directories = [
     MEMORY_DIR,
-    SKILLS_DIR,
     STORE_DIR,
     path.join(SESSIONS_DIR, '.claude'),
   ];
 
   for (const directory of directories) {
     fs.mkdirSync(path.resolve(directory), { recursive: true });
+  }
+
+  // SKILLS_DIR may point inside a read-only ORG_DIR mount.
+  // Only create it if it does not already exist — mkdir on a
+  // read-only filesystem would throw.
+  const resolvedSkillsDir = path.resolve(SKILLS_DIR);
+  if (!fs.existsSync(resolvedSkillsDir)) {
+    try {
+      fs.mkdirSync(resolvedSkillsDir, { recursive: true });
+    } catch {
+      // Expected when SKILLS_DIR is inside a read-only mount (ORG_DIR).
+    }
   }
 }
 

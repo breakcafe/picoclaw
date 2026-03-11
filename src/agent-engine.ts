@@ -13,6 +13,7 @@ import {
   LOCAL_DB_PATH,
   MAX_EXECUTION_MS,
   MEMORY_DIR,
+  ORG_DIR,
   SKILLS_DIR,
   SYSTEM_PROMPT_OVERRIDE,
 } from './config.js';
@@ -342,13 +343,17 @@ function discoverAdditionalDirectories(): string[] {
   return discovered;
 }
 
-function loadGlobalClaudeMd(): string | undefined {
-  const globalPath = path.join(MEMORY_DIR, 'global', 'CLAUDE.md');
-  if (!fs.existsSync(globalPath)) {
+function loadOrgClaudeMd(): string | undefined {
+  if (!ORG_DIR) {
     return undefined;
   }
 
-  return fs.readFileSync(globalPath, 'utf-8');
+  const orgClaudeMdPath = path.join(ORG_DIR, 'CLAUDE.md');
+  if (!fs.existsSync(orgClaudeMdPath)) {
+    return undefined;
+  }
+
+  return fs.readFileSync(orgClaudeMdPath, 'utf-8');
 }
 
 export class AgentEngine implements AgentRunner {
@@ -380,7 +385,7 @@ export class AgentEngine implements AgentRunner {
         ...process.env,
       };
 
-      const globalClaudeMd = loadGlobalClaudeMd();
+      const orgClaudeMd = loadOrgClaudeMd();
       const additionalDirectories = discoverAdditionalDirectories();
       const mcpServerPath = resolveMcpServerPath();
 
@@ -447,11 +452,11 @@ export class AgentEngine implements AgentRunner {
           resumeSessionAt: input.resumeAt,
           systemPrompt: SYSTEM_PROMPT_OVERRIDE
             ? SYSTEM_PROMPT_OVERRIDE
-            : globalClaudeMd
+            : orgClaudeMd
               ? {
                   type: 'preset',
                   preset: 'claude_code',
-                  append: globalClaudeMd,
+                  append: orgClaudeMd,
                 }
               : undefined,
           allowedTools,

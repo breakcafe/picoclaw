@@ -69,11 +69,11 @@ RUN chmod +x /app/entrypoint.sh
 
 RUN mkdir -p \
     /data/memory \
-    /data/skills \
     /data/store \
-    /data/sessions/.claude/skills
+    /data/sessions/.claude/skills \
+    /etc/claude-code
 
-RUN chown -R node:node /app /data /home/node
+RUN chown -R node:node /app /data /home/node /etc/claude-code
 USER node
 
 ENV NODE_ENV=production
