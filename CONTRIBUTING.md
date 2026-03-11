@@ -4,11 +4,11 @@
 
 **Accepted:** Bug fixes, security fixes, simplifications, reducing code.
 
-**Not accepted:** Features, capabilities, enhancements. These should be skills mounted at `/data/skills/`.
+**Not accepted:** Features, capabilities, enhancements. These should be skills mounted via `$ORG_DIR/skills/` or `/data/memory/skills/`.
 
 ## Skills
 
-A skill is a directory in `/data/skills/` that teaches the Claude agent new capabilities at runtime. Skills are loaded via volume mount — no source code changes required.
+A skill is a directory that teaches the Claude agent new capabilities at runtime. Skills are loaded via volume mount — no source code changes required. Org skills go in `$ORG_DIR/skills/`; user skills go in `/data/memory/skills/`.
 
 Each skill directory should contain:
 
@@ -25,7 +25,7 @@ Test your skill by mounting it into a running PicoClaw container and verifying t
 
 ```bash
 # Mount your skill alongside existing skills
-docker run ... -v ./my-skill:/data/skills/my-skill picoclaw:latest
+docker run ... -v ./my-skill:/data/memory/skills/my-skill picoclaw:latest
 ```
 
 ## Persona (CLAUDE.md)

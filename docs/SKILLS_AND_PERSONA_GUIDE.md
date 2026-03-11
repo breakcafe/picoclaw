@@ -165,7 +165,7 @@ User skills from `/data/memory/skills/` are pre-loaded at startup and can be hot
 ### Skill directory structure
 
 ```
-/data/skills/              # Org skills (mounted, read-only)
+$ORG_DIR/skills/           # Org skills (read-only, requires ORG_DIR env var)
   my-skill/
     SKILL.md               # Required: instructions for the agent
     [supporting files]     # Optional: templates, configs, examples
@@ -176,7 +176,7 @@ User skills from `/data/memory/skills/` are pre-loaded at startup and can be hot
     [supporting files]
 ```
 
-At container startup, skills from all tiers are synced to `.claude/skills/` where the Claude agent discovers them.
+At container startup and on each `POST /admin/reload-skills` call, the effective skill set in `.claude/skills/` is fully reconciled — the destination is cleared and rebuilt from all three source tiers. Removing a skill from its source directory removes it from the effective set after reload. The agent only reads from the effective `.claude/skills/` directory, never directly from source directories.
 
 ### SKILL.md format
 
@@ -322,7 +322,7 @@ Create a daily report at 9am:
 
 ```bash
 docker run --rm -it \
-  -v ./my-skill:/data/skills/my-skill \
+  -v ./my-skill:/data/memory/skills/my-skill \
   -e API_TOKEN=test -e ANTHROPIC_BASE_URL=https://api.anthropic.com -e ANTHROPIC_API_KEY=xxx \
   picoclaw:latest
 ```
@@ -331,7 +331,7 @@ docker run --rm -it \
 
 PicoClaw includes a `skills-engine/` directory inherited from NanoClaw. This engine supports deterministic skill application with three-way merging, state tracking, and rollback — primarily used for skills that modify the PicoClaw source code itself (adding new channels, changing container configuration, etc.).
 
-For most use cases, the simpler file-based skill approach described above (SKILL.md in `/data/skills/` or `/data/memory/skills/`) is sufficient and recommended.
+For most use cases, the simpler file-based skill approach described above (SKILL.md in `$ORG_DIR/skills/` or `/data/memory/skills/`) is sufficient and recommended.
 
 ### When to use the skills engine
 

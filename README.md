@@ -42,10 +42,10 @@ HTTP Request
 │   Org persona        │   │   User persona + agent workspace     │
 │   Org skills         │   ├──────────────────────────────────────┤
 │   managed-mcp.json   │   │  /data/sessions                      │
-└──────────────────────┘   │   .claude/ session state              │
+└──────────────────────┘   │   .claude/ session state             │
                            ├──────────────────────────────────────┤
-  Ephemeral                │  /data/store                          │
-┌──────────────────────┐   │   Persistent SQLite                   │
+  Ephemeral                │  /data/store                         │
+┌──────────────────────┐   │   Persistent SQLite                  │
 │  /tmp/messages.db    │   └──────────────────────────────────────┘
 │   Runtime DB         │           ▲
 └──────────┬───────────┘           │
@@ -260,7 +260,7 @@ make test-e2e             # full build + run + test pipeline
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_BASE_URL` | Anthropic API base URL (default: `https://api.anthropic.com`). Set this when using a third-party API proxy or custom endpoint. |
+| `ANTHROPIC_BASE_URL` | Anthropic API base URL (SDK defaults to `https://api.anthropic.com` when unset). Set for third-party API proxies. |
 | `ANTHROPIC_API_KEY` | Claude API key (or OAuth token equivalent) |
 | `API_TOKEN` | Bearer token for HTTP API authentication |
 
@@ -276,7 +276,7 @@ make test-e2e             # full build + run + test pipeline
 | `ORG_DIR` | (empty) | Org directory path — contains `CLAUDE.md`, `managed-mcp.json`, `skills/` |
 | `STORE_DIR` | `/data/store` | Persistent database volume |
 | `MEMORY_DIR` | `/data/memory` | User memory and persona volume (agent cwd) |
-| `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` | Org skills directory |
+| `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` (fallback) | Org skills directory |
 | `SESSIONS_DIR` | `/data/sessions` | Session state volume |
 
 ## License

@@ -74,7 +74,7 @@ Default paths (overridable via environment variables):
 |------|---------|---------|
 | `/data/memory` | `MEMORY_DIR` | CLAUDE.md persona, conversation archives, working directory |
 | `/data/org` | `ORG_DIR` | Org CLAUDE.md, managed-mcp.json, org skills (optional, read-only) |
-| `/data/skills` | `SKILLS_DIR` | SKILL.md skill definitions (defaults to `$ORG_DIR/skills` when `ORG_DIR` is set) |
+| `$ORG_DIR/skills` | `SKILLS_DIR` | Org skill definitions (legacy fallback: `/data/skills` when `ORG_DIR` is unset) |
 | `/data/sessions` | `SESSIONS_DIR` | `.claude/` session state |
 | `/data/store` | `STORE_DIR` | Persistent SQLite database |
 | `/tmp/messages.db` | `LOCAL_DB_PATH` | Local runtime database (ephemeral) |
@@ -93,7 +93,7 @@ PicoClaw assembles the agent's system prompt from a **two-tier CLAUDE.md** model
 
 The Claude Agent SDK's `query()` is called with `cwd: MEMORY_DIR` and `settingSources: ['project', 'user']`. The `'project'` setting source tells the SDK to discover and load `CLAUDE.md` from the working directory (`/data/memory/`). This is standard Claude Code behavior — any `CLAUDE.md` in the project root is loaded as project-level context.
 
-This file defines the agent's identity (name, role), capabilities, communication style, and user-specific rules. It is the primary persona file and should always exist.
+This file defines the agent's identity (name, role), capabilities, communication style, and user-specific rules. It is the primary persona file — recommended but not required. If absent, the agent runs with the default Claude Code system prompt.
 
 **Tier 2 — Org persona** (`$ORG_DIR/CLAUDE.md`, optional):
 
@@ -161,7 +161,7 @@ PicoClaw uses a **two-tier persona** model. Both files are optional, but at leas
 | Tier | Path | Mechanism | Purpose |
 |------|------|-----------|---------|
 | Org | `$ORG_DIR/CLAUDE.md` | `loadOrgClaudeMd()` → `systemPrompt.append` | Organization-wide policies, shared rules |
-| User | `/data/memory/CLAUDE.md` | SDK auto-discovery via `cwd` + `settingSources: ['project']` | Agent identity, user-specific instructions |
+| User | `/data/memory/CLAUDE.md` | SDK auto-discovery via `cwd` + `settingSources: ['project', 'user']` | Agent identity, user-specific instructions |
 
 The effective system prompt is assembled as: **Claude Code preset** → **org CLAUDE.md** (appended) → **user CLAUDE.md** (loaded by CLI). This mirrors NanoClaw's global + per-group persona stacking, adapted for PicoClaw's single-user model.
 
@@ -272,7 +272,7 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_BASE_URL` | Anthropic API base URL (default: `https://api.anthropic.com`). Set this when using a third-party API proxy or custom endpoint (e.g. `https://your-proxy.com/anthropic`). |
+| `ANTHROPIC_BASE_URL` | Anthropic API base URL (SDK defaults to `https://api.anthropic.com` when unset). Set for third-party API proxies (e.g., `https://your-proxy.com/anthropic`). |
 | `ANTHROPIC_API_KEY` | Claude API key (or equivalent OAuth token) |
 | `API_TOKEN` | Bearer token for HTTP API authentication |
 
@@ -288,7 +288,7 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | `STORE_DIR` | `/data/store` | Persistent database volume |
 | `MEMORY_DIR` | `/data/memory` | Memory and persona volume |
 | `ORG_DIR` | (empty) | Org directory path (CLAUDE.md, managed-mcp.json, skills/) |
-| `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` | Skills volume |
+| `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` | Org skills directory (canonical: `$ORG_DIR/skills`; `/data/skills` is legacy fallback) |
 | `SESSIONS_DIR` | `/data/sessions` | Session state volume |
 | `LOCAL_DB_PATH` | `/tmp/messages.db` | Local runtime database path |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | Marker string for session completion |
@@ -766,7 +766,6 @@ docker run --rm -it \
   -e ANTHROPIC_BASE_URL=https://api.anthropic.com \
   -e ANTHROPIC_API_KEY=sk-ant-xxx \
   -v $(pwd)/dev-data/memory:/data/memory \
-  -v $(pwd)/dev-data/skills:/data/skills \
   -v $(pwd)/dev-data/store:/data/store \
   -v $(pwd)/dev-data/sessions:/data/sessions \
   picoclaw:latest

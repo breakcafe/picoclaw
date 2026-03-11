@@ -111,7 +111,7 @@ implemented in `src/agent-engine.ts`:
 | Tier | File | Code mechanism | Purpose |
 |------|------|----------------|---------|
 | Org | `$ORG_DIR/CLAUDE.md` | `loadOrgClaudeMd()` → `systemPrompt: { preset: 'claude_code', append }` | Organization-wide policies, shared rules |
-| User | `/data/memory/CLAUDE.md` | `cwd: MEMORY_DIR` + `settingSources: ['project']` → SDK auto-discovers | Agent identity, capabilities, user-specific rules |
+| User | `/data/memory/CLAUDE.md` | `cwd: MEMORY_DIR` + `settingSources: ['project', 'user']` → SDK auto-discovers | Agent identity, capabilities, user-specific rules |
 
 Assembly order (default): **Claude Code preset** → **org CLAUDE.md** (appended, if `ORG_DIR` is set) →
 **user CLAUDE.md** (loaded by CLI from `cwd`). Both files are optional. All `/data/*` volumes
@@ -208,14 +208,14 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 
 | Variable | Default | Code location |
 |----------|---------|---------------|
-| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Used by SDK internally; set for third-party API proxies |
+| `ANTHROPIC_BASE_URL` | (empty; SDK defaults to `https://api.anthropic.com`) | Used by SDK internally; set for third-party API proxies |
 | `ANTHROPIC_API_KEY` | (required) | Used by SDK internally |
 | `API_TOKEN` | (required) | `src/config.ts` → auth middleware |
 | `PORT` | `9000` | `src/config.ts` |
 | `MAX_EXECUTION_MS` | `300000` | `src/config.ts` → AbortController timeout |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | `src/config.ts` → chat response |
 | `ORG_DIR` | (empty) | `src/config.ts` → org persona, org skills, managed MCP config |
-| `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` | `src/config.ts` → org skills directory |
+| `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` (fallback) | `src/config.ts` → org skills directory |
 | `PICOCLAW_DB_PATH` | `/tmp/messages.db` | MCP server env var (set by agent-engine; `NANOCLAW_DB_PATH` as fallback) |
 | `PICOCLAW_CONVERSATION_ID` | per-request | MCP server env var (set by agent-engine; `NANOCLAW_CONVERSATION_ID` as fallback) |
 | `PICOCLAW_IS_MAIN` | `1` | MCP server env var — enables cross-conversation task management |

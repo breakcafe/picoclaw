@@ -76,6 +76,14 @@ export function syncSkills(): void {
   const destination = path.join(SESSIONS_DIR, '.claude', 'skills');
   fs.mkdirSync(destination, { recursive: true });
 
+  // Clear destination so removed skills do not persist across reloads.
+  for (const entry of fs.readdirSync(destination)) {
+    const entryPath = path.join(destination, entry);
+    if (fs.statSync(entryPath).isDirectory()) {
+      fs.rmSync(entryPath, { recursive: true, force: true });
+    }
+  }
+
   const builtInCount = syncDirectory(BUILT_IN_SKILLS_DIR, destination);
   const orgCount = syncDirectory(SKILLS_DIR, destination);
   const userCount = syncDirectoryAdditive(USER_SKILLS_DIR, destination);

@@ -122,7 +122,7 @@ $ORG_DIR/
 - **Single env var, single mount.** One `ORG_DIR=/data/org` replaces three separate configuration paths. Operators mount one read-only volume for all org resources.
 - **Naming: "org" over "global."** "Global" is ambiguous (global to the process? the cluster? the world?). "Org" is semantically precise and forms a natural pair with "user" — org resources are shared across users, user resources are per-user.
 - **User skills are additive-only.** User-created skills (from `$MEMORY_DIR/skills/`) are merged with org skills, but user skills cannot override or shadow org skill definitions. This prevents users from circumventing org policies embedded in skills.
-- **`managed-mcp.json` leverages Claude Code's native enterprise MCP management.** The CLI reads `/etc/claude-code/managed-mcp.json` for managed MCP server definitions. PicoClaw symlinks `$ORG_DIR/managed-mcp.json` to this path, reusing the CLI's built-in enforcement (always-on servers, no user opt-out) without custom plumbing.
+- **`managed-mcp.json` leverages Claude Code's native enterprise MCP management.** The CLI reads `/etc/claude-code/managed-mcp.json` for managed MCP server definitions. PicoClaw copies `$ORG_DIR/managed-mcp.json` to this path at startup, reusing the CLI's built-in enforcement (always-on servers, no user opt-out) without custom plumbing.
 
 ## Why External Cron for Task Scheduling
 

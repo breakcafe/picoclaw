@@ -7,12 +7,12 @@ SETTINGS_FILE="${CLAUDE_HOME}/settings.json"
 
 mkdir -p /data/memory /data/store /data/sessions
 
-if [ -d "${SESSION_CLAUDE_DIR}" ]; then
-  rm -rf "${CLAUDE_HOME}"
-  ln -sf "${SESSION_CLAUDE_DIR}" "${CLAUDE_HOME}"
-fi
-
-mkdir -p "${CLAUDE_HOME}"
+# Ensure persistent .claude directory exists and symlink home to it.
+# This must be unconditional so empty mounted /data/sessions volumes
+# get the needed structure on first boot.
+mkdir -p "${SESSION_CLAUDE_DIR}"
+rm -rf "${CLAUDE_HOME}"
+ln -sf "${SESSION_CLAUDE_DIR}" "${CLAUDE_HOME}"
 if [ ! -f "${SETTINGS_FILE}" ]; then
   cat > "${SETTINGS_FILE}" << 'JSON'
 {
