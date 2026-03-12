@@ -68,9 +68,8 @@ COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 RUN mkdir -p \
-    /data/memory \
+    /data/memory/.claude/skills \
     /data/store \
-    /data/sessions/.claude/skills \
     /etc/claude-code
 
 RUN chown -R node:node /app /data /home/node /etc/claude-code

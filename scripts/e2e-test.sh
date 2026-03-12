@@ -121,11 +121,10 @@ echo "  Temp dir: $TMP_DIR"
 
 # Clean test data to ensure reproducibility
 TEST_DATA_DIR="$PROJECT_DIR/dev-data"
-rm -rf "$TEST_DATA_DIR/store/messages.db" "$TEST_DATA_DIR/sessions/.claude/projects" \
-       "$TEST_DATA_DIR/sessions/.claude/debug" "$TEST_DATA_DIR/sessions/.claude/todos"
-mkdir -p "$TEST_DATA_DIR/memory/global" "$TEST_DATA_DIR/memory/conversations" \
-         "$TEST_DATA_DIR/skills" "$TEST_DATA_DIR/store" \
-         "$TEST_DATA_DIR/sessions/.claude/skills"
+rm -rf "$TEST_DATA_DIR/store/messages.db" "$TEST_DATA_DIR/memory/.claude/projects" \
+       "$TEST_DATA_DIR/memory/.claude/debug" "$TEST_DATA_DIR/memory/.claude/todos"
+mkdir -p "$TEST_DATA_DIR/memory/.claude/skills" "$TEST_DATA_DIR/memory/conversations" \
+         "$TEST_DATA_DIR/store"
 
 # Write test persona
 cat > "$TEST_DATA_DIR/memory/CLAUDE.md" << 'PERSONA'
@@ -205,9 +204,7 @@ docker run -d --name "$CONTAINER_NAME" \
   -e "LOG_LEVEL=info" \
   -e "TZ=${TZ:-UTC}" \
   -v "$TEST_DATA_DIR/memory:/data/memory" \
-  -v "$TEST_DATA_DIR/skills:/data/skills" \
   -v "$TEST_DATA_DIR/store:/data/store" \
-  -v "$TEST_DATA_DIR/sessions:/data/sessions" \
   "$IMAGE_NAME:$IMAGE_TAG" > /dev/null
 
 echo "  Container started, waiting for ready..."
@@ -417,7 +414,7 @@ fi
 # ── 6. Skills Sync ───────────────────────────────────────
 section "6. Skills & Memory Verification"
 
-SKILLS_LS=$(docker exec "$CONTAINER_NAME" ls /data/sessions/.claude/skills/ 2>&1)
+SKILLS_LS=$(docker exec "$CONTAINER_NAME" ls /data/memory/.claude/skills/ 2>&1)
 if echo "$SKILLS_LS" | grep -q "math-skill"; then
   pass "Skills synced to .claude/skills/"
 else
@@ -468,9 +465,7 @@ else
     -e "LOG_LEVEL=info" \
     -e "TZ=${TZ:-UTC}" \
     -v "$TEST_DATA_DIR/memory:/data/memory" \
-    -v "$TEST_DATA_DIR/skills:/data/skills" \
     -v "$TEST_DATA_DIR/store:/data/store" \
-    -v "$TEST_DATA_DIR/sessions:/data/sessions" \
     "$IMAGE_NAME:$IMAGE_TAG" > /dev/null
 
   wait_ready
@@ -548,7 +543,7 @@ else
 fi
 
 # 4. Verify skill is synced to .claude/skills/
-SYNCED=$(docker exec "$CONTAINER_NAME" ls /data/sessions/.claude/skills/ 2>&1)
+SYNCED=$(docker exec "$CONTAINER_NAME" ls /data/memory/.claude/skills/ 2>&1)
 if echo "$SYNCED" | grep -q "e2e-test-skill"; then
   pass "Dynamic skill synced to .claude/skills/"
 else
@@ -600,7 +595,7 @@ else
 fi
 
 # Verify the skill content was updated in .claude/skills/
-UPDATED_CONTENT=$(docker exec "$CONTAINER_NAME" cat /data/sessions/.claude/skills/e2e-test-skill/SKILL.md 2>&1)
+UPDATED_CONTENT=$(docker exec "$CONTAINER_NAME" cat /data/memory/.claude/skills/e2e-test-skill/SKILL.md 2>&1)
 if echo "$UPDATED_CONTENT" | grep -q "e2e-test-skill-v2"; then
   pass "Hot-reload: skill content updated in .claude/skills/"
 else

@@ -125,10 +125,8 @@ prepare_env() {
 }
 
 ensure_data_dirs() {
-  mkdir -p dev-data/memory/global dev-data/memory/conversations
-  mkdir -p dev-data/skills
+  mkdir -p dev-data/memory/.claude/skills dev-data/memory/conversations
   mkdir -p dev-data/store
-  mkdir -p dev-data/sessions/.claude/skills
 
   if [[ ! -f dev-data/memory/CLAUDE.md ]]; then
     cat > dev-data/memory/CLAUDE.md <<'MD'
@@ -177,9 +175,7 @@ start_container() {
     -p "${API_PORT}:9000" \
     --env-file "$ENV_FILE" \
     -v "$ROOT_DIR/dev-data/memory:/data/memory" \
-    -v "$ROOT_DIR/dev-data/skills:/data/skills" \
     -v "$ROOT_DIR/dev-data/store:/data/store" \
-    -v "$ROOT_DIR/dev-data/sessions:/data/sessions" \
     "$IMAGE_NAME" >/dev/null
 
   wait_ready

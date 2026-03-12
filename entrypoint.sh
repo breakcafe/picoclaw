@@ -1,15 +1,16 @@
 #!/bin/bash
 set -euo pipefail
 
+MEMORY_DIR="${MEMORY_DIR:-/data/memory}"
 CLAUDE_HOME="/home/node/.claude"
-SESSION_CLAUDE_DIR="/data/sessions/.claude"
+SESSION_CLAUDE_DIR="${MEMORY_DIR}/.claude"
 SETTINGS_FILE="${CLAUDE_HOME}/settings.json"
 
-mkdir -p /data/memory /data/store /data/sessions
+mkdir -p "${MEMORY_DIR}" /data/store
 
 # Ensure persistent .claude directory exists and symlink home to it.
-# This must be unconditional so empty mounted /data/sessions volumes
-# get the needed structure on first boot.
+# This must be unconditional so empty mounted volumes get the needed
+# structure on first boot.
 mkdir -p "${SESSION_CLAUDE_DIR}"
 rm -rf "${CLAUDE_HOME}"
 ln -sf "${SESSION_CLAUDE_DIR}" "${CLAUDE_HOME}"
@@ -40,7 +41,7 @@ fi
 # Load order: built-in → org (authoritative) → user (additive only)
 SKILLS_DST="${CLAUDE_HOME}/skills"
 BUILTIN_SRC="${BUILT_IN_SKILLS_DIR:-/app/built-in-skills}"
-USER_SKILLS_SRC="${USER_SKILLS_DIR:-/data/memory/skills}"
+USER_SKILLS_SRC="${MEMORY_DIR}/skills"
 
 # Resolve org skills source path (needed before persist step).
 if [ -n "${ORG_DIR}" ] && [ -d "${ORG_DIR}/skills" ]; then
@@ -57,7 +58,7 @@ mkdir -p "${SKILLS_DST}" "${USER_SKILLS_SRC}"
 
 # Persist runtime-created skills before clearing the destination.
 # Skills created during chat (e.g. via Claude Code) are written to
-# ~/.claude/skills/ (sessions volume) and would be lost on restart
+# .claude/skills/ inside MEMORY_DIR and would be lost on restart
 # because the sync clears the destination first.  Copy any skill whose
 # name does NOT exist in a managed source back to the persistent user
 # skills directory so it survives the next sync.
@@ -112,17 +113,24 @@ fi
 # NOTE: As of SDK 0.2.34, auto-memory is gated behind an internal feature
 # flag (tengu_herring_clock, default false) and is non-functional in
 # SDK/non-interactive mode. This symlink is a forward-compatibility measure.
-MEMORY_DIR="${MEMORY_DIR:-/data/memory}"
 PROJECT_SLUG=$(echo "${MEMORY_DIR}" | sed 's|/|-|g')
 AUTO_MEMORY_DIR="${CLAUDE_HOME}/projects/${PROJECT_SLUG}/memory"
-if [ -d "${AUTO_MEMORY_DIR}" ] && [ ! -L "${AUTO_MEMORY_DIR}" ]; then
-  # Move any existing auto-memory content to the real volume
-  if [ -f "${AUTO_MEMORY_DIR}/MEMORY.md" ]; then
-    cp -n "${AUTO_MEMORY_DIR}/MEMORY.md" "${MEMORY_DIR}/MEMORY.md" 2>/dev/null || true
-  fi
-  rm -rf "${AUTO_MEMORY_DIR}"
-fi
-mkdir -p "$(dirname "${AUTO_MEMORY_DIR}")"
-ln -sf "${MEMORY_DIR}" "${AUTO_MEMORY_DIR}"
+
+# Skip symlink when AUTO_MEMORY_DIR is inside MEMORY_DIR (merged mode → circular).
+case "${AUTO_MEMORY_DIR}" in
+  "${MEMORY_DIR}"/*)
+    ;;  # Skip — would be circular
+  *)
+    if [ -d "${AUTO_MEMORY_DIR}" ] && [ ! -L "${AUTO_MEMORY_DIR}" ]; then
+      # Move any existing auto-memory content to the real volume
+      if [ -f "${AUTO_MEMORY_DIR}/MEMORY.md" ]; then
+        cp -n "${AUTO_MEMORY_DIR}/MEMORY.md" "${MEMORY_DIR}/MEMORY.md" 2>/dev/null || true
+      fi
+      rm -rf "${AUTO_MEMORY_DIR}"
+    fi
+    mkdir -p "$(dirname "${AUTO_MEMORY_DIR}")"
+    ln -sf "${MEMORY_DIR}" "${AUTO_MEMORY_DIR}"
+    ;;
+esac
 
 exec node /app/dist/index.js "$@"
