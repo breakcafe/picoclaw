@@ -87,6 +87,11 @@ ENV APP_VERSION=${BUILD_VERSION}
 ENV BUILD_COMMIT=${BUILD_COMMIT}
 ENV BUILD_TIME=${BUILD_TIME}
 
+LABEL org.opencontainers.image.source="https://github.com/breakcafe/picoclaw"
+LABEL org.opencontainers.image.description="Serverless-first Claude Agent runtime"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.version="${BUILD_VERSION}"
+
 ARG ENABLE_LAMBDA_ADAPTER=false
 USER root
 RUN if [ "$ENABLE_LAMBDA_ADAPTER" = "true" ]; then \
