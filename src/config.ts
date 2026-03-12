@@ -12,6 +12,8 @@ const parseIntWithDefault = (
 export const ANTHROPIC_BASE_URL = process.env.ANTHROPIC_BASE_URL || '';
 
 export const APP_VERSION = process.env.APP_VERSION || '1.0.0';
+export const BUILD_COMMIT = process.env.BUILD_COMMIT || 'unknown';
+export const BUILD_TIME = process.env.BUILD_TIME || 'unknown';
 export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || 'Pico';
 export const API_TOKEN = process.env.API_TOKEN || '';
 

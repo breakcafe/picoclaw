@@ -176,9 +176,16 @@ echo "  Test persona and skill written"
 # ── Build ────────────────────────────────────────────────
 if [ "$SKIP_BUILD" = false ]; then
   section "Docker Build"
-  docker build --platform linux/amd64 -t "$IMAGE_NAME:$IMAGE_TAG" "$PROJECT_DIR" \
+  E2E_BUILD_VERSION="$(node -p "require('$PROJECT_DIR/package.json').version" 2>/dev/null || echo unknown)"
+  E2E_BUILD_COMMIT="$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  E2E_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  docker build --platform linux/amd64 \
+    --build-arg BUILD_VERSION="$E2E_BUILD_VERSION" \
+    --build-arg BUILD_COMMIT="$E2E_BUILD_COMMIT" \
+    --build-arg BUILD_TIME="$E2E_BUILD_TIME" \
+    -t "$IMAGE_NAME:$IMAGE_TAG" "$PROJECT_DIR" \
     --quiet 2>&1 | tail -1
-  echo "  Image built: $IMAGE_NAME:$IMAGE_TAG"
+  echo "  Image built: $IMAGE_NAME:$IMAGE_TAG (v${E2E_BUILD_VERSION} @ ${E2E_BUILD_COMMIT})"
 else
   echo "  Skipping Docker build (--no-build)"
   IMAGE_TAG="latest"

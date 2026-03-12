@@ -3,7 +3,7 @@
   "info": {
     "title": "PicoClaw Serverless API",
     "version": "1.0.0",
-    "description": "HTTP API for PicoClaw (serverless-oriented runtime).\n\nNotes:\n- All endpoints except `/health` require Bearer token authentication.\n- `POST /chat` supports both JSON response mode and SSE streaming mode.\n- Memory and conversation history are persisted via mounted storage and reused across separate requests.\n- Scheduled tasks are externally triggered by calling `/task/check`.\n- `POST /control/stop` can be used to request graceful save-and-exit.\n- Every response includes an `X-Request-ID` header for log correlation. If the caller sends an `X-Request-ID` header, the same value is echoed back; otherwise a new `req-<UUID>` is generated.\n"
+    "description": "HTTP API for PicoClaw (serverless-oriented runtime).\n\nNotes:\n- All endpoints except `/health` require Bearer token authentication.\n- `POST /chat` supports both JSON response mode and SSE streaming mode.\n- Memory and conversation history are persisted via mounted storage and reused across separate requests.\n- Scheduled tasks are externally triggered by calling `/task/check`.\n- `POST /control/stop` can be used to request graceful save-and-exit.\n- Every response includes an `X-Request-ID` header for log correlation. If the caller sends an `X-Request-ID` header, the same value is echoed back; otherwise a new `req-<UUID>` is generated.\n- Every response includes `X-Build-Version` and `X-Build-Commit` headers for identifying the running build.\n"
   },
   "servers": [
     {
@@ -46,6 +46,12 @@
             "headers": {
               "X-Request-ID": {
                 "$ref": "#/components/headers/X-Request-ID"
+              },
+              "X-Build-Version": {
+                "$ref": "#/components/headers/X-Build-Version"
+              },
+              "X-Build-Commit": {
+                "$ref": "#/components/headers/X-Build-Commit"
               }
             },
             "content": {
@@ -57,7 +63,9 @@
                   "ok": {
                     "value": {
                       "status": "ok",
-                      "version": "1.0.0",
+                      "version": "1.2.15",
+                      "commit": "abc1234",
+                      "build_time": "2026-03-12T10:00:00Z",
                       "max_execution_ms": 300000,
                       "database": {
                         "ok": true,
@@ -891,6 +899,20 @@
           "type": "string",
           "example": "req-a1b2c3d4-e5f6-7890-abcd-ef1234567890"
         }
+      },
+      "X-Build-Version": {
+        "description": "Application version from `package.json`, injected at Docker build time.\nPresent on every response.\n",
+        "schema": {
+          "type": "string",
+          "example": "1.2.15"
+        }
+      },
+      "X-Build-Commit": {
+        "description": "Short git commit hash of the build, injected at Docker build time.\nPresent on every response.\n",
+        "schema": {
+          "type": "string",
+          "example": "abc1234"
+        }
       }
     },
     "responses": {
@@ -899,6 +921,12 @@
         "headers": {
           "X-Request-ID": {
             "$ref": "#/components/headers/X-Request-ID"
+          },
+          "X-Build-Version": {
+            "$ref": "#/components/headers/X-Build-Version"
+          },
+          "X-Build-Commit": {
+            "$ref": "#/components/headers/X-Build-Commit"
           }
         },
         "content": {
@@ -935,6 +963,8 @@
         "required": [
           "status",
           "version",
+          "commit",
+          "build_time",
           "max_execution_ms",
           "database",
           "volumes"
@@ -949,6 +979,14 @@
           },
           "version": {
             "type": "string"
+          },
+          "commit": {
+            "type": "string",
+            "description": "Short git commit hash of the build."
+          },
+          "build_time": {
+            "type": "string",
+            "description": "ISO 8601 UTC timestamp of when the image was built."
           },
           "max_execution_ms": {
             "type": "integer",

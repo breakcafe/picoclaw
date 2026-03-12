@@ -12,6 +12,18 @@ Authorization: Bearer <API_TOKEN>
 
 The token is configured via the `API_TOKEN` environment variable on the PicoClaw server.
 
+## Response Headers
+
+Every HTTP response includes these headers:
+
+| Header | Description |
+|--------|-------------|
+| `X-Request-ID` | Request tracking identifier for log correlation. Echoes caller-provided value or generates `req-<UUID>`. |
+| `X-Build-Version` | Application version (from `package.json`, injected at Docker build time). |
+| `X-Build-Commit` | Short git commit hash of the build. |
+
+Use `X-Request-ID` for log correlation. Use `X-Build-Version` and `X-Build-Commit` to verify which code version is running.
+
 ## Conversation Lifecycle
 
 ### Start a new conversation

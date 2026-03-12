@@ -1,6 +1,7 @@
 import express, { Express, NextFunction, Request, Response } from 'express';
 
 import { AgentEngine, AgentRunner } from './agent-engine.js';
+import { APP_VERSION, BUILD_COMMIT } from './config.js';
 import { syncDatabaseToVolume } from './db.js';
 import { logger } from './logger.js';
 import { authMiddleware } from './middleware/auth.js';
@@ -24,6 +25,35 @@ export function createServer(
   app.use(express.json({ limit: '1mb' }));
   app.use(requestIdMiddleware);
 
+  // Build metadata headers on every response
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-Build-Version', APP_VERSION);
+    res.setHeader('X-Build-Commit', BUILD_COMMIT);
+    next();
+  });
+
+  // Per-request logging
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      const durationMs = Date.now() - start;
+      const entry = {
+        requestId: req.requestId,
+        method: req.method,
+        url: req.originalUrl,
+        statusCode: res.statusCode,
+        durationMs,
+      };
+      if (res.statusCode >= 500) {
+        logger.warn(entry, 'Request completed');
+      } else {
+        logger.info(entry, 'Request completed');
+      }
+    });
+    next();
+  });
+
+  // Sync database to persistent volume after each response
   app.use((req: Request, res: Response, next: NextFunction) => {
     res.on('finish', () => {
       try {

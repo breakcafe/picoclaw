@@ -241,6 +241,19 @@ describe('http server', () => {
     expect(response.headers['x-request-id']).toBe('caller-trace-42');
   });
 
+  it('returns X-Build-Version and X-Build-Commit headers', async () => {
+    const response = await request(app).get('/health');
+    expect(response.headers['x-build-version']).toBeDefined();
+    expect(response.headers['x-build-commit']).toBeDefined();
+  });
+
+  it('includes commit and build_time in health response', async () => {
+    const response = await request(app).get('/health');
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('commit');
+    expect(response.body).toHaveProperty('build_time');
+  });
+
   it('streams thinking events when thinking=true and stream=true', async () => {
     const thinkingEngine: AgentRunner = {
       async run(_input, callbacksOrOnChunk) {

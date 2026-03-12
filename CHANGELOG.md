@@ -5,6 +5,14 @@ All notable changes to PicoClaw will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Build metadata**: `GET /health` now includes `commit` (git short hash) and `build_time`
+  (ISO 8601 UTC) fields. Every HTTP response includes `X-Build-Version` and `X-Build-Commit`
+  headers for identifying the running build.
+- **Per-request structured logging**: every HTTP request is logged with method, URL, status
+  code, duration, and request ID via pino structured output.
+- **Docker build args**: `BUILD_VERSION`, `BUILD_COMMIT`, and `BUILD_TIME` are injected at
+  image build time by Makefile, `picoclaw.sh`, and `scripts/e2e-test.sh`. `APP_VERSION`
+  defaults to `package.json` version instead of hardcoded `1.0.0` in Docker builds.
 - **Org directory (`ORG_DIR`)**: single env var + read-only mount consolidates org
   persona (`CLAUDE.md`), org skills (`skills/`), and managed MCP servers
   (`managed-mcp.json`) into one directory. Replaces the previous
