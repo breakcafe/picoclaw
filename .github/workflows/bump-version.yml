@@ -1,5 +1,11 @@
 name: Bump version
 
+# Auto-trigger on push is disabled.
+# Version numbers now appear in OpenAPI spec examples, deployment guide, and
+# Docker build args — not just package.json. Automated patch bumps would leave
+# documentation examples stale. Use workflow_dispatch for intentional bumps,
+# then update docs/api/openapi.yaml, docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md,
+# and regenerate docs/api/openapi.json in the same commit.
 on:
   workflow_dispatch:
     inputs:
@@ -8,9 +14,6 @@ on:
         required: false
         type: boolean
         default: false
-  push:
-    branches: [main]
-    paths: ['src/**', 'container/**']
 
 permissions:
   contents: write
@@ -24,7 +27,7 @@ jobs:
       - name: Bump patch version
         run: |
           npm version patch --no-git-tag-version
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
             echo "dry-run mode: skipping commit/push"
             git restore package.json package-lock.json
             exit 0
