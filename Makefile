@@ -7,6 +7,11 @@ BUILD_VERSION := $(shell node -p "require('./package.json').version" 2>/dev/null
 BUILD_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
+GHCR_IMAGE := ghcr.io/breakcafe/picoclaw
+GIT_BRANCH := $(shell git branch --show-current 2>/dev/null || echo unknown)
+IS_MAIN := $(filter main,$(GIT_BRANCH))
+BRANCH_SLUG := $(shell echo "$(GIT_BRANCH)" | sed 's/[^a-zA-Z0-9]/-/g' | tr 'A-Z' 'a-z')
+
 ifneq (,$(wildcard .env))
 include .env
 export
@@ -65,6 +70,79 @@ docker-stop: ## Stop the running container
 
 docker-logs: ## Tail container logs
 	docker logs -f $(CONTAINER_NAME)
+
+# ── GHCR (Container Registry) ────────────────────────────
+
+ghcr-login: ## Authenticate Docker to GHCR via gh CLI
+	@gh auth token | docker login ghcr.io -u $(shell gh api user -q .login) --password-stdin
+
+ghcr-build: ## Build standard image with GHCR tags
+ifdef IS_MAIN
+	docker build --platform linux/amd64 \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg BUILD_COMMIT=$(BUILD_COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-t $(GHCR_IMAGE):latest \
+		-t $(GHCR_IMAGE):$(BUILD_VERSION) \
+		-t $(GHCR_IMAGE):$(BUILD_VERSION)-$(BUILD_COMMIT) .
+else
+	docker build --platform linux/amd64 \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg BUILD_COMMIT=$(BUILD_COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-t $(GHCR_IMAGE):dev \
+		-t $(GHCR_IMAGE):dev-$(BUILD_COMMIT) \
+		-t $(GHCR_IMAGE):dev-$(BRANCH_SLUG) .
+endif
+
+ghcr-build-lambda: ## Build Lambda image with GHCR tags
+ifdef IS_MAIN
+	docker build --platform linux/amd64 \
+		--build-arg ENABLE_LAMBDA_ADAPTER=true \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg BUILD_COMMIT=$(BUILD_COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-t $(GHCR_IMAGE):latest-lambda \
+		-t $(GHCR_IMAGE):$(BUILD_VERSION)-lambda \
+		-t $(GHCR_IMAGE):$(BUILD_VERSION)-$(BUILD_COMMIT)-lambda .
+else
+	docker build --platform linux/amd64 \
+		--build-arg ENABLE_LAMBDA_ADAPTER=true \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg BUILD_COMMIT=$(BUILD_COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-t $(GHCR_IMAGE):dev-lambda \
+		-t $(GHCR_IMAGE):dev-$(BUILD_COMMIT)-lambda \
+		-t $(GHCR_IMAGE):dev-$(BRANCH_SLUG)-lambda .
+endif
+
+ghcr-push: ghcr-login ## Push standard image tags to GHCR
+ifdef IS_MAIN
+	docker push $(GHCR_IMAGE):latest
+	docker push $(GHCR_IMAGE):$(BUILD_VERSION)
+	docker push $(GHCR_IMAGE):$(BUILD_VERSION)-$(BUILD_COMMIT)
+else
+	docker push $(GHCR_IMAGE):dev
+	docker push $(GHCR_IMAGE):dev-$(BUILD_COMMIT)
+	docker push $(GHCR_IMAGE):dev-$(BRANCH_SLUG)
+endif
+
+ghcr-push-lambda: ghcr-login ## Push Lambda image tags to GHCR
+ifdef IS_MAIN
+	docker push $(GHCR_IMAGE):latest-lambda
+	docker push $(GHCR_IMAGE):$(BUILD_VERSION)-lambda
+	docker push $(GHCR_IMAGE):$(BUILD_VERSION)-$(BUILD_COMMIT)-lambda
+else
+	docker push $(GHCR_IMAGE):dev-lambda
+	docker push $(GHCR_IMAGE):dev-$(BUILD_COMMIT)-lambda
+	docker push $(GHCR_IMAGE):dev-$(BRANCH_SLUG)-lambda
+endif
+
+ghcr-release: ghcr-build ghcr-build-lambda ghcr-push ghcr-push-lambda ## Build and push all images to GHCR
+
+ghcr-make-public: ## One-time: set GHCR package visibility to public
+	gh api -X PUT orgs/breakcafe/packages/container/picoclaw/visibility \
+		-f visibility=public
 
 # ── Test ─────────────────────────────────────────────────
 
@@ -132,5 +210,7 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: build-ts dev dev-watch docker-build docker-build-lambda docker-run docker-run-bg \
-	docker-stop docker-logs test test-health test-chat test-task-create test-task-check \
-	test-e2e test-e2e-quick clean clean-data help _ensure-data-dirs _wait-ready
+	docker-stop docker-logs ghcr-login ghcr-build ghcr-build-lambda ghcr-push \
+	ghcr-push-lambda ghcr-release ghcr-make-public test test-health test-chat \
+	test-task-create test-task-check test-e2e test-e2e-quick clean clean-data \
+	help _ensure-data-dirs _wait-ready

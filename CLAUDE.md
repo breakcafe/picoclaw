@@ -43,6 +43,21 @@ so no local Node.js is required for building images.
 
 Alternatively: `make docker-build && make docker-run` for manual control.
 
+### GHCR (Container Registry)
+
+Images are published to `ghcr.io/breakcafe/picoclaw`. On `main`, tags are `latest`,
+`<version>`, `<version>-<commit>`. On other branches, tags are `dev`, `dev-<commit>`,
+`dev-<branch>`. Lambda variants append `-lambda`.
+
+```bash
+make ghcr-build            # build standard image with GHCR tags
+make ghcr-build-lambda     # build Lambda image with GHCR tags
+make ghcr-push             # push standard image to GHCR
+make ghcr-push-lambda      # push Lambda image to GHCR
+make ghcr-release          # build + push all (standard + Lambda)
+make ghcr-make-public      # one-time: set package visibility to public
+```
+
 ## Architecture
 
 ```

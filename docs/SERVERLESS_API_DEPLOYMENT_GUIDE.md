@@ -801,7 +801,47 @@ make docker-run
 docker compose up --build
 ```
 
-### 7.5 AWS Lambda (Container Image)
+### 7.5 Pre-built Images (GHCR)
+
+Pre-built images are published to GitHub Container Registry. Public pull — no authentication required:
+
+```bash
+# Standard image (latest release)
+docker pull ghcr.io/breakcafe/picoclaw:latest
+
+# Specific version
+docker pull ghcr.io/breakcafe/picoclaw:1.2.15
+
+# Version + commit (for exact build provenance)
+docker pull ghcr.io/breakcafe/picoclaw:1.2.15-abc1234
+
+# Lambda variant
+docker pull ghcr.io/breakcafe/picoclaw:latest-lambda
+```
+
+Dev images are published from non-main branches:
+
+```bash
+docker pull ghcr.io/breakcafe/picoclaw:dev
+docker pull ghcr.io/breakcafe/picoclaw:dev-abc1234
+docker pull ghcr.io/breakcafe/picoclaw:dev-my-feature
+```
+
+Run a pre-built image:
+
+```bash
+docker run --rm -it \
+  -p 9000:9000 \
+  -e API_TOKEN=your-token \
+  -e ANTHROPIC_BASE_URL=https://api.anthropic.com \
+  -e ANTHROPIC_API_KEY=sk-ant-xxx \
+  -v $(pwd)/dev-data/memory:/data/memory \
+  -v $(pwd)/dev-data/store:/data/store \
+  -v $(pwd)/dev-data/sessions:/data/sessions \
+  ghcr.io/breakcafe/picoclaw:latest
+```
+
+### 7.6 AWS Lambda (Container Image)
 
 **Recommended configuration:**
 
@@ -826,7 +866,7 @@ The `ENABLE_LAMBDA_ADAPTER=true` build arg installs the [AWS Lambda Web Adapter]
 
 **Environment variables:** Inject `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, and `API_TOKEN` via Lambda environment variables or AWS Secrets Manager.
 
-### 7.6 Alibaba Cloud Function Compute (FC)
+### 7.7 Alibaba Cloud Function Compute (FC)
 
 **Recommended configuration:**
 

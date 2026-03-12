@@ -5,6 +5,12 @@ All notable changes to PicoClaw will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **GHCR publishing**: Docker images are published to `ghcr.io/breakcafe/picoclaw` with
+  branch-aware tag strategy — release tags (`latest`, `x.y.z`, `x.y.z-commit`) on main,
+  dev tags (`dev`, `dev-commit`, `dev-branch`) on feature branches. Lambda variants use
+  `-lambda` suffix. New Makefile targets: `ghcr-build`, `ghcr-push`, `ghcr-release`,
+  `ghcr-make-public`. CI workflow (`.github/workflows/docker-publish.yml`) ready for
+  when GitHub Actions is enabled.
 - **Build metadata**: `GET /health` now includes `commit` (git short hash) and `build_time`
   (ISO 8601 UTC) fields. Every HTTP response includes `X-Build-Version` and `X-Build-Commit`
   headers for identifying the running build.
