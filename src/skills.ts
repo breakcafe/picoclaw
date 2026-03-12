@@ -65,7 +65,59 @@ function syncDirectoryAdditive(sourceDir: string, destination: string): number {
 }
 
 /**
+ * Collect the names of all skills that come from the three managed sources
+ * (built-in, org, user). Used to identify runtime-created skills that are
+ * NOT in any managed source and need to be persisted.
+ */
+function managedSkillNames(): Set<string> {
+  const names = new Set<string>();
+  for (const dir of [BUILT_IN_SKILLS_DIR, SKILLS_DIR, USER_SKILLS_DIR]) {
+    for (const name of listSkillNames(dir)) {
+      names.add(name);
+    }
+  }
+  return names;
+}
+
+/**
+ * Save runtime-created skills back to USER_SKILLS_DIR before a sync wipes
+ * the destination.  Skills created during a chat session (e.g. via Claude
+ * Code) are written to ~/.claude/skills/ which resolves to the sessions
+ * volume.  Without this step they would be lost on reload/restart because
+ * syncSkills() clears the destination first.
+ *
+ * Only skills whose name does NOT already exist in any managed source are
+ * persisted — we never overwrite org/built-in/user-authored originals.
+ */
+function persistRuntimeSkills(destination: string): number {
+  if (!fs.existsSync(destination)) return 0;
+
+  const managed = managedSkillNames();
+  fs.mkdirSync(USER_SKILLS_DIR, { recursive: true });
+
+  let count = 0;
+  for (const entry of fs.readdirSync(destination)) {
+    const entryPath = path.join(destination, entry);
+    if (!fs.statSync(entryPath).isDirectory()) continue;
+    if (managed.has(entry)) continue;
+
+    // This is a runtime-created skill — copy to the persistent user dir.
+    const targetPath = path.join(USER_SKILLS_DIR, entry);
+    if (!fs.existsSync(targetPath)) {
+      fs.cpSync(entryPath, targetPath, { recursive: true });
+      count++;
+    }
+  }
+
+  return count;
+}
+
+/**
  * Sync skills from three tiers to .claude/skills/.
+ *
+ * Before clearing the destination, runtime-created skills (those not in
+ * any managed source) are persisted back to USER_SKILLS_DIR so they
+ * survive across container restarts and reload-skills calls.
  *
  * Load order:
  *   1. BUILT_IN_SKILLS_DIR (bundled in image)
@@ -75,6 +127,15 @@ function syncDirectoryAdditive(sourceDir: string, destination: string): number {
 export function syncSkills(): void {
   const destination = path.join(SESSIONS_DIR, '.claude', 'skills');
   fs.mkdirSync(destination, { recursive: true });
+
+  // Persist runtime-created skills before clearing.
+  const persistedCount = persistRuntimeSkills(destination);
+  if (persistedCount > 0) {
+    logger.info(
+      { count: persistedCount },
+      'Persisted runtime-created skills to user skills directory',
+    );
+  }
 
   // Clear destination so removed skills do not persist across reloads.
   for (const entry of fs.readdirSync(destination)) {
