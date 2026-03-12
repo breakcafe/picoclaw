@@ -55,7 +55,7 @@ make ghcr-build-lambda     # build Lambda image with GHCR tags
 make ghcr-push             # push standard image to GHCR
 make ghcr-push-lambda      # push Lambda image to GHCR
 make ghcr-release          # build + push all (standard + Lambda)
-make ghcr-make-public      # one-time: set package visibility to public
+make ghcr-make-public      # one-time: set package visibility to public (requires public repo or GitHub Team plan)
 ```
 
 ## Architecture

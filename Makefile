@@ -140,9 +140,8 @@ endif
 
 ghcr-release: ghcr-build ghcr-build-lambda ghcr-push ghcr-push-lambda ## Build and push all images to GHCR
 
-ghcr-make-public: ## One-time: set GHCR package visibility to public
-	gh api -X PUT orgs/breakcafe/packages/container/picoclaw/visibility \
-		-f visibility=public
+ghcr-make-public: ## One-time: set GHCR package visibility to public (requires public repo or GitHub Team plan)
+	gh api -X PUT 'orgs/breakcafe/packages/container/picoclaw/visibility' -f visibility=public
 
 # ── Test ─────────────────────────────────────────────────
 
