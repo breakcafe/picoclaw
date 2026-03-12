@@ -1,6 +1,6 @@
 # Publish Docker images to GitHub Container Registry (GHCR)
-# Currently non-functional — GitHub Actions is disabled for this repo.
-# Activates automatically when Actions is enabled.
+# - Push to main: builds release tags (latest, x.y.z, x.y.z-commit)
+# - Manual dispatch: builds dev or release tags depending on branch
 
 name: Docker Publish
 
@@ -8,6 +8,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      push_lambda:
+        description: 'Also build and push Lambda variant'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -62,6 +67,7 @@ jobs:
             BUILD_TIME=${{ steps.tags.outputs.build_time }}
 
       - name: Build and push Lambda image
+        if: github.event_name == 'push' || inputs.push_lambda
         uses: docker/build-push-action@v6
         with:
           context: .
