@@ -40,14 +40,14 @@ HTTP Request
 ┌──────────────────────┐   ┌──────────────────────────────────────┐
 │  /data/org           │   │  /data/memory                        │
 │   Org persona        │   │   User persona + agent workspace     │
-│   Org skills         │   ├──────────────────────────────────────┤
-│   managed-mcp.json   │   │  /data/sessions                      │
-└──────────────────────┘   │   .claude/ session state             │
-                           ├──────────────────────────────────────┤
-  Ephemeral                │  /data/store                         │
-┌──────────────────────┐   │   Persistent SQLite                  │
-│  /tmp/messages.db    │   └──────────────────────────────────────┘
-│   Runtime DB         │           ▲
+│   Org skills         │   │   .claude/ session state + skills    │
+│   managed-mcp.json   │   ├──────────────────────────────────────┤
+└──────────────────────��   │  /data/store                         │
+                           │   Persistent SQLite                  │
+  Ephemeral                └──────────────────────────────────────┘
+┌──────────────────────┐           ▲
+│  /tmp/messages.db    │           │
+│   Runtime DB         │           │
 └──────────┬───────────┘           │
            └───── sync after ──────┘
                    response
@@ -56,8 +56,7 @@ HTTP Request
 | Volume | Purpose |
 |--------|---------|
 | `/data/org` | Org persona (`CLAUDE.md`), org skills, `managed-mcp.json` — read-only, optional |
-| `/data/memory` | User persona (`CLAUDE.md`), agent workspace (cwd) — read/write |
-| `/data/sessions` | Claude session state (`.claude/`) — read/write |
+| `/data/memory` | User persona (`CLAUDE.md`), agent workspace (cwd), `.claude/` SDK session state — read/write |
 | `/data/store` | Persistent SQLite database — read/write |
 
 **Key difference from NanoClaw**: No Docker child containers. The agent runs in the same process as the HTTP server. Skills and memory are volume-mounted, not installed into the source tree.
@@ -88,7 +87,6 @@ docker run --rm -it \
   -e ANTHROPIC_API_KEY=sk-ant-xxx \
   -v $(pwd)/dev-data/memory:/data/memory \
   -v $(pwd)/dev-data/store:/data/store \
-  -v $(pwd)/dev-data/sessions:/data/sessions \
   picoclaw:latest
 
 # Run (with org directory)
@@ -101,7 +99,6 @@ docker run --rm -it \
   -v $(pwd)/dev-data/org:/data/org:ro \
   -v $(pwd)/dev-data/memory:/data/memory \
   -v $(pwd)/dev-data/store:/data/store \
-  -v $(pwd)/dev-data/sessions:/data/sessions \
   picoclaw:latest
 ```
 
@@ -162,8 +159,8 @@ PicoClaw stores all state on mounted volumes. The container process itself is st
   memory/           # User persona + agent workspace (cwd)
     CLAUDE.md         # User persona definition
     skills/           # User-created skills (additive, supplements org skills)
+    .claude/          # SDK session state (settings, skills sync, session files)
     conversations/    # Archived transcripts (rare — only on context compaction)
-  sessions/         # Claude session state (.claude/)
   store/            # Persistent SQLite (synced from /tmp on every response)
     messages.db
 ```
@@ -277,7 +274,7 @@ make test-e2e             # full build + run + test pipeline
 | `STORE_DIR` | `/data/store` | Persistent database volume |
 | `MEMORY_DIR` | `/data/memory` | User memory and persona volume (agent cwd) |
 | `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` (fallback) | Org skills directory |
-| `SESSIONS_DIR` | `/data/sessions` | Session state volume |
+| `SESSIONS_DIR` | _(deprecated)_ | Ignored with warning; session state lives at `$MEMORY_DIR/.claude/` |
 
 ## License
 

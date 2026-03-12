@@ -27,7 +27,7 @@ PicoClaw eliminates this layer:
 
 1. **The Claude Agent SDK runs in-process.** `query()` spawns a CLI subprocess internally — that's the SDK's own execution model, not something we add. Wrapping it in another Docker container adds a third process layer with no functional benefit.
 
-2. **Filesystem isolation is replaced by volume semantics.** Instead of each container having its own filesystem, PicoClaw mounts four well-defined volumes. The agent's `cwd` is set to `MEMORY_DIR`, and skills are synced to `.claude/skills/` at startup.
+2. **Filesystem isolation is replaced by volume semantics.** Instead of each container having its own filesystem, PicoClaw mounts three well-defined volumes. The agent's `cwd` is set to `MEMORY_DIR`, and skills are synced to `.claude/skills/` at startup.
 
 3. **Session state moves from container lifecycle to database rows.** NanoClaw ties a session to a container's lifetime. PicoClaw stores `session_id` and `last_assistant_uuid` in SQLite, enabling resume across separate HTTP requests.
 
@@ -88,21 +88,20 @@ When `query()` receives an **AsyncIterable**, `isSingleUserTurn = false`. The SD
 
 PicoClaw's `MessageStream` pushes one message and immediately calls `end()`, but the iterable type prevents premature stdin closure during agent execution.
 
-## Why Four Separate Volumes
+## Why Three Separate Volumes
 
-The four-volume model (`memory`, `skills`, `sessions`, `store`) separates concerns:
+The three-volume model (`memory`, `org`, `store`) separates concerns:
 
 | Volume | Lifecycle | Write Pattern | Sharing |
 |--------|-----------|---------------|---------|
-| `memory` | Long-lived | Agent writes (persona, archives) | Shared across deploys |
+| `memory` | Long-lived | Agent writes (persona, archives, `.claude/` session state) | Shared across deploys |
 | `org` | Deploy-time (optional) | Human/CI writes org resources | Read-only at runtime; when `ORG_DIR` is set, provides org persona, skills, and MCP config |
-| `sessions` | Per-instance | SDK writes `.claude/` state | Instance-specific |
 | `store` | Long-lived | Sync from `/tmp` after each request | Shared across deploys |
 
 This separation enables:
 - **Org resources as deployment artifacts**: update org persona, skills, or MCP config by mounting a new volume at `/data/org`, no image rebuild.
 - **Independent backup policies**: `store` (critical) vs org resources (reproducible).
-- **Session isolation**: each container instance can have its own `.claude/` state without conflicts.
+- **Session state co-located with memory**: `.claude/` lives inside `MEMORY_DIR`, so the agent's skills, session files, and workspace are all on the same volume — simplifying deployment from 4 mounts to 3.
 
 ## Why ORG_DIR
 
@@ -166,9 +165,9 @@ Cross-request conversation continuity uses the SDK's built-in session resume:
 1. First request: `query()` returns a `system/init` message with `session_id`, and `assistant` messages with `uuid` values.
 2. PicoClaw stores `session_id` and the last `assistant.uuid` in the `conversations` table.
 3. Next request: `query()` receives `resume: session_id` and `resumeSessionAt: last_assistant_uuid`.
-4. The SDK locates the session file on disk (in `SESSIONS_DIR/.claude/`) and resumes from the specified message.
+4. The SDK locates the session file on disk (in `MEMORY_DIR/.claude/`) and resumes from the specified message.
 
-This is why `SESSIONS_DIR` must be persistent — the SDK's session files contain the full conversation state needed for resume.
+This is why `MEMORY_DIR` must be persistent — the SDK's session files (stored in `.claude/` within the memory volume) contain the full conversation state needed for resume.
 
 ## Security Model Changes
 

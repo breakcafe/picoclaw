@@ -129,6 +129,10 @@ Keep the memory volume simple and SDK-native. The agent creates subdirectories a
 /data/memory/
   CLAUDE.md              # User persona (recommended, not required)
   skills/                # User-created skills (auto-discovered, hot-reloadable)
+  .claude/               # SDK session state (settings, session files, synced skills)
+    settings.json
+    skills/              # Three-tier skill sync destination
+    sessions/            # SDK session files for resume
   conversations/         # Archived transcripts (rare — see note below)
   [agent-managed files]  # The agent organizes its own workspace
 
@@ -143,6 +147,8 @@ No prescriptive subdirectory structure is enforced. All `/data/*` volumes can be
 > **Note on `conversations/`:** This directory is created on-demand by the PreCompact hook when context compaction occurs. In practice, compaction only fires within a single `query()` call when the conversation exceeds the context window — which rarely happens in PicoClaw's request-driven model where each HTTP request starts a fresh `query()`. Most deployments will never see files here.
 
 > **Note on auto-memory:** Claude Code's built-in auto-memory feature (`MEMORY.md` auto-generation) is gated behind an internal CLI feature flag and is currently non-functional in SDK/non-interactive mode. `MEMORY.md` will not be auto-generated. If cross-session memory is needed, instruct the agent via the persona (`CLAUDE.md`) to explicitly read/write files in `/data/memory/`.
+
+> **Note on `.claude/CLAUDE.md`:** With `.claude/` now inside `MEMORY_DIR`, the path `/data/memory/.claude/CLAUDE.md` corresponds to the `'user'` setting source (`~/.claude/CLAUDE.md`). This file does not exist by default and is never created by PicoClaw. If it is accidentally created, its content will be additively loaded on top of the user persona — it will not override or replace the main `/data/memory/CLAUDE.md`.
 
 ## Writing Skills
 

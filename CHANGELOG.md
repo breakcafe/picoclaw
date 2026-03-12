@@ -35,6 +35,10 @@ All notable changes to PicoClaw will be documented in this file.
 - Cleaned up legacy NanoClaw docs from `docs/` directory
 
 ### Changed
+- **Volume consolidation**: removed `SESSIONS_DIR`. SDK session state (`.claude/`)
+  now lives inside `MEMORY_DIR`, reducing deployment from 4 volumes to 3
+  (`memory`, `store`, `org`). `SESSIONS_DIR` env var is deprecated and ignored
+  with a startup warning.
 - **Skill merge strategy**: user skills (`/data/memory/skills/`) are now additive
   only — they supplement org and built-in skills but cannot override same-name
   skills. Priority: built-in → org (authoritative) → user (additive).

@@ -113,8 +113,7 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
 | Mount | Runtime access | Agent `cwd` | Purpose |
 |-------|---------------|-------------|---------|
 | `/data/org` | Read-only | No | Org persona, org skills, managed MCP config (optional) |
-| `/data/memory` | Read/Write | **Yes** (set as cwd) | User persona (`CLAUDE.md`), agent workspace |
-| `/data/sessions` | Read/Write | No | `.claude/` session state for SDK resume |
+| `/data/memory` | Read/Write | **Yes** (set as cwd) | User persona (`CLAUDE.md`), agent workspace, `.claude/` SDK session state |
 | `/data/store` | Write (sync target) | No | Persistent copy of SQLite DB |
 | `/tmp` | Read/Write | No | Local runtime DB (ephemeral, fast) |
 
@@ -210,8 +209,9 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 
 1. **Memory and conversation history are core** — never treat as optional. Cross-request
    personalization depends on persistent mounted paths.
-2. **Persistent data model** — `MEMORY_DIR`, `STORE_DIR`, `SESSIONS_DIR`
-   must all be preserved on mounted volumes. `ORG_DIR` is read-only and optional.
+2. **Persistent data model** — `MEMORY_DIR` and `STORE_DIR`
+   must be preserved on mounted volumes. `ORG_DIR` is read-only and optional.
+   SDK session state lives at `$MEMORY_DIR/.claude/` (no separate `SESSIONS_DIR`).
 3. **Graceful stop must sync data** — both `POST /control/stop` and `SIGTERM`/`SIGINT`
    trigger `syncDatabaseToVolume()` → `closeDatabase()` → exit.
 4. **SDK version alignment** — `@anthropic-ai/claude-agent-sdk`: `0.2.34`,
@@ -238,7 +238,6 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 | `BUILD_COMMIT` | `unknown` | `src/config.ts` → git commit hash, injected at Docker build time |
 | `BUILD_TIME` | `unknown` | `src/config.ts` → build timestamp, injected at Docker build time |
 | `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces Claude Code preset + org CLAUDE.md |
-| `USER_SKILLS_DIR` | `/data/memory/skills` | User-created skills directory (additive supplement to org skills) |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |
 | `TASK_LOG_RETENTION` | `100` | Max task run logs kept per task (oldest pruned on sync) |
 
@@ -271,7 +270,7 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
   SDK's auto-memory path to `/data/memory/` as a forward-compatibility measure, but the
   feature is currently inert. Cross-session memory must be implemented in the persona
   (`CLAUDE.md`) by instructing the agent to read/write files in `/data/memory/` explicitly.
-- **Org skills are authoritative**: User skills (from `USER_SKILLS_DIR`) are additive only —
+- **Org skills are authoritative**: User skills (`$MEMORY_DIR/skills/`) are additive only —
   they cannot override org or built-in skills of the same name. This ensures org policies
   remain the authoritative source.
 

@@ -72,18 +72,17 @@ Default paths (overridable via environment variables):
 
 | Path | Env Var | Purpose |
 |------|---------|---------|
-| `/data/memory` | `MEMORY_DIR` | CLAUDE.md persona, conversation archives, working directory |
+| `/data/memory` | `MEMORY_DIR` | CLAUDE.md persona, conversation archives, working directory, `.claude/` SDK session state |
 | `/data/org` | `ORG_DIR` | Org CLAUDE.md, managed-mcp.json, org skills (optional, read-only) |
 | `$ORG_DIR/skills` | `SKILLS_DIR` | Org skill definitions (legacy fallback: `/data/skills` when `ORG_DIR` is unset) |
-| `/data/sessions` | `SESSIONS_DIR` | `.claude/` session state |
 | `/data/store` | `STORE_DIR` | Persistent SQLite database |
 | `/tmp/messages.db` | `LOCAL_DB_PATH` | Local runtime database (ephemeral) |
 
-All four `/data/*` paths must be on persistent storage (EFS, NAS, or local volumes) for cross-request state to survive.
+All `/data/*` paths must be on persistent storage (EFS, NAS, or local volumes) for cross-request state to survive.
 
 **Auto-memory (non-functional):** Claude Code's auto-memory feature (`MEMORY.md` auto-generation) is gated behind an internal CLI feature flag (`tengu_herring_clock`, default `false`). In SDK/non-interactive mode, the auto-memory system prompt is never injected, so `MEMORY.md` is never automatically written — regardless of the `CLAUDE_CODE_DISABLE_AUTO_MEMORY` setting. The `entrypoint.sh` script sets up a symlink from the SDK's internal auto-memory path to `/data/memory/` as a forward-compatibility measure, but the feature is currently inert. If cross-session memory is needed, instruct the agent via the persona (`CLAUDE.md`) to explicitly read/write files in `/data/memory/`.
 
-**Empty directory startup:** All four `/data/*` volumes can be mounted as empty directories. The container creates the necessary internal structures (`/data/sessions/.claude/`, database, skill sync) automatically at startup. No `CLAUDE.md` is required — the agent runs with the default Claude Code system prompt. Adding a `CLAUDE.md` persona is recommended but optional.
+**Empty directory startup:** All `/data/*` volumes can be mounted as empty directories. The container creates the necessary internal structures (`.claude/` directory, database, skill sync) automatically at startup. No `CLAUDE.md` is required — the agent runs with the default Claude Code system prompt. Adding a `CLAUDE.md` persona is recommended but optional.
 
 ### 2.4 Persona & System Prompt
 
@@ -142,16 +141,16 @@ Org storage (shared, read-only):
 
 User storage (per-user, read/write):
 └── users/{user_id}/
-    ├── memory/       → mount to /data/memory  (persona, agent workspace)
+    ├── memory/       → mount to /data/memory  (persona, agent workspace, SDK state)
     │   ├── CLAUDE.md                          (user persona, recommended)
     │   ├── skills/                            (user-created skills — additive)
+    │   ├── .claude/                           (SDK session state)
+    │   │   ├── settings.json
+    │   │   ├── skills/                        (three-tier skill sync destination)
+    │   │   └── sessions/                      (SDK session files)
     │   └── [agent-managed files]              (no enforced structure)
-    ├── store/        → mount to /data/store   (persistent SQLite)
-    │   └── messages.db
-    └── sessions/     → mount to /data/sessions (SDK session state)
-        └── .claude/
-            ├── sessions/
-            └── settings.json
+    └── store/        → mount to /data/store   (persistent SQLite)
+        └── messages.db
 ```
 
 #### Persona loading order
@@ -175,7 +174,6 @@ docker run --rm -it \
   -v /oss/org:/data/org:ro \
   -v /oss/users/${USER_ID}/memory:/data/memory \
   -v /oss/users/${USER_ID}/store:/data/store \
-  -v /oss/users/${USER_ID}/sessions:/data/sessions \
   -e ORG_DIR=/data/org \
   -e API_TOKEN=${GENERATED_TOKEN} \
   -e ANTHROPIC_BASE_URL=${API_BASE} \
@@ -290,7 +288,6 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | `MEMORY_DIR` | `/data/memory` | Memory and persona volume |
 | `ORG_DIR` | (empty) | Org directory path (CLAUDE.md, managed-mcp.json, skills/) |
 | `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` | Org skills directory (canonical: `$ORG_DIR/skills`; `/data/skills` is legacy fallback) |
-| `SESSIONS_DIR` | `/data/sessions` | Session state volume |
 | `LOCAL_DB_PATH` | `/tmp/messages.db` | Local runtime database path |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | Marker string for session completion |
 | `BUILD_COMMIT` | `unknown` | Git short commit hash, injected at Docker build time |
@@ -783,7 +780,6 @@ docker run --rm -it \
   -e ANTHROPIC_API_KEY=sk-ant-xxx \
   -v $(pwd)/dev-data/memory:/data/memory \
   -v $(pwd)/dev-data/store:/data/store \
-  -v $(pwd)/dev-data/sessions:/data/sessions \
   picoclaw:latest
 ```
 
@@ -837,7 +833,6 @@ docker run --rm -it \
   -e ANTHROPIC_API_KEY=sk-ant-xxx \
   -v $(pwd)/dev-data/memory:/data/memory \
   -v $(pwd)/dev-data/store:/data/store \
-  -v $(pwd)/dev-data/sessions:/data/sessions \
   ghcr.io/breakcafe/picoclaw:latest
 ```
 
@@ -917,11 +912,10 @@ Recommended backup targets:
 | Path | Priority | Contains |
 |------|----------|----------|
 | `/data/store/messages.db` | Critical | All conversations, messages, tasks |
-| `/data/sessions/.claude` | High | Claude session state for resume |
-| `/data/memory` | High | Persona, archives, agent workspace |
+| `/data/memory` | High | Persona, archives, `.claude/` SDK session state, agent workspace |
 | `/data/org` | Medium | Org persona, MCP config, skills (can be redeployed from shared storage) |
 
-On restore, ensure version compatibility and restore `store` + `sessions` together for consistent session resume.
+On restore, ensure version compatibility and restore `store` + `memory` together for consistent session resume.
 
 ### 8.6 Logging & Monitoring
 
@@ -990,7 +984,7 @@ Mitigations:
 - [ ] `POST /admin/reload-skills` reloads skills from all tiers
 - [ ] `GET /admin/skills` returns skills summary
 - [ ] `POST /control/stop` syncs data and exits cleanly
-- [ ] All four `/data/*` volumes are mounted and writable
+- [ ] All `/data/*` volumes are mounted and writable (`memory`, `store`; `org` is optional/read-only)
 - [ ] External cron is configured to call `POST /task/check`
 - [ ] Logging, alerting, and rate limiting are configured
 - [ ] Secrets (`API_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`) are injected via secret manager, not in image or repository

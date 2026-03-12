@@ -40,8 +40,7 @@ PicoClaw operates within well-defined mounted volumes:
 | Path | Purpose | Access |
 |------|---------|--------|
 | `/data/org` | Org persona, org skills, managed MCP config | Read-only (optional, via `ORG_DIR`) |
-| `/data/memory` | User persona (`CLAUDE.md`), agent workspace | Read/Write |
-| `/data/sessions` | Claude session state (`.claude/`) | Read/Write |
+| `/data/memory` | User persona (`CLAUDE.md`), agent workspace, `.claude/` SDK session state | Read/Write |
 | `/data/store` | Persistent SQLite database | Read/Write |
 | `/tmp` | Local working database | Read/Write (ephemeral) |
 
