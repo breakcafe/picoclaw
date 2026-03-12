@@ -3,6 +3,9 @@ import path from 'path';
 
 import {
   ANTHROPIC_BASE_URL,
+  APP_VERSION,
+  BUILD_COMMIT,
+  BUILD_TIME,
   MEMORY_DIR,
   PORT,
   SESSIONS_DIR,
@@ -75,7 +78,15 @@ async function main(): Promise<void> {
         'Using custom Anthropic base URL',
       );
     }
-    logger.info({ port: PORT }, 'PicoClaw ready');
+    logger.info(
+      {
+        port: PORT,
+        version: APP_VERSION,
+        commit: BUILD_COMMIT,
+        buildTime: BUILD_TIME,
+      },
+      'PicoClaw ready',
+    );
   });
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));

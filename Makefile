@@ -3,6 +3,10 @@ IMAGE_TAG := latest
 CONTAINER_NAME := picoclaw-dev
 PORT := 9000
 
+BUILD_VERSION := $(shell node -p "require('./package.json').version" 2>/dev/null || echo unknown)
+BUILD_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
 ifneq (,$(wildcard .env))
 include .env
 export
@@ -22,10 +26,19 @@ dev-watch: ## Run from source with tsx watch (no build needed)
 # ── Docker ───────────────────────────────────────────────
 
 docker-build: ## Build Docker image (multi-stage, no local Node.js needed)
-	docker build --platform linux/amd64 -t $(IMAGE_NAME):$(IMAGE_TAG) .
+	docker build --platform linux/amd64 \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg BUILD_COMMIT=$(BUILD_COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-t $(IMAGE_NAME):$(IMAGE_TAG) .
 
 docker-build-lambda: ## Build Docker image with Lambda Web Adapter
-	docker build --platform linux/amd64 --build-arg ENABLE_LAMBDA_ADAPTER=true -t $(IMAGE_NAME):lambda .
+	docker build --platform linux/amd64 \
+		--build-arg ENABLE_LAMBDA_ADAPTER=true \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg BUILD_COMMIT=$(BUILD_COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-t $(IMAGE_NAME):lambda .
 
 docker-run: _ensure-data-dirs ## Run container interactively with volume mounts
 	docker run --rm -it \

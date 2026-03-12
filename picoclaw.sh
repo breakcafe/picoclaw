@@ -140,8 +140,17 @@ MD
 }
 
 build_image() {
-  echo "[step] building Docker image: $IMAGE_NAME (multi-stage, includes TypeScript compilation)"
-  docker build --platform linux/amd64 -t "$IMAGE_NAME" .
+  local build_version build_commit build_time
+  build_version="$(node -p "require('./package.json').version" 2>/dev/null || echo unknown)"
+  build_commit="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  echo "[step] building Docker image: $IMAGE_NAME (v${build_version} @ ${build_commit})"
+  docker build --platform linux/amd64 \
+    --build-arg BUILD_VERSION="$build_version" \
+    --build-arg BUILD_COMMIT="$build_commit" \
+    --build-arg BUILD_TIME="$build_time" \
+    -t "$IMAGE_NAME" .
 }
 
 wait_ready() {

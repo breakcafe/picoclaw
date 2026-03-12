@@ -4,6 +4,8 @@ import { Router } from 'express';
 
 import {
   APP_VERSION,
+  BUILD_COMMIT,
+  BUILD_TIME,
   MAX_EXECUTION_MS,
   MEMORY_DIR,
   SESSIONS_DIR,
@@ -39,6 +41,8 @@ export function healthRoutes(): Router {
     res.json({
       status: allHealthy ? 'ok' : 'degraded',
       version: APP_VERSION,
+      commit: BUILD_COMMIT,
+      build_time: BUILD_TIME,
       max_execution_ms: MAX_EXECUTION_MS,
       database,
       volumes,
