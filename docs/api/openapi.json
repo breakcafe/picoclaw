@@ -63,7 +63,7 @@
                   "ok": {
                     "value": {
                       "status": "ok",
-                      "version": "1.2.14",
+                      "version": "1.2.15",
                       "commit": "abc1234",
                       "build_time": "2026-03-12T10:00:00Z",
                       "max_execution_ms": 300000,
@@ -904,7 +904,7 @@
         "description": "Application version from `package.json`, injected at Docker build time.\nPresent on every response.\n",
         "schema": {
           "type": "string",
-          "example": "1.2.14"
+          "example": "1.2.15"
         }
       },
       "X-Build-Commit": {
@@ -921,6 +921,12 @@
         "headers": {
           "X-Request-ID": {
             "$ref": "#/components/headers/X-Request-ID"
+          },
+          "X-Build-Version": {
+            "$ref": "#/components/headers/X-Build-Version"
+          },
+          "X-Build-Commit": {
+            "$ref": "#/components/headers/X-Build-Commit"
           }
         },
         "content": {

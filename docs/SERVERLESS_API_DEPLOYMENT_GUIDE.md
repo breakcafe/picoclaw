@@ -280,6 +280,7 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `APP_VERSION` | `1.0.0` | Application version; overridden by `BUILD_VERSION` Docker build arg |
 | `PORT` | `9000` | HTTP server port |
 | `MAX_EXECUTION_MS` | `300000` | Agent execution timeout in ms (5 minutes) |
 | `ASSISTANT_NAME` | `Pico` | Agent display name |
@@ -329,7 +330,7 @@ If the caller sends an `X-Request-ID` header, the same value is echoed back. Oth
 Every response includes build metadata headers:
 
 ```http
-X-Build-Version: 1.2.14
+X-Build-Version: 1.2.15
 X-Build-Commit: abc1234
 ```
 
@@ -348,7 +349,7 @@ No authentication required.
 ```json
 {
   "status": "ok",
-  "version": "1.2.14",
+  "version": "1.2.15",
   "commit": "abc1234",
   "build_time": "2026-03-12T10:00:00Z",
   "max_execution_ms": 300000,

@@ -210,6 +210,7 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 |----------|---------|---------------|
 | `ANTHROPIC_BASE_URL` | (empty; SDK defaults to `https://api.anthropic.com`) | Used by SDK internally; set for third-party API proxies |
 | `ANTHROPIC_API_KEY` | (required) | Used by SDK internally |
+| `APP_VERSION` | `1.0.0` | `src/config.ts` → health response, `X-Build-Version` header; overridden by `BUILD_VERSION` Docker ARG |
 | `API_TOKEN` | (required) | `src/config.ts` → auth middleware |
 | `PORT` | `9000` | `src/config.ts` |
 | `MAX_EXECUTION_MS` | `300000` | `src/config.ts` → AbortController timeout |
