@@ -47,7 +47,7 @@ Alternatively: `make docker-build && make docker-run` for manual control.
 
 ```
 src/index.ts          → process boot, directory init, shutdown signals
-src/server.ts         → Express app: middleware → healthRoutes → authMiddleware → chat/task/admin/control
+src/server.ts         → Express app: middleware (json, requestId, build headers, request logger, db sync) → healthRoutes → authMiddleware → chat/task/admin/control
 src/routes/chat.ts    → POST /chat (SSE streaming), GET /chat, GET /chat/:id, GET /chat/:id/messages
 src/routes/task.ts    → task CRUD + POST /task/trigger + POST /task/check
 src/routes/admin.ts   → POST /admin/reload-skills, GET /admin/skills
@@ -219,6 +219,8 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 | `PICOCLAW_DB_PATH` | `/tmp/messages.db` | MCP server env var (set by agent-engine; `NANOCLAW_DB_PATH` as fallback) |
 | `PICOCLAW_CONVERSATION_ID` | per-request | MCP server env var (set by agent-engine; `NANOCLAW_CONVERSATION_ID` as fallback) |
 | `PICOCLAW_IS_MAIN` | `1` | MCP server env var — enables cross-conversation task management |
+| `BUILD_COMMIT` | `unknown` | `src/config.ts` → git commit hash, injected at Docker build time |
+| `BUILD_TIME` | `unknown` | `src/config.ts` → build timestamp, injected at Docker build time |
 | `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces Claude Code preset + org CLAUDE.md |
 | `USER_SKILLS_DIR` | `/data/memory/skills` | User-created skills directory (additive supplement to org skills) |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |

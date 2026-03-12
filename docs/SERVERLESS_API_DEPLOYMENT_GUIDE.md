@@ -292,6 +292,8 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | `SESSIONS_DIR` | `/data/sessions` | Session state volume |
 | `LOCAL_DB_PATH` | `/tmp/messages.db` | Local runtime database path |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | Marker string for session completion |
+| `BUILD_COMMIT` | `unknown` | Git short commit hash, injected at Docker build time |
+| `BUILD_TIME` | `unknown` | ISO 8601 UTC build timestamp, injected at Docker build time |
 | `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces the Claude Code preset + org CLAUDE.md with this string. User CLAUDE.md still loads on top. |
 | `PICOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable path (legacy `NANOCLAW_MCP_SERVER_PATH` accepted as fallback) |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before automatic cleanup |
@@ -322,6 +324,17 @@ X-Request-ID: req-a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 If the caller sends an `X-Request-ID` header, the same value is echoed back. Otherwise, a new `req-<UUID>` is generated. Use this to correlate API requests with server-side logs.
 
+### 5.2 Build Metadata Headers
+
+Every response includes build metadata headers:
+
+```http
+X-Build-Version: 1.2.14
+X-Build-Commit: abc1234
+```
+
+These are set at Docker build time via `BUILD_VERSION` and `BUILD_COMMIT` build args. Use them to identify which version of the code is running in production.
+
 ## 6. API Reference
 
 Base URL: `http://localhost:9000` (or your deployment URL)
@@ -335,7 +348,9 @@ No authentication required.
 ```json
 {
   "status": "ok",
-  "version": "1.0.0",
+  "version": "1.2.14",
+  "commit": "abc1234",
+  "build_time": "2026-03-12T10:00:00Z",
   "max_execution_ms": 300000,
   "database": {
     "ok": true,
