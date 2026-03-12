@@ -1,20 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 
-import {
-  BUILT_IN_SKILLS_DIR,
-  MEMORY_DIR,
-  SESSIONS_DIR,
-  SKILLS_DIR,
-} from './config.js';
+import { BUILT_IN_SKILLS_DIR, MEMORY_DIR, SKILLS_DIR } from './config.js';
 import { logger } from './logger.js';
 
-/**
- * User skills directory: lives inside the user's private memory volume
- * so user-created skills persist across container restarts.
- */
-const USER_SKILLS_DIR =
-  process.env.USER_SKILLS_DIR || path.join(MEMORY_DIR, 'skills');
+/** User skills directory: always under MEMORY_DIR for volume consolidation. */
+const USER_SKILLS_DIR = path.join(MEMORY_DIR, 'skills');
 
 function syncDirectory(sourceDir: string, destination: string): number {
   if (!fs.existsSync(sourceDir)) {
@@ -82,9 +73,9 @@ function managedSkillNames(): Set<string> {
 /**
  * Save runtime-created skills back to USER_SKILLS_DIR before a sync wipes
  * the destination.  Skills created during a chat session (e.g. via Claude
- * Code) are written to ~/.claude/skills/ which resolves to the sessions
- * volume.  Without this step they would be lost on reload/restart because
- * syncSkills() clears the destination first.
+ * Code) are written to .claude/skills/ inside MEMORY_DIR.  Without this
+ * step they would be lost on reload/restart because syncSkills() clears
+ * the destination directory first.
  *
  * Only skills whose name does NOT already exist in any managed source are
  * persisted — we never overwrite org/built-in/user-authored originals.
@@ -125,7 +116,7 @@ function persistRuntimeSkills(destination: string): number {
  *   3. USER_SKILLS_DIR (user skills — additive only, does NOT override org or built-in)
  */
 export function syncSkills(): void {
-  const destination = path.join(SESSIONS_DIR, '.claude', 'skills');
+  const destination = path.join(MEMORY_DIR, '.claude', 'skills');
   fs.mkdirSync(destination, { recursive: true });
 
   // Persist runtime-created skills before clearing.
@@ -179,7 +170,7 @@ function listSkillNames(dir: string): string[] {
 }
 
 export function ensureClaudeSettings(): void {
-  const claudeDir = path.join(SESSIONS_DIR, '.claude');
+  const claudeDir = path.join(MEMORY_DIR, '.claude');
   fs.mkdirSync(claudeDir, { recursive: true });
 
   const settingsPath = path.join(claudeDir, 'settings.json');

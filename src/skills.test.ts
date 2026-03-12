@@ -19,17 +19,16 @@ const dirs = vi.hoisted(() => {
   const tmpDir = _fs.mkdtempSync(_path.join(_os.tmpdir(), 'picoclaw-skills-'));
   const builtInDir = _path.join(tmpDir, 'built-in-skills');
   const orgDir = _path.join(tmpDir, 'org-skills');
-  const userDir = _path.join(tmpDir, 'user-skills');
-  const sessionsDir = _path.join(tmpDir, 'sessions');
-  const destination = _path.join(sessionsDir, '.claude', 'skills');
+  const memoryDir = _path.join(tmpDir, 'memory');
+  // USER_SKILLS_DIR is hardcoded to $MEMORY_DIR/skills (no env var override).
+  const userDir = _path.join(memoryDir, 'skills');
+  const destination = _path.join(memoryDir, '.claude', 'skills');
 
   process.env.BUILT_IN_SKILLS_DIR = builtInDir;
   process.env.SKILLS_DIR = orgDir;
-  process.env.USER_SKILLS_DIR = userDir;
-  process.env.SESSIONS_DIR = sessionsDir;
-  process.env.MEMORY_DIR = _path.join(tmpDir, 'memory');
+  process.env.MEMORY_DIR = memoryDir;
 
-  return { tmpDir, builtInDir, orgDir, userDir, sessionsDir, destination };
+  return { tmpDir, builtInDir, orgDir, userDir, memoryDir, destination };
 });
 
 import fs from 'fs';
@@ -83,8 +82,6 @@ describe('syncSkills', () => {
     }
     delete process.env.BUILT_IN_SKILLS_DIR;
     delete process.env.SKILLS_DIR;
-    delete process.env.USER_SKILLS_DIR;
-    delete process.env.SESSIONS_DIR;
     delete process.env.MEMORY_DIR;
   });
 
@@ -177,12 +174,8 @@ describe('syncSkills', () => {
     syncSkills();
 
     // User dir should NOT contain the managed skill names.
-    expect(
-      fs.existsSync(path.join(dirs.userDir, 'builtin-skill')),
-    ).toBe(false);
-    expect(
-      fs.existsSync(path.join(dirs.userDir, 'org-skill')),
-    ).toBe(false);
+    expect(fs.existsSync(path.join(dirs.userDir, 'builtin-skill'))).toBe(false);
+    expect(fs.existsSync(path.join(dirs.userDir, 'org-skill'))).toBe(false);
   });
 
   it('handles missing source directories gracefully', () => {

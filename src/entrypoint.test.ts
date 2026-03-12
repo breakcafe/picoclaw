@@ -23,14 +23,22 @@ CLAUDE_HOME="${claudeHome}"
 MEMORY_DIR="${memoryDir}"
 PROJECT_SLUG=$(echo "\${MEMORY_DIR}" | sed 's|/|-|g')
 AUTO_MEMORY_DIR="\${CLAUDE_HOME}/projects/\${PROJECT_SLUG}/memory"
-if [ -d "\${AUTO_MEMORY_DIR}" ] && [ ! -L "\${AUTO_MEMORY_DIR}" ]; then
-  if [ -f "\${AUTO_MEMORY_DIR}/MEMORY.md" ]; then
-    cp -n "\${AUTO_MEMORY_DIR}/MEMORY.md" "\${MEMORY_DIR}/MEMORY.md" 2>/dev/null || true
-  fi
-  rm -rf "\${AUTO_MEMORY_DIR}"
-fi
-mkdir -p "$(dirname "\${AUTO_MEMORY_DIR}")"
-ln -sf "\${MEMORY_DIR}" "\${AUTO_MEMORY_DIR}"
+
+# Skip symlink when AUTO_MEMORY_DIR is inside MEMORY_DIR (merged mode → circular).
+case "\${AUTO_MEMORY_DIR}" in
+  "\${MEMORY_DIR}"/*)
+    ;;  # Skip — would be circular
+  *)
+    if [ -d "\${AUTO_MEMORY_DIR}" ] && [ ! -L "\${AUTO_MEMORY_DIR}" ]; then
+      if [ -f "\${AUTO_MEMORY_DIR}/MEMORY.md" ]; then
+        cp -n "\${AUTO_MEMORY_DIR}/MEMORY.md" "\${MEMORY_DIR}/MEMORY.md" 2>/dev/null || true
+      fi
+      rm -rf "\${AUTO_MEMORY_DIR}"
+    fi
+    mkdir -p "$(dirname "\${AUTO_MEMORY_DIR}")"
+    ln -sf "\${MEMORY_DIR}" "\${AUTO_MEMORY_DIR}"
+    ;;
+esac
 `;
 }
 
@@ -177,5 +185,24 @@ describe('entrypoint auto-memory symlink', () => {
     const expectedDir = path.join(claudeHome, 'projects', slug, 'memory');
     expect(fs.lstatSync(expectedDir).isSymbolicLink()).toBe(true);
     expect(fs.readlinkSync(expectedDir)).toBe(containerMemoryDir);
+  });
+
+  it('skips symlink when claude home is inside memory dir (merged mode)', () => {
+    const { memoryDir } = setup();
+    // In merged mode, CLAUDE_HOME = MEMORY_DIR/.claude
+    const mergedClaudeHome = path.join(memoryDir, '.claude');
+    fs.mkdirSync(mergedClaudeHome, { recursive: true });
+
+    runScript(autoMemoryScript(mergedClaudeHome, memoryDir));
+
+    // AUTO_MEMORY_DIR would be inside MEMORY_DIR — symlink should be skipped
+    const projectSlug = memoryDir.replace(/\//g, '-');
+    const autoMemoryDir = path.join(
+      mergedClaudeHome,
+      'projects',
+      projectSlug,
+      'memory',
+    );
+    expect(fs.existsSync(autoMemoryDir)).toBe(false);
   });
 });

@@ -8,7 +8,6 @@ import {
   BUILD_TIME,
   MEMORY_DIR,
   PORT,
-  SESSIONS_DIR,
   SKILLS_DIR,
   STORE_DIR,
 } from './config.js';
@@ -18,11 +17,7 @@ import { createServer } from './server.js';
 import { ensureClaudeSettings, syncSkills } from './skills.js';
 
 function ensureDataDirectories(): void {
-  const directories = [
-    MEMORY_DIR,
-    STORE_DIR,
-    path.join(SESSIONS_DIR, '.claude'),
-  ];
+  const directories = [MEMORY_DIR, STORE_DIR, path.join(MEMORY_DIR, '.claude')];
 
   for (const directory of directories) {
     fs.mkdirSync(path.resolve(directory), { recursive: true });
