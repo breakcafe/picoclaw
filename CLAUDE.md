@@ -76,6 +76,27 @@ src/config.ts         → all env var defaults
 src/types.ts          → shared interfaces (Conversation, ScheduledTask, etc.)
 ```
 
+### Boot sequence
+
+```
+entrypoint.sh
+  ├── mkdir MEMORY_DIR, /data/store
+  ├── symlink ~/.claude → $MEMORY_DIR/.claude
+  ├── write settings.json (if absent)
+  ├── copy managed-mcp.json → /etc/claude-code/ (if ORG_DIR set)
+  ├── persist runtime-created skills → $MEMORY_DIR/skills/
+  └── three-tier skill sync (bash level)
+
+src/index.ts main()
+  ├── ensureDataDirectories()
+  ├── initDatabase()
+  ├── ensureClaudeSettings()       ← write settings.json (if absent, redundant with entrypoint)
+  ├── syncSkills()                 ← three-tier skill sync (TS level, redundant but safe)
+  └── Express listen on PORT
+```
+
+The two-pass skill sync (entrypoint.sh + index.ts) is intentionally redundant: entrypoint.sh handles the Docker path, index.ts handles the local Node.js path (`npm start`).
+
 ### Request lifecycle
 
 1. HTTP hits Express router → `authMiddleware` validates Bearer token
@@ -273,6 +294,11 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 - **Org skills are authoritative**: User skills (`$MEMORY_DIR/skills/`) are additive only —
   they cannot override org or built-in skills of the same name. This ensures org policies
   remain the authoritative source.
+- **`additionalDirectories` is NOT skill discovery**: `discoverAdditionalDirectories()`
+  passes org skill subdirectory paths to `query()` as `additionalDirectories`. This only
+  grants file access and CLAUDE.md discovery in those paths — it does NOT make them skill
+  sources. Skill discovery always comes from `.claude/skills/` via `syncSkills()`. Adding
+  a new skill directory to `additionalDirectories` will not register its SKILL.md files.
 
 ## Change Guardrails
 
