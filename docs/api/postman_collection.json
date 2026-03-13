@@ -121,7 +121,7 @@
                         "method": "POST",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"message\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"sender\": \"user\",\n  \"sender_name\": \"<string>\",\n  \"stream\": false,\n  \"max_execution_ms\": \"<integer>\",\n  \"thinking\": false,\n  \"max_thinking_tokens\": 10000,\n  \"show_tool_use\": false,\n  \"mcp_servers\": {}\n}",
+                            "raw": "{\n  \"message\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"sender\": \"user\",\n  \"sender_name\": \"<string>\",\n  \"stream\": false,\n  \"max_execution_ms\": \"<integer>\",\n  \"thinking\": false,\n  \"max_thinking_tokens\": 10000,\n  \"show_tool_use\": false,\n  \"model\": \"\",\n  \"mcp_servers\": {}\n}",
                             "options": {
                                 "raw": {
                                     "headerFamily": "json",
@@ -167,7 +167,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"message\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"sender\": \"user\",\n  \"sender_name\": \"<string>\",\n  \"stream\": false,\n  \"max_execution_ms\": \"<integer>\",\n  \"thinking\": false,\n  \"max_thinking_tokens\": 10000,\n  \"show_tool_use\": false,\n  \"mcp_servers\": {}\n}",
+                                    "raw": "{\n  \"message\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"sender\": \"user\",\n  \"sender_name\": \"<string>\",\n  \"stream\": false,\n  \"max_execution_ms\": \"<integer>\",\n  \"thinking\": false,\n  \"max_thinking_tokens\": 10000,\n  \"show_tool_use\": false,\n  \"model\": \"\",\n  \"mcp_servers\": {}\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -184,7 +184,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"status\": \"success\",\n  \"conversation_id\": \"<string>\",\n  \"message_id\": \"<string>\",\n  \"result\": \"<string>\",\n  \"duration_ms\": \"<integer>\",\n  \"outbound_messages\": [\n    {\n      \"id\": \"<integer>\",\n      \"conversation_id\": \"<string>\",\n      \"text\": \"<string>\",\n      \"sender\": \"<string>\",\n      \"created_at\": \"<dateTime>\"\n    },\n    {\n      \"id\": \"<integer>\",\n      \"conversation_id\": \"<string>\",\n      \"text\": \"<string>\",\n      \"sender\": \"<string>\",\n      \"created_at\": \"<dateTime>\"\n    }\n  ],\n  \"session_end_marker\": \"<string>\",\n  \"session_end_marker_detected\": \"<boolean>\",\n  \"session_id\": \"<string>\",\n  \"error\": \"<string>\"\n}",
+                            "body": "{\n  \"status\": \"success\",\n  \"conversation_id\": \"<string>\",\n  \"message_id\": \"<string>\",\n  \"result\": \"<string>\",\n  \"duration_ms\": \"<integer>\",\n  \"outbound_messages\": [\n    {\n      \"id\": \"<integer>\",\n      \"conversation_id\": \"<string>\",\n      \"text\": \"<string>\",\n      \"sender\": \"<string>\",\n      \"created_at\": \"<dateTime>\"\n    },\n    {\n      \"id\": \"<integer>\",\n      \"conversation_id\": \"<string>\",\n      \"text\": \"<string>\",\n      \"sender\": \"<string>\",\n      \"created_at\": \"<dateTime>\"\n    }\n  ],\n  \"session_end_marker\": \"<string>\",\n  \"session_end_marker_detected\": \"<boolean>\",\n  \"session_id\": \"<string>\",\n  \"model\": \"<string>\",\n  \"error\": \"<string>\"\n}",
                             "cookie": [],
                             "_postman_previewlanguage": "json"
                         },
@@ -223,7 +223,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"message\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"sender\": \"user\",\n  \"sender_name\": \"<string>\",\n  \"stream\": false,\n  \"max_execution_ms\": \"<integer>\",\n  \"thinking\": false,\n  \"max_thinking_tokens\": 10000,\n  \"show_tool_use\": false,\n  \"mcp_servers\": {}\n}",
+                                    "raw": "{\n  \"message\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"sender\": \"user\",\n  \"sender_name\": \"<string>\",\n  \"stream\": false,\n  \"max_execution_ms\": \"<integer>\",\n  \"thinking\": false,\n  \"max_thinking_tokens\": 10000,\n  \"show_tool_use\": false,\n  \"model\": \"\",\n  \"mcp_servers\": {}\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -279,7 +279,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"message\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"sender\": \"user\",\n  \"sender_name\": \"<string>\",\n  \"stream\": false,\n  \"max_execution_ms\": \"<integer>\",\n  \"thinking\": false,\n  \"max_thinking_tokens\": 10000,\n  \"show_tool_use\": false,\n  \"mcp_servers\": {}\n}",
+                                    "raw": "{\n  \"message\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"sender\": \"user\",\n  \"sender_name\": \"<string>\",\n  \"stream\": false,\n  \"max_execution_ms\": \"<integer>\",\n  \"thinking\": false,\n  \"max_thinking_tokens\": 10000,\n  \"show_tool_use\": false,\n  \"model\": \"\",\n  \"mcp_servers\": {}\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -335,7 +335,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"message\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"sender\": \"user\",\n  \"sender_name\": \"<string>\",\n  \"stream\": false,\n  \"max_execution_ms\": \"<integer>\",\n  \"thinking\": false,\n  \"max_thinking_tokens\": 10000,\n  \"show_tool_use\": false,\n  \"mcp_servers\": {}\n}",
+                                    "raw": "{\n  \"message\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"sender\": \"user\",\n  \"sender_name\": \"<string>\",\n  \"stream\": false,\n  \"max_execution_ms\": \"<integer>\",\n  \"thinking\": false,\n  \"max_thinking_tokens\": 10000,\n  \"show_tool_use\": false,\n  \"model\": \"\",\n  \"mcp_servers\": {}\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -391,7 +391,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"message\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"sender\": \"user\",\n  \"sender_name\": \"<string>\",\n  \"stream\": false,\n  \"max_execution_ms\": \"<integer>\",\n  \"thinking\": false,\n  \"max_thinking_tokens\": 10000,\n  \"show_tool_use\": false,\n  \"mcp_servers\": {}\n}",
+                                    "raw": "{\n  \"message\": \"<string>\",\n  \"conversation_id\": \"<string>\",\n  \"sender\": \"user\",\n  \"sender_name\": \"<string>\",\n  \"stream\": false,\n  \"max_execution_ms\": \"<integer>\",\n  \"thinking\": false,\n  \"max_thinking_tokens\": 10000,\n  \"show_tool_use\": false,\n  \"model\": \"\",\n  \"mcp_servers\": {}\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",

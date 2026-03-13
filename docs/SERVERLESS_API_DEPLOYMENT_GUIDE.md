@@ -264,7 +264,7 @@ These settings only affect automatic cleanup. Undelivered outbound messages are 
 
 | Package | Version | Notes |
 |---|---|---|
-| `@anthropic-ai/claude-agent-sdk` | `0.2.34` | Core agent runtime |
+| `@anthropic-ai/claude-agent-sdk` | `0.2.74` | Core agent runtime |
 | `@modelcontextprotocol/sdk` | `1.12.1` | MCP server framework |
 
 Do not downgrade these packages. Upgrades should include compatibility regression testing.
@@ -297,6 +297,8 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | Marker string for session completion |
 | `BUILD_COMMIT` | `unknown` | Git short commit hash, injected at Docker build time |
 | `BUILD_TIME` | `unknown` | ISO 8601 UTC build timestamp, injected at Docker build time |
+| `CLAUDE_MODEL` | (empty; CLI default) | Model for agent execution (full ID like `claude-opus-4-6` or short name like `opus`) |
+| `CLAUDE_FALLBACK_MODEL` | (empty) | Fallback model when primary fails (rate limit, unavailable) |
 | `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces the Claude Code preset + org CLAUDE.md with this string. User CLAUDE.md still loads on top. |
 | `PICOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable path (legacy `NANOCLAW_MCP_SERVER_PATH` accepted as fallback) |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before automatic cleanup |

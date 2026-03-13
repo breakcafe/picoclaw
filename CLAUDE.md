@@ -235,7 +235,7 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
    SDK session state lives at `$MEMORY_DIR/.claude/` (no separate `SESSIONS_DIR`).
 3. **Graceful stop must sync data** — both `POST /control/stop` and `SIGTERM`/`SIGINT`
    trigger `syncDatabaseToVolume()` → `closeDatabase()` → exit.
-4. **SDK version alignment** — `@anthropic-ai/claude-agent-sdk`: `0.2.34`,
+4. **SDK version alignment** — `@anthropic-ai/claude-agent-sdk`: `0.2.74`,
    `@modelcontextprotocol/sdk`: `1.12.1`. Do not downgrade.
 5. **Dual-DB sync is the only safe write path** — never write directly to
    `/data/store/messages.db`. Always operate on `/tmp/messages.db` and let sync copy it.
@@ -262,6 +262,8 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 | `PICOCLAW_IS_MAIN` | `1` | MCP server env var — enables cross-conversation task management |
 | `BUILD_COMMIT` | `unknown` | `src/config.ts` → git commit hash, injected at Docker build time |
 | `BUILD_TIME` | `unknown` | `src/config.ts` → build timestamp, injected at Docker build time |
+| `CLAUDE_MODEL` | (empty; CLI default) | `src/config.ts` → model for `query()` (full ID or short name) |
+| `CLAUDE_FALLBACK_MODEL` | (empty) | `src/config.ts` → fallback model on primary failure |
 | `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces Claude Code preset + org CLAUDE.md |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |
 | `TASK_LOG_RETENTION` | `100` | Max task run logs kept per task (oldest pruned on sync) |

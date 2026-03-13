@@ -30,6 +30,10 @@ All notable changes to PicoClaw will be documented in this file.
   per-request MCP server configuration (HTTP, SSE, and stdio transports).
   Servers are merged with the built-in picoclaw MCP server and their tools are
   automatically added to the agent's allowedTools list.
+- **Model selection**: `CLAUDE_MODEL` and `CLAUDE_FALLBACK_MODEL` env vars for
+  server-level model configuration. Per-request `model` parameter in `POST /chat`
+  overrides the env var. Actual model used is returned in the response `model` field.
+  Precedence: per-request > `CLAUDE_MODEL` > SDK/CLI default.
 - `.dockerignore` for faster build context transfer
 - Developer documentation: API integration guide, Skills & Persona authoring guide
 - Rewritten SECURITY.md for HTTP API trust model
@@ -37,6 +41,9 @@ All notable changes to PicoClaw will be documented in this file.
 
 ### Changed
 
+- **SDK upgrade**: `@anthropic-ai/claude-agent-sdk` 0.2.34 → 0.2.74. Includes
+  memory leak fix, HTTP MCP transport fix, session persistence fix, and
+  Sonnet 4.6 model support.
 - **Volume consolidation**: removed `SESSIONS_DIR`. SDK session state (`.claude/`)
   now lives inside `MEMORY_DIR`, reducing deployment from 4 volumes to 3
   (`memory`, `store`, `org`).

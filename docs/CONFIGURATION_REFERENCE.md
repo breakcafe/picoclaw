@@ -20,6 +20,8 @@ Quick-reference for all configuration surfaces. For detailed explanations, see t
 | `MAX_EXECUTION_MS` | `300000` | Agent execution timeout (ms) |
 | `ASSISTANT_NAME` | `Pico` | Display name in messages and transcript archives |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | Agent emits this to signal conversation complete |
+| `CLAUDE_MODEL` | _(empty; CLI default)_ | Model for agent execution (full ID or short name) |
+| `CLAUDE_FALLBACK_MODEL` | _(empty)_ | Fallback model on primary failure |
 | `SYSTEM_PROMPT_OVERRIDE` | _(empty)_ | Replaces Claude Code preset + org CLAUDE.md entirely |
 | `LOG_LEVEL` | `info` | Pino log level (`debug` / `info` / `warn` / `error`) |
 | `TZ` | System timezone | Timezone for cron expressions |
@@ -160,9 +162,12 @@ All except `/health` require `Authorization: Bearer <API_TOKEN>`.
 | `thinking` | boolean | `false` | Enable extended thinking |
 | `max_thinking_tokens` | number | `10000` | Max thinking tokens |
 | `show_tool_use` | boolean | `false` | Stream tool invocation events |
+| `model` | string | env / CLI default | Model override (full ID or short name like `opus`, `sonnet`, `haiku`) |
 | `mcp_servers` | object | — | Per-request MCP servers (see §8) |
 
-**Not yet exposed:** `model` (model selection), `max_turns` (turn limit), `max_budget_usd` (budget cap). These exist in the Claude Agent SDK but PicoClaw does not pass them through.
+**Not yet exposed:** `max_turns` (turn limit), `max_budget_usd` (budget cap). These exist in the Claude Agent SDK but PicoClaw does not pass them through.
+
+**Model precedence:** per-request `model` > `CLAUDE_MODEL` env var > CLI default.
 
 ### SSE Events (when `stream: true`)
 
@@ -327,9 +332,7 @@ docker run -v /path/to/org:/data/org:ro -e ORG_DIR=/data/org ...
 
 ### Q2: Can I select a specific model?
 
-Not currently exposed. PicoClaw does not pass a `model` option to `query()` — the Claude Agent SDK uses its default model. There is no `MODEL` env var or `model` request parameter.
-
-To add model selection, modify `src/agent-engine.ts` to pass `model` in the `query()` options.
+Yes. Set `CLAUDE_MODEL` env var for a server-wide default, or pass `model` in the `POST /chat` request body for per-request override. Accepts full model IDs (`claude-opus-4-6`) or short names (`opus`, `sonnet`, `haiku`). Set `CLAUDE_FALLBACK_MODEL` for automatic retry on primary model failure. The response includes a `model` field showing which model was actually used.
 
 ### Q3: How are API keys managed?
 
@@ -403,6 +406,8 @@ How each setting can be configured:
 | Log level | `LOG_LEVEL` | — | — |
 | Timezone | `TZ` | — | — |
 | Session end marker | `SESSION_END_MARKER` | — | — |
+| Model selection | `CLAUDE_MODEL` | `model` | — |
+| Model fallback | `CLAUDE_FALLBACK_MODEL` | — | — |
 | Streaming | — | `stream` | — |
 | Extended thinking | — | `thinking` | — |
 | Thinking token cap | — | `max_thinking_tokens` | — |

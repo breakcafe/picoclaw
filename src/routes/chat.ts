@@ -43,6 +43,7 @@ interface ChatRequestBody {
   thinking?: boolean;
   max_thinking_tokens?: number;
   show_tool_use?: boolean;
+  model?: string;
   mcp_servers?: Record<string, McpServerConfig>;
 }
 
@@ -255,6 +256,7 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
           assistantName: ASSISTANT_NAME,
           maxThinkingTokens,
           showToolUse,
+          model: body.model?.trim() || undefined,
           mcpServers: mcpServers ?? undefined,
         },
         streamCallbacks,
@@ -296,6 +298,7 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
         conversation_id: conversationId,
         message_id: assistantMessageId || userMessageId,
         result: finalResult,
+        model: output.model,
         session_id: output.newSessionId || conversation.session_id,
         duration_ms: durationMs,
         error: output.error,
