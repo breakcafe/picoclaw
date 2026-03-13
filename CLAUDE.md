@@ -320,6 +320,7 @@ Also check:
 
 ## Docs
 
+- @docs/CONFIGURATION_REFERENCE.md — all env vars, API endpoints, volumes, and controls at a glance
 - @docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md — full operations and deployment manual
 - @docs/API_INTEGRATION_GUIDE.md — downstream HTTP API integration guide
 - @docs/SKILLS_AND_PERSONA_GUIDE.md — skill authoring and persona configuration
