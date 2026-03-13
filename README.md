@@ -274,7 +274,7 @@ make test-e2e             # full build + run + test pipeline
 | `STORE_DIR` | `/data/store` | Persistent database volume |
 | `MEMORY_DIR` | `/data/memory` | User memory and persona volume (agent cwd) |
 | `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` (fallback) | Org skills directory |
-| `SESSIONS_DIR` | _(deprecated)_ | Ignored with warning; session state lives at `$MEMORY_DIR/.claude/` |
+| `SESSIONS_DIR` | _(removed)_ | Removed; session state lives at `$MEMORY_DIR/.claude/` |
 
 ## License
 

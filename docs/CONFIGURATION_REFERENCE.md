@@ -51,11 +51,11 @@ Quick-reference for all configuration surfaces. For detailed explanations, see t
 | `PICOCLAW_IS_MAIN` | `1` | Enables cross-conversation task management |
 | `PICOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable |
 
-### Deprecated
+### Removed
 
 | Variable | Status |
 |----------|--------|
-| `SESSIONS_DIR` | Ignored with warning. Use `$MEMORY_DIR/.claude/` instead. |
+| `SESSIONS_DIR` | Removed. SDK session state now lives at `$MEMORY_DIR/.claude/`. |
 
 ### SDK Internal Settings
 

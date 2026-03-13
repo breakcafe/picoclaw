@@ -27,16 +27,6 @@ export const SESSION_END_MARKER =
 
 export const STORE_DIR = process.env.STORE_DIR || '/data/store';
 export const MEMORY_DIR = process.env.MEMORY_DIR || '/data/memory';
-// SESSIONS_DIR has been removed — SDK state lives at $MEMORY_DIR/.claude/.
-// Warn if operators still set the old variable.
-if (process.env.SESSIONS_DIR) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    '[picoclaw] SESSIONS_DIR is deprecated and ignored. ' +
-      'SDK session state now lives inside MEMORY_DIR at $MEMORY_DIR/.claude/. ' +
-      'Remove SESSIONS_DIR from your environment.',
-  );
-}
 
 /**
  * Organization directory — a single read-only mount containing

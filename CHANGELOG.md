@@ -37,8 +37,7 @@ All notable changes to PicoClaw will be documented in this file.
 ### Changed
 - **Volume consolidation**: removed `SESSIONS_DIR`. SDK session state (`.claude/`)
   now lives inside `MEMORY_DIR`, reducing deployment from 4 volumes to 3
-  (`memory`, `store`, `org`). `SESSIONS_DIR` env var is deprecated and ignored
-  with a startup warning.
+  (`memory`, `store`, `org`).
 - **Skill merge strategy**: user skills (`/data/memory/skills/`) are now additive
   only — they supplement org and built-in skills but cannot override same-name
   skills. Priority: built-in → org (authoritative) → user (additive).
@@ -93,7 +92,7 @@ All notable changes to PicoClaw will be documented in this file.
 ### Added
 - `picoclaw.sh` one-click launcher: env setup, build, Docker run, smoke test
 - `POST /control/stop` graceful shutdown API with data sync
-- Configurable `LOCAL_DB_PATH` and `SESSIONS_DIR` for flexible deployment
+- Configurable `LOCAL_DB_PATH` for flexible deployment
 - `entrypoint.sh` for Docker: session symlink, settings bootstrap, skill sync
 
 ## [1.2.8] — 2026-03-07
