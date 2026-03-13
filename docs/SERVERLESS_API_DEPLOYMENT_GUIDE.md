@@ -70,18 +70,18 @@ HTTP Request
 
 Persistent volumes (must be mounted on durable storage for cross-request state):
 
-| Path           | Env Var      | Purpose                                                                                                                                                                                                                                    |
-| -------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/data/memory` | `MEMORY_DIR` | CLAUDE.md persona, conversation archives, working directory, `.claude/` SDK session state                                                                                                                                                  |
-| `/data/org`    | `ORG_DIR`    | Org CLAUDE.md, managed-mcp.json, org skills (optional, read-only)                                                                                                                                                                          |
-| `/data/store`  | `STORE_DIR`  | Persistent SQLite database — stores conversations, messages, scheduled tasks, and task run logs. Runtime operates on `/tmp/messages.db`; synced here via `wal_checkpoint(TRUNCATE)` + file copy after every HTTP response and on shutdown. |
+| Path | Env Var | Purpose |
+|---|---|---|
+| `/data/memory` | `MEMORY_DIR` | CLAUDE.md persona, conversation archives, working directory, `.claude/` SDK session state |
+| `/data/org` | `ORG_DIR` | Org CLAUDE.md, managed-mcp.json, org skills (optional, read-only) |
+| `/data/store` | `STORE_DIR` | Persistent SQLite database — stores conversations, messages, scheduled tasks, and task run logs. Runtime operates on `/tmp/messages.db`; synced here via `wal_checkpoint(TRUNCATE)` + file copy after every HTTP response and on shutdown. |
 
 Derived / ephemeral paths (not mounted separately):
 
-| Path               | Env Var         | Purpose                                                                         |
-| ------------------ | --------------- | ------------------------------------------------------------------------------- |
-| `$ORG_DIR/skills`  | `SKILLS_DIR`    | Org skill definitions (derived from `ORG_DIR`; legacy fallback: `/data/skills`) |
-| `/tmp/messages.db` | `LOCAL_DB_PATH` | Local runtime database (ephemeral, synced to `STORE_DIR` after each request)    |
+| Path | Env Var | Purpose |
+|---|---|---|
+| `$ORG_DIR/skills` | `SKILLS_DIR` | Org skill definitions (derived from `ORG_DIR`; legacy fallback: `/data/skills`) |
+| `/tmp/messages.db` | `LOCAL_DB_PATH` | Local runtime database (ephemeral, synced to `STORE_DIR` after each request) |
 
 **Auto-memory (non-functional):** Claude Code's auto-memory feature (`MEMORY.md` auto-generation) is gated behind an internal CLI feature flag (`tengu_herring_clock`, default `false`). In SDK/non-interactive mode, the auto-memory system prompt is never injected, so `MEMORY.md` is never automatically written — regardless of the `CLAUDE_CODE_DISABLE_AUTO_MEMORY` setting. The `entrypoint.sh` script sets up a symlink from the SDK's internal auto-memory path to `/data/memory/` as a forward-compatibility measure, but the feature is currently inert. If cross-session memory is needed, instruct the agent via the persona (`CLAUDE.md`) to explicitly read/write files in `/data/memory/`.
 
@@ -162,9 +162,9 @@ User storage (per-user, read/write):
 
 PicoClaw uses a **two-tier persona** model. Both files are optional, but at least the user persona is recommended:
 
-| Tier | Path                     | Mechanism                                                            | Purpose                                    |
-| ---- | ------------------------ | -------------------------------------------------------------------- | ------------------------------------------ |
-| Org  | `$ORG_DIR/CLAUDE.md`     | `loadOrgClaudeMd()` → `systemPrompt.append`                          | Organization-wide policies, shared rules   |
+| Tier | Path | Mechanism | Purpose |
+|---|---|---|---|
+| Org | `$ORG_DIR/CLAUDE.md` | `loadOrgClaudeMd()` → `systemPrompt.append` | Organization-wide policies, shared rules |
 | User | `/data/memory/CLAUDE.md` | SDK auto-discovery via `cwd` + `settingSources: ['project', 'user']` | Agent identity, user-specific instructions |
 
 The effective system prompt is assembled as: **Claude Code preset** → **org CLAUDE.md** (appended) → **user CLAUDE.md** (loaded by CLI). This mirrors NanoClaw's global + per-group persona stacking, adapted for PicoClaw's single-user model.
@@ -194,13 +194,13 @@ The `memory` directory does not enforce a subdirectory structure beyond the pers
 
 Conversations are tracked in the SQLite `conversations` table:
 
-| Column                | Purpose                                             |
-| --------------------- | --------------------------------------------------- |
-| `id`                  | Conversation identifier (e.g., `conv-abc123`)       |
-| `session_id`          | Claude SDK session ID (for resume)                  |
+| Column | Purpose |
+|---|---|
+| `id` | Conversation identifier (e.g., `conv-abc123`) |
+| `session_id` | Claude SDK session ID (for resume) |
 | `last_assistant_uuid` | Last assistant message UUID (for `resumeSessionAt`) |
-| `status`              | `idle` or `running`                                 |
-| `message_count`       | Total messages in conversation                      |
+| `status` | `idle` or `running` |
+| `message_count` | Total messages in conversation |
 
 Behavior:
 
@@ -212,11 +212,11 @@ Behavior:
 
 Scheduled tasks are tracked in the `scheduled_tasks` table:
 
-| Field           | Values                                                       |
-| --------------- | ------------------------------------------------------------ |
-| `schedule_type` | `cron`, `interval`, `once`                                   |
-| `context_mode`  | `group` (shared conversation) or `isolated` (fresh each run) |
-| `status`        | `active`, `paused`, `completed`                              |
+| Field | Values |
+|---|---|
+| `schedule_type` | `cron`, `interval`, `once` |
+| `context_mode` | `group` (shared conversation) or `isolated` (fresh each run) |
+| `status` | `active`, `paused`, `completed` |
 
 Key rules:
 
@@ -238,10 +238,10 @@ This avoids SQLite-on-NFS corruption risks while ensuring data survives containe
 
 PicoClaw automatically prunes stale data during each database sync (after every HTTP response and on shutdown). Two cleanup policies run inside `cleanupStaleData()`:
 
-| Policy                 | Env Var              | Default | Behavior                                                  |
-| ---------------------- | -------------------- | ------- | --------------------------------------------------------- |
-| Outbound message TTL   | `OUTBOUND_TTL_DAYS`  | `7`     | Delivered outbound messages older than N days are deleted |
-| Task run log retention | `TASK_LOG_RETENTION` | `100`   | Per-task, only the most recent N run log entries are kept |
+| Policy | Env Var | Default | Behavior |
+|---|---|---|---|
+| Outbound message TTL | `OUTBOUND_TTL_DAYS` | `7` | Delivered outbound messages older than N days are deleted |
+| Task run log retention | `TASK_LOG_RETENTION` | `100` | Per-task, only the most recent N run log entries are kept |
 
 **When to tune these values:**
 
@@ -262,10 +262,10 @@ These settings only affect automatic cleanup. Undelivered outbound messages are 
 
 ### 3.5 SDK Version Alignment
 
-| Package                          | Version  | Notes                |
-| -------------------------------- | -------- | -------------------- |
-| `@anthropic-ai/claude-agent-sdk` | `0.2.34` | Core agent runtime   |
-| `@modelcontextprotocol/sdk`      | `1.12.1` | MCP server framework |
+| Package | Version | Notes |
+|---|---|---|
+| `@anthropic-ai/claude-agent-sdk` | `0.2.34` | Core agent runtime |
+| `@modelcontextprotocol/sdk` | `1.12.1` | MCP server framework |
 
 Do not downgrade these packages. Upgrades should include compatibility regression testing.
 
@@ -273,34 +273,34 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 
 ### 4.1 Required
 
-| Variable            | Description                                |
-| ------------------- | ------------------------------------------ |
+| Variable | Description |
+|---|---|
 | `ANTHROPIC_API_KEY` | Claude API key (or equivalent OAuth token) |
-| `API_TOKEN`         | Bearer token for HTTP API authentication   |
+| `API_TOKEN` | Bearer token for HTTP API authentication |
 
 ### 4.2 Optional
 
-| Variable                   | Default                                       | Description                                                                                                          |
-| -------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_BASE_URL`       | (empty; SDK uses `https://api.anthropic.com`) | Anthropic API base URL. Only needed for third-party API proxies.                                                     |
-| `APP_VERSION`              | `1.0.0`                                       | Application version; overridden by `BUILD_VERSION` Docker build arg                                                  |
-| `PORT`                     | `9000`                                        | HTTP server port                                                                                                     |
-| `MAX_EXECUTION_MS`         | `300000`                                      | Agent execution timeout in ms (5 minutes)                                                                            |
-| `ASSISTANT_NAME`           | `Pico`                                        | Agent display name                                                                                                   |
-| `TZ`                       | System timezone                               | Timezone for cron expression parsing                                                                                 |
-| `LOG_LEVEL`                | `info`                                        | Pino log level (`debug`, `info`, `warn`, `error`)                                                                    |
-| `STORE_DIR`                | `/data/store`                                 | Persistent database volume                                                                                           |
-| `MEMORY_DIR`               | `/data/memory`                                | Memory and persona volume                                                                                            |
-| `ORG_DIR`                  | (empty)                                       | Org directory path (CLAUDE.md, managed-mcp.json, skills/)                                                            |
-| `SKILLS_DIR`               | `$ORG_DIR/skills` or `/data/skills`           | Org skills directory (canonical: `$ORG_DIR/skills`; `/data/skills` is legacy fallback)                               |
-| `LOCAL_DB_PATH`            | `/tmp/messages.db`                            | Local runtime database path                                                                                          |
-| `SESSION_END_MARKER`       | `[[PICOCLAW_SESSION_END]]`                    | Marker string for session completion                                                                                 |
-| `BUILD_COMMIT`             | `unknown`                                     | Git short commit hash, injected at Docker build time                                                                 |
-| `BUILD_TIME`               | `unknown`                                     | ISO 8601 UTC build timestamp, injected at Docker build time                                                          |
-| `SYSTEM_PROMPT_OVERRIDE`   | (empty)                                       | When set, fully replaces the Claude Code preset + org CLAUDE.md with this string. User CLAUDE.md still loads on top. |
-| `PICOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js`                          | Custom MCP server executable path (legacy `NANOCLAW_MCP_SERVER_PATH` accepted as fallback)                           |
-| `OUTBOUND_TTL_DAYS`        | `7`                                           | Days to keep delivered outbound messages before automatic cleanup                                                    |
-| `TASK_LOG_RETENTION`       | `100`                                         | Maximum task run log entries retained per task (oldest pruned)                                                       |
+| Variable | Default | Description |
+|---|---|---|
+| `ANTHROPIC_BASE_URL` | (empty; SDK uses `https://api.anthropic.com`) | Anthropic API base URL. Only needed for third-party API proxies. |
+| `APP_VERSION` | `1.0.0` | Application version; overridden by `BUILD_VERSION` Docker build arg |
+| `PORT` | `9000` | HTTP server port |
+| `MAX_EXECUTION_MS` | `300000` | Agent execution timeout in ms (5 minutes) |
+| `ASSISTANT_NAME` | `Pico` | Agent display name |
+| `TZ` | System timezone | Timezone for cron expression parsing |
+| `LOG_LEVEL` | `info` | Pino log level (`debug`, `info`, `warn`, `error`) |
+| `STORE_DIR` | `/data/store` | Persistent database volume |
+| `MEMORY_DIR` | `/data/memory` | Memory and persona volume |
+| `ORG_DIR` | (empty) | Org directory path (CLAUDE.md, managed-mcp.json, skills/) |
+| `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` | Org skills directory (canonical: `$ORG_DIR/skills`; `/data/skills` is legacy fallback) |
+| `LOCAL_DB_PATH` | `/tmp/messages.db` | Local runtime database path |
+| `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | Marker string for session completion |
+| `BUILD_COMMIT` | `unknown` | Git short commit hash, injected at Docker build time |
+| `BUILD_TIME` | `unknown` | ISO 8601 UTC build timestamp, injected at Docker build time |
+| `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces the Claude Code preset + org CLAUDE.md with this string. User CLAUDE.md still loads on top. |
+| `PICOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable path (legacy `NANOCLAW_MCP_SERVER_PATH` accepted as fallback) |
+| `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before automatic cleanup |
+| `TASK_LOG_RETENTION` | `100` | Maximum task run log entries retained per task (oldest pruned) |
 
 ## 5. Authentication & Request Tracking
 
@@ -312,9 +312,9 @@ Authorization: Bearer <API_TOKEN>
 
 Error responses:
 
-| Code                        | Condition                              |
-| --------------------------- | -------------------------------------- |
-| `401 Unauthorized`          | Token missing or invalid               |
+| Code | Condition |
+|---|---|
+| `401 Unauthorized` | Token missing or invalid |
 | `500 Internal Server Error` | Server-side `API_TOKEN` not configured |
 
 ### 5.1 Request ID
@@ -373,9 +373,9 @@ No authentication required.
 
 `status` values:
 
-| Value      | Meaning                                                      |
-| ---------- | ------------------------------------------------------------ |
-| `ok`       | All backing resources healthy                                |
+| Value | Meaning |
+|---|---|
+| `ok` | All backing resources healthy |
 | `degraded` | HTTP server is running but database or volumes are unhealthy |
 
 The `database` field verifies SQLite connectivity and returns conversation/task counts. The `volumes` field checks writability of each `/data/*` mount directory (`skills` only checks existence since it may be read-only).
@@ -397,18 +397,18 @@ Request body:
 }
 ```
 
-| Field                 | Type    | Required | Description                                                     |
-| --------------------- | ------- | -------- | --------------------------------------------------------------- |
-| `message`             | string  | Yes      | User message text                                               |
-| `conversation_id`     | string  | No       | Existing conversation ID (creates new if omitted)               |
-| `sender`              | string  | No       | Sender identifier (default: `user`)                             |
-| `sender_name`         | string  | No       | Display name (default: same as sender)                          |
-| `stream`              | boolean | No       | Enable SSE streaming (default: `false`)                         |
-| `max_execution_ms`    | number  | No       | Per-request timeout, capped at server `MAX_EXECUTION_MS`        |
-| `thinking`            | boolean | No       | Enable extended thinking (default: `false`)                     |
-| `max_thinking_tokens` | number  | No       | Max thinking tokens when thinking is enabled (default: `10000`) |
-| `show_tool_use`       | boolean | No       | Stream tool invocation events (default: `false`)                |
-| `mcp_servers`         | object  | No       | Per-request MCP servers (see Dynamic MCP Servers below)         |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `message` | string | Yes | User message text |
+| `conversation_id` | string | No | Existing conversation ID (creates new if omitted) |
+| `sender` | string | No | Sender identifier (default: `user`) |
+| `sender_name` | string | No | Display name (default: same as sender) |
+| `stream` | boolean | No | Enable SSE streaming (default: `false`) |
+| `max_execution_ms` | number | No | Per-request timeout, capped at server `MAX_EXECUTION_MS` |
+| `thinking` | boolean | No | Enable extended thinking (default: `false`) |
+| `max_thinking_tokens` | number | No | Max thinking tokens when thinking is enabled (default: `10000`) |
+| `show_tool_use` | boolean | No | Stream tool invocation events (default: `false`) |
+| `mcp_servers` | object | No | Per-request MCP servers (see Dynamic MCP Servers below) |
 
 Non-streaming response:
 
@@ -428,11 +428,11 @@ Non-streaming response:
 
 `status` values:
 
-| Value     | Meaning                                                          |
-| --------- | ---------------------------------------------------------------- |
-| `success` | Agent completed normally                                         |
+| Value | Meaning |
+|---|---|
+| `success` | Agent completed normally |
 | `timeout` | Agent hit execution time limit (partial result may be available) |
-| `error`   | Agent encountered an error                                       |
+| `error` | Agent encountered an error |
 
 Session end fields:
 
@@ -443,14 +443,14 @@ Session end fields:
 
 When `stream: true`, the response uses `Content-Type: text/event-stream`. Text is streamed per-token as the model generates it (via SDK `includePartialMessages`):
 
-| Event      | Data                                | When                                                 |
-| ---------- | ----------------------------------- | ---------------------------------------------------- |
-| `start`    | `{"conversation_id", "message_id"}` | Agent begins processing                              |
-| `thinking` | `{"text": "..."}`                   | Extended thinking output (requires `thinking: true`) |
-| `tool_use` | `{"tool": "...", "input": {...}}`   | Tool invocation (requires `show_tool_use: true`)     |
-| `chunk`    | `{"text": "..."}`                   | Incremental text output (per-token granularity)      |
-| `done`     | Full response object                | Agent finished                                       |
-| `error`    | `{"error": "..."}`                  | Processing failed                                    |
+| Event | Data | When |
+|---|---|---|
+| `start` | `{"conversation_id", "message_id"}` | Agent begins processing |
+| `thinking` | `{"text": "..."}` | Extended thinking output (requires `thinking: true`) |
+| `tool_use` | `{"tool": "...", "input": {...}}` | Tool invocation (requires `show_tool_use: true`) |
+| `chunk` | `{"text": "..."}` | Incremental text output (per-token granularity) |
+| `done` | Full response object | Agent finished |
+| `error` | `{"error": "..."}` | Processing failed |
 
 Example stream (with thinking and tool use enabled):
 
@@ -477,11 +477,11 @@ The `mcp_servers` field allows callers to attach additional MCP servers to a spe
 
 Supported transports:
 
-| Transport        | Required fields | Optional      |
-| ---------------- | --------------- | ------------- |
-| `http` (default) | `url`           | `headers`     |
-| `sse`            | `url`           | `headers`     |
-| `stdio`          | `command`       | `args`, `env` |
+| Transport | Required fields | Optional |
+|---|---|---|
+| `http` (default) | `url` | `headers` |
+| `sse` | `url` | `headers` |
+| `stdio` | `command` | `args`, `env` |
 
 If `type` is omitted, it defaults to `http`.
 
@@ -581,22 +581,22 @@ Returns `404` if the conversation does not exist.
 }
 ```
 
-| Field             | Type   | Required | Description                                   |
-| ----------------- | ------ | -------- | --------------------------------------------- |
-| `id`              | string | No       | Custom task ID (auto-generated if omitted)    |
-| `prompt`          | string | Yes      | Instruction for the agent                     |
-| `schedule_type`   | string | Yes      | `cron`, `interval`, or `once`                 |
-| `schedule_value`  | string | Yes      | Schedule expression (see below)               |
-| `context_mode`    | string | No       | `group` or `isolated` (default: `isolated`)   |
-| `conversation_id` | string | No       | Target conversation (auto-created if omitted) |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | string | No | Custom task ID (auto-generated if omitted) |
+| `prompt` | string | Yes | Instruction for the agent |
+| `schedule_type` | string | Yes | `cron`, `interval`, or `once` |
+| `schedule_value` | string | Yes | Schedule expression (see below) |
+| `context_mode` | string | No | `group` or `isolated` (default: `isolated`) |
+| `conversation_id` | string | No | Target conversation (auto-created if omitted) |
 
 Schedule value formats:
 
-| Type       | Format                                        | Example                         |
-| ---------- | --------------------------------------------- | ------------------------------- |
-| `cron`     | 5-field cron expression                       | `0 9 * * 1-5` (weekdays at 9am) |
-| `interval` | Milliseconds as string                        | `3600000` (every hour)          |
-| `once`     | Local time string (no `Z` or timezone offset) | `2026-03-15T14:00:00`           |
+| Type | Format | Example |
+|---|---|---|
+| `cron` | 5-field cron expression | `0 9 * * 1-5` (weekdays at 9am) |
+| `interval` | Milliseconds as string | `3600000` (every hour) |
+| `once` | Local time string (no `Z` or timezone offset) | `2026-03-15T14:00:00` |
 
 ### 6.9 List All Tasks
 
@@ -847,12 +847,12 @@ docker run --rm -it \
 
 **Recommended configuration:**
 
-| Setting | Value                                                 |
-| ------- | ----------------------------------------------------- |
-| Runtime | Container Image                                       |
-| Memory  | 4096 MB minimum                                       |
+| Setting | Value |
+|---|---|
+| Runtime | Container Image |
+| Memory | 4096 MB minimum |
 | Timeout | `MAX_EXECUTION_MS + 30s` (e.g., 330s for 5-min agent) |
-| Storage | EFS mounted at `/data`                                |
+| Storage | EFS mounted at `/data` |
 
 Build the Lambda-adapted image:
 
@@ -872,12 +872,12 @@ The `ENABLE_LAMBDA_ADAPTER=true` build arg installs the [AWS Lambda Web Adapter]
 
 **Recommended configuration:**
 
-| Setting        | Value                           |
-| -------------- | ------------------------------- |
-| Runtime        | Custom Container                |
-| Listening port | `9000`                          |
-| Storage        | NAS mounted at `/data`          |
-| Timeout        | Greater than `MAX_EXECUTION_MS` |
+| Setting | Value |
+|---|---|
+| Runtime | Custom Container |
+| Listening port | `9000` |
+| Storage | NAS mounted at `/data` |
+| Timeout | Greater than `MAX_EXECUTION_MS` |
 
 **Task scheduling:** Configure a timer trigger to call `POST /task/check` at the desired frequency.
 
@@ -904,11 +904,11 @@ The `ENABLE_LAMBDA_ADAPTER=true` build arg installs the [AWS Lambda Web Adapter]
 
 ### 8.4 Shutdown Strategy
 
-| Method               | Trigger         | Use Case                                                |
-| -------------------- | --------------- | ------------------------------------------------------- |
-| `POST /control/stop` | API call        | Programmatic shutdown after session end marker detected |
-| `SIGTERM`            | Platform signal | Serverless container recycling                          |
-| `SIGINT`             | Ctrl+C          | Local development                                       |
+| Method | Trigger | Use Case |
+|---|---|---|
+| `POST /control/stop` | API call | Programmatic shutdown after session end marker detected |
+| `SIGTERM` | Platform signal | Serverless container recycling |
+| `SIGINT` | Ctrl+C | Local development |
 
 All three paths execute the same sequence: `syncDatabaseToVolume()` → `closeDatabase()` → process exit.
 
@@ -916,11 +916,11 @@ All three paths execute the same sequence: `syncDatabaseToVolume()` → `closeDa
 
 Recommended backup targets:
 
-| Path                      | Priority | Contains                                                                |
-| ------------------------- | -------- | ----------------------------------------------------------------------- |
-| `/data/store/messages.db` | Critical | All conversations, messages, tasks                                      |
-| `/data/memory`            | High     | Persona, archives, `.claude/` SDK session state, agent workspace        |
-| `/data/org`               | Medium   | Org persona, MCP config, skills (can be redeployed from shared storage) |
+| Path | Priority | Contains |
+|---|---|---|
+| `/data/store/messages.db` | Critical | All conversations, messages, tasks |
+| `/data/memory` | High | Persona, archives, `.claude/` SDK session state, agent workspace |
+| `/data/org` | Medium | Org persona, MCP config, skills (can be redeployed from shared storage) |
 
 On restore, ensure version compatibility and restore `store` + `memory` together for consistent session resume.
 
@@ -930,13 +930,13 @@ PicoClaw uses structured JSON logging via `pino`.
 
 Recommended metrics to monitor:
 
-| Metric                | Source                          | Alert Threshold          |
-| --------------------- | ------------------------------- | ------------------------ |
-| Request latency       | HTTP response time              | P95 > `MAX_EXECUTION_MS` |
-| `status=timeout` rate | Chat response `status` field    | > 10%                    |
-| `status=error` rate   | Chat response `status` field    | > 5%                     |
-| Task backlog          | `/task/check` `remaining` field | Sustained > 0            |
-| `401` rate            | HTTP status codes               | Spike detection          |
+| Metric | Source | Alert Threshold |
+|---|---|---|
+| Request latency | HTTP response time | P95 > `MAX_EXECUTION_MS` |
+| `status=timeout` rate | Chat response `status` field | > 10% |
+| `status=error` rate | Chat response `status` field | > 5% |
+| Task backlog | `/task/check` `remaining` field | Sustained > 0 |
+| `401` rate | HTTP status codes | Spike detection |
 
 ## 9. Troubleshooting
 
@@ -957,11 +957,11 @@ Recommended metrics to monitor:
 
 ### 9.4 `schedule_value` validation errors
 
-| Type       | Requirement                                           |
-| ---------- | ----------------------------------------------------- |
-| `interval` | Positive integer in milliseconds (as a string)        |
-| `cron`     | Valid 5-field cron expression                         |
-| `once`     | Local timestamp string without `Z` or timezone offset |
+| Type | Requirement |
+|---|---|
+| `interval` | Positive integer in milliseconds (as a string) |
+| `cron` | Valid 5-field cron expression |
+| `once` | Local timestamp string without `Z` or timezone offset |
 
 ### 9.5 Data loss after forced termination
 

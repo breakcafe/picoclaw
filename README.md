@@ -53,11 +53,11 @@ HTTP Request
                    response
 ```
 
-| Volume         | Purpose                                                                                                               |
-| -------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `/data/org`    | Org persona (`CLAUDE.md`), org skills, `managed-mcp.json` — read-only, optional                                       |
-| `/data/memory` | User persona (`CLAUDE.md`), agent workspace (cwd), `.claude/` SDK session state — read/write                          |
-| `/data/store`  | Persistent SQLite database (conversations, messages, tasks) — synced from `/tmp` after each HTTP response; read/write |
+| Volume | Purpose |
+|---|---|
+| `/data/org` | Org persona (`CLAUDE.md`), org skills, `managed-mcp.json` — read-only, optional |
+| `/data/memory` | User persona (`CLAUDE.md`), agent workspace (cwd), `.claude/` SDK session state — read/write |
+| `/data/store` | Persistent SQLite database (conversations, messages, tasks) — synced from `/tmp` after each HTTP response; read/write |
 
 **Key difference from NanoClaw**: No Docker child containers. The agent runs in the same process as the HTTP server. Skills and memory are volume-mounted, not installed into the source tree.
 
@@ -127,18 +127,18 @@ curl -X POST http://localhost:9000/chat \
 
 All routes except `/health` require `Authorization: Bearer <API_TOKEN>`.
 
-| Method | Path            | Purpose                                    |
-| ------ | --------------- | ------------------------------------------ |
-| GET    | `/health`       | Liveness check                             |
-| POST   | `/chat`         | Send message, get response (supports SSE)  |
-| GET    | `/chat/:id`     | Get conversation metadata                  |
-| POST   | `/task`         | Create scheduled task (cron/interval/once) |
-| GET    | `/tasks`        | List all tasks                             |
-| PUT    | `/task/:id`     | Update task                                |
-| DELETE | `/task/:id`     | Delete task                                |
-| POST   | `/task/trigger` | Manually trigger a task                    |
-| POST   | `/task/check`   | Execute next due task (for external cron)  |
-| POST   | `/control/stop` | Graceful shutdown with data sync           |
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | Liveness check |
+| POST | `/chat` | Send message, get response (supports SSE) |
+| GET | `/chat/:id` | Get conversation metadata |
+| POST | `/task` | Create scheduled task (cron/interval/once) |
+| GET | `/tasks` | List all tasks |
+| PUT | `/task/:id` | Update task |
+| DELETE | `/task/:id` | Delete task |
+| POST | `/task/trigger` | Manually trigger a task |
+| POST | `/task/check` | Execute next due task (for external cron) |
+| POST | `/control/stop` | Graceful shutdown with data sync |
 
 Full API documentation: [`docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md`](docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md)
 
@@ -183,9 +183,9 @@ PicoClaw assembles the agent's system prompt from a **two-tier CLAUDE.md** model
 └─────────────────────────────────────────────┘
 ```
 
-| Tier | Source                   | Mechanism                                       |
-| ---- | ------------------------ | ----------------------------------------------- |
-| Org  | `$ORG_DIR/CLAUDE.md`     | `loadOrgClaudeMd()` → `systemPrompt.append`     |
+| Tier | Source | Mechanism |
+|---|---|---|
+| Org | `$ORG_DIR/CLAUDE.md` | `loadOrgClaudeMd()` → `systemPrompt.append` |
 | User | `/data/memory/CLAUDE.md` | SDK auto-discovery via `cwd` + `settingSources` |
 
 Both tiers are optional. Set `SYSTEM_PROMPT_OVERRIDE` to fully replace layers 1 + 2 with a custom string (layer 3 still loads).
@@ -255,26 +255,26 @@ make test-e2e             # full build + run + test pipeline
 
 ### Required
 
-| Variable             | Description                                                                                                       |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Variable | Description |
+|---|---|
 | `ANTHROPIC_BASE_URL` | Anthropic API base URL (SDK defaults to `https://api.anthropic.com` when unset). Set for third-party API proxies. |
-| `ANTHROPIC_API_KEY`  | Claude API key (or OAuth token equivalent)                                                                        |
-| `API_TOKEN`          | Bearer token for HTTP API authentication                                                                          |
+| `ANTHROPIC_API_KEY` | Claude API key (or OAuth token equivalent) |
+| `API_TOKEN` | Bearer token for HTTP API authentication |
 
 ### Optional
 
-| Variable           | Default                                        | Description                                                              |
-| ------------------ | ---------------------------------------------- | ------------------------------------------------------------------------ |
-| `PORT`             | `9000`                                         | HTTP server port                                                         |
-| `MAX_EXECUTION_MS` | `300000`                                       | Maximum agent execution time (5 min)                                     |
-| `ASSISTANT_NAME`   | `Pico`                                         | Agent display name                                                       |
-| `TZ`               | System                                         | Timezone for cron scheduling                                             |
-| `LOG_LEVEL`        | `info`                                         | Pino log level                                                           |
-| `ORG_DIR`          | (empty)                                        | Org directory path — contains `CLAUDE.md`, `managed-mcp.json`, `skills/` |
-| `STORE_DIR`        | `/data/store`                                  | Persistent database volume                                               |
-| `MEMORY_DIR`       | `/data/memory`                                 | User memory and persona volume (agent cwd)                               |
-| `SKILLS_DIR`       | `$ORG_DIR/skills` or `/data/skills` (fallback) | Org skills directory                                                     |
-| `SESSIONS_DIR`     | _(removed)_                                    | Removed; session state lives at `$MEMORY_DIR/.claude/`                   |
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `9000` | HTTP server port |
+| `MAX_EXECUTION_MS` | `300000` | Maximum agent execution time (5 min) |
+| `ASSISTANT_NAME` | `Pico` | Agent display name |
+| `TZ` | System | Timezone for cron scheduling |
+| `LOG_LEVEL` | `info` | Pino log level |
+| `ORG_DIR` | (empty) | Org directory path — contains `CLAUDE.md`, `managed-mcp.json`, `skills/` |
+| `STORE_DIR` | `/data/store` | Persistent database volume |
+| `MEMORY_DIR` | `/data/memory` | User memory and persona volume (agent cwd) |
+| `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` (fallback) | Org skills directory |
+| `SESSIONS_DIR` | _(removed)_ | Removed; session state lives at `$MEMORY_DIR/.claude/` |
 
 ## License
 

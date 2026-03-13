@@ -16,11 +16,11 @@ The token is configured via the `API_TOKEN` environment variable on the PicoClaw
 
 Every HTTP response includes these headers:
 
-| Header            | Description                                                                                              |
-| ----------------- | -------------------------------------------------------------------------------------------------------- |
-| `X-Request-ID`    | Request tracking identifier for log correlation. Echoes caller-provided value or generates `req-<UUID>`. |
-| `X-Build-Version` | Application version (from `package.json`, injected at Docker build time).                                |
-| `X-Build-Commit`  | Short git commit hash of the build.                                                                      |
+| Header | Description |
+|---|---|
+| `X-Request-ID` | Request tracking identifier for log correlation. Echoes caller-provided value or generates `req-<UUID>`. |
+| `X-Build-Version` | Application version (from `package.json`, injected at Docker build time). |
+| `X-Build-Commit` | Short git commit hash of the build. |
 
 Use `X-Request-ID` for log correlation. Use `X-Build-Version` and `X-Build-Commit` to verify which code version is running.
 
@@ -91,14 +91,14 @@ curl -N -X POST http://localhost:9000/chat \
 
 SSE events:
 
-| Event      | Data                                | When                                             |
-| ---------- | ----------------------------------- | ------------------------------------------------ |
-| `start`    | `{"conversation_id", "message_id"}` | Agent starts processing                          |
-| `thinking` | `{"text": "..."}`                   | Thinking process (requires `thinking: true`)     |
-| `tool_use` | `{"tool": "...", "input": {...}}`   | Tool invocation (requires `show_tool_use: true`) |
-| `chunk`    | `{"text": "..."}`                   | Incremental text output                          |
-| `done`     | Full response object                | Agent finished                                   |
-| `error`    | `{"error": "..."}`                  | Processing failed                                |
+| Event | Data | When |
+|---|---|---|
+| `start` | `{"conversation_id", "message_id"}` | Agent starts processing |
+| `thinking` | `{"text": "..."}` | Thinking process (requires `thinking: true`) |
+| `tool_use` | `{"tool": "...", "input": {...}}` | Tool invocation (requires `show_tool_use: true`) |
+| `chunk` | `{"text": "..."}` | Incremental text output |
+| `done` | Full response object | Agent finished |
+| `error` | `{"error": "..."}` | Processing failed |
 
 ### Client example (Node.js)
 
@@ -256,11 +256,11 @@ curl -X POST http://localhost:9000/chat \
 
 Supported transport types:
 
-| Transport              | Config                                                               | Example               |
-| ---------------------- | -------------------------------------------------------------------- | --------------------- |
-| HTTP (Streamable HTTP) | `{ "type": "http", "url": "...", "headers": {...} }`                 | Remote MCP servers    |
-| SSE                    | `{ "type": "sse", "url": "...", "headers": {...} }`                  | SSE-based MCP servers |
-| stdio                  | `{ "type": "stdio", "command": "...", "args": [...], "env": {...} }` | Local subprocess      |
+| Transport | Config | Example |
+|---|---|---|
+| HTTP (Streamable HTTP) | `{ "type": "http", "url": "...", "headers": {...} }` | Remote MCP servers |
+| SSE | `{ "type": "sse", "url": "...", "headers": {...} }` | SSE-based MCP servers |
+| stdio | `{ "type": "stdio", "command": "...", "args": [...], "env": {...} }` | Local subprocess |
 
 Per-request MCP servers are merged with the built-in `picoclaw` MCP server. The agent sees tools from all servers with the naming pattern `mcp__<server_name>__<tool_name>`.
 
@@ -285,18 +285,18 @@ curl -X POST http://localhost:9000/task \
 
 **Schedule types:**
 
-| Type       | `schedule_value` format                | Example                      |
-| ---------- | -------------------------------------- | ---------------------------- |
-| `cron`     | Standard 5-field cron expression       | `0 9 * * 1-5` (weekdays 9am) |
-| `interval` | Milliseconds as string                 | `3600000` (every hour)       |
-| `once`     | Local time string (no timezone suffix) | `2026-03-15T14:00:00`        |
+| Type | `schedule_value` format | Example |
+|---|---|---|
+| `cron` | Standard 5-field cron expression | `0 9 * * 1-5` (weekdays 9am) |
+| `interval` | Milliseconds as string | `3600000` (every hour) |
+| `once` | Local time string (no timezone suffix) | `2026-03-15T14:00:00` |
 
 **Context modes:**
 
-| Mode       | Behavior                                                          |
-| ---------- | ----------------------------------------------------------------- |
-| `group`    | Runs within an existing conversation (requires `conversation_id`) |
-| `isolated` | Creates a fresh temporary conversation for each execution         |
+| Mode | Behavior |
+|---|---|
+| `group` | Runs within an existing conversation (requires `conversation_id`) |
+| `isolated` | Creates a fresh temporary conversation for each execution |
 
 ### Trigger tasks externally
 
@@ -403,25 +403,25 @@ Returns the current skills from all three tiers and the effective (merged) list.
 
 ### HTTP Status Codes
 
-| Code | Meaning                                           |
-| ---- | ------------------------------------------------- |
-| 200  | Success                                           |
-| 204  | Success (no content, e.g., DELETE)                |
-| 400  | Invalid request (missing fields, bad schedule)    |
-| 401  | Missing or invalid Bearer token                   |
-| 404  | Conversation or task not found                    |
-| 409  | Conflict (conversation busy or currently running) |
-| 500  | Server error                                      |
+| Code | Meaning |
+|---|---|
+| 200 | Success |
+| 204 | Success (no content, e.g., DELETE) |
+| 400 | Invalid request (missing fields, bad schedule) |
+| 401 | Missing or invalid Bearer token |
+| 404 | Conversation or task not found |
+| 409 | Conflict (conversation busy or currently running) |
+| 500 | Server error |
 
 ### Response status field
 
 The `status` field in chat responses can be:
 
-| Value     | Meaning                        | Action                                                                         |
-| --------- | ------------------------------ | ------------------------------------------------------------------------------ |
-| `success` | Agent completed normally       | Use `result`                                                                   |
+| Value | Meaning | Action |
+|---|---|---|
+| `success` | Agent completed normally | Use `result` |
 | `timeout` | Agent hit execution time limit | Partial result may be available; retry with same `conversation_id` to continue |
-| `error`   | Agent encountered an error     | Check `error` field for details                                                |
+| `error` | Agent encountered an error | Check `error` field for details |
 
 ### Timeout behavior
 
@@ -434,26 +434,26 @@ The `status` field in chat responses can be:
 
 ### POST /chat
 
-| Field                 | Type    | Required | Description                                                     |
-| --------------------- | ------- | -------- | --------------------------------------------------------------- |
-| `message`             | string  | Yes      | User message text                                               |
-| `conversation_id`     | string  | No       | Existing conversation to continue (creates new if omitted)      |
-| `sender`              | string  | No       | Sender identifier (default: `user`)                             |
-| `sender_name`         | string  | No       | Display name (default: same as sender)                          |
-| `stream`              | boolean | No       | Enable SSE streaming (default: false)                           |
-| `max_execution_ms`    | number  | No       | Per-request timeout (capped at `MAX_EXECUTION_MS`)              |
-| `thinking`            | boolean | No       | Enable extended thinking (default: false)                       |
-| `max_thinking_tokens` | number  | No       | Max thinking tokens (default: 10000, only when `thinking=true`) |
-| `show_tool_use`       | boolean | No       | Stream tool invocation events (default: false)                  |
-| `mcp_servers`         | object  | No       | Per-request MCP servers (HTTP/SSE/stdio transports)             |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `message` | string | Yes | User message text |
+| `conversation_id` | string | No | Existing conversation to continue (creates new if omitted) |
+| `sender` | string | No | Sender identifier (default: `user`) |
+| `sender_name` | string | No | Display name (default: same as sender) |
+| `stream` | boolean | No | Enable SSE streaming (default: false) |
+| `max_execution_ms` | number | No | Per-request timeout (capped at `MAX_EXECUTION_MS`) |
+| `thinking` | boolean | No | Enable extended thinking (default: false) |
+| `max_thinking_tokens` | number | No | Max thinking tokens (default: 10000, only when `thinking=true`) |
+| `show_tool_use` | boolean | No | Stream tool invocation events (default: false) |
+| `mcp_servers` | object | No | Per-request MCP servers (HTTP/SSE/stdio transports) |
 
 ### POST /task
 
-| Field             | Type   | Required | Description                                     |
-| ----------------- | ------ | -------- | ----------------------------------------------- |
-| `id`              | string | No       | Custom task ID (auto-generated if omitted)      |
-| `prompt`          | string | Yes      | Task instruction for the agent                  |
-| `schedule_type`   | string | Yes      | `cron`, `interval`, or `once`                   |
-| `schedule_value`  | string | Yes      | Schedule expression (see table above)           |
-| `context_mode`    | string | No       | `group` or `isolated` (default: `isolated`)     |
-| `conversation_id` | string | No       | Target conversation (required for `group` mode) |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | string | No | Custom task ID (auto-generated if omitted) |
+| `prompt` | string | Yes | Task instruction for the agent |
+| `schedule_type` | string | Yes | `cron`, `interval`, or `once` |
+| `schedule_value` | string | Yes | Schedule expression (see table above) |
+| `context_mode` | string | No | `group` or `isolated` (default: `isolated`) |
+| `conversation_id` | string | No | Target conversation (required for `group` mode) |

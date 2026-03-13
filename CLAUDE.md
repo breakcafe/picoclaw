@@ -131,21 +131,21 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
 
 ### Volume mount semantics
 
-| Mount          | Runtime access      | Agent `cwd`          | Purpose                                                                                                                    |
-| -------------- | ------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `/data/org`    | Read-only           | No                   | Org persona, org skills, managed MCP config (optional)                                                                     |
-| `/data/memory` | Read/Write          | **Yes** (set as cwd) | User persona (`CLAUDE.md`), agent workspace, `.claude/` SDK session state                                                  |
-| `/data/store`  | Write (sync target) | No                   | Persistent SQLite (conversations, messages, scheduled tasks, run logs); synced from `/tmp/messages.db` after each response |
-| `/tmp`         | Read/Write          | No                   | Local runtime DB (ephemeral, fast)                                                                                         |
+| Mount | Runtime access | Agent `cwd` | Purpose |
+|---|---|---|---|
+| `/data/org` | Read-only | No | Org persona, org skills, managed MCP config (optional) |
+| `/data/memory` | Read/Write | **Yes** (set as cwd) | User persona (`CLAUDE.md`), agent workspace, `.claude/` SDK session state |
+| `/data/store` | Write (sync target) | No | Persistent SQLite (conversations, messages, scheduled tasks, run logs); synced from `/tmp/messages.db` after each response |
+| `/tmp` | Read/Write | No | Local runtime DB (ephemeral, fast) |
 
 ### Persona and system prompt
 
 PicoClaw uses a **two-tier CLAUDE.md** model for the agent's persona and system prompt,
 implemented in `src/agent-engine.ts`:
 
-| Tier | File                     | Code mechanism                                                                 | Purpose                                           |
-| ---- | ------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------- |
-| Org  | `$ORG_DIR/CLAUDE.md`     | `loadOrgClaudeMd()` → `systemPrompt: { preset: 'claude_code', append }`        | Organization-wide policies, shared rules          |
+| Tier | File | Code mechanism | Purpose |
+|---|---|---|---|
+| Org | `$ORG_DIR/CLAUDE.md` | `loadOrgClaudeMd()` → `systemPrompt: { preset: 'claude_code', append }` | Organization-wide policies, shared rules |
 | User | `/data/memory/CLAUDE.md` | `cwd: MEMORY_DIR` + `settingSources: ['project', 'user']` → SDK auto-discovers | Agent identity, capabilities, user-specific rules |
 
 Assembly order (default): **Claude Code preset** → **org CLAUDE.md** (appended, if `ORG_DIR` is set) →
@@ -202,11 +202,11 @@ additional MCP servers to a specific request. These are merged with the built-in
 
 Supported transport types (maps to SDK `McpServerConfig`):
 
-| Transport | Required fields                        |
-| --------- | -------------------------------------- |
-| `http`    | `url` (and optional `headers`)         |
-| `sse`     | `url` (and optional `headers`)         |
-| `stdio`   | `command` (and optional `args`, `env`) |
+| Transport | Required fields |
+|---|---|
+| `http` | `url` (and optional `headers`) |
+| `sse` | `url` (and optional `headers`) |
+| `stdio` | `command` (and optional `args`, `env`) |
 
 Example request with an HTTP MCP server:
 
@@ -242,29 +242,29 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 
 ## Key Environment Variables
 
-| Variable                   | Default                                              | Code location                                                                                         |
-| -------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_BASE_URL`       | (empty; SDK defaults to `https://api.anthropic.com`) | Used by SDK internally; set for third-party API proxies                                               |
-| `ANTHROPIC_API_KEY`        | (required)                                           | Used by SDK internally                                                                                |
-| `APP_VERSION`              | `1.0.0`                                              | `src/config.ts` → health response, `X-Build-Version` header; overridden by `BUILD_VERSION` Docker ARG |
-| `API_TOKEN`                | (required)                                           | `src/config.ts` → auth middleware                                                                     |
-| `PORT`                     | `9000`                                               | `src/config.ts`                                                                                       |
-| `MAX_EXECUTION_MS`         | `300000`                                             | `src/config.ts` → AbortController timeout                                                             |
-| `MEMORY_DIR`               | `/data/memory`                                       | `src/config.ts` → agent cwd, persona, `.claude/` session state                                        |
-| `STORE_DIR`                | `/data/store`                                        | `src/config.ts` → persistent SQLite sync target                                                       |
-| `ASSISTANT_NAME`           | `Pico`                                               | `src/config.ts` → agent display name, transcript archiving                                            |
-| `LOG_LEVEL`                | `info`                                               | `src/logger.ts` → pino log level (`debug`, `info`, `warn`, `error`)                                   |
-| `SESSION_END_MARKER`       | `[[PICOCLAW_SESSION_END]]`                           | `src/config.ts` → chat response                                                                       |
-| `ORG_DIR`                  | (empty)                                              | `src/config.ts` → org persona, org skills, managed MCP config                                         |
-| `SKILLS_DIR`               | `$ORG_DIR/skills` or `/data/skills` (fallback)       | `src/config.ts` → org skills directory                                                                |
-| `PICOCLAW_DB_PATH`         | `/tmp/messages.db`                                   | MCP server env var (set by agent-engine; `NANOCLAW_DB_PATH` as fallback)                              |
-| `PICOCLAW_CONVERSATION_ID` | per-request                                          | MCP server env var (set by agent-engine; `NANOCLAW_CONVERSATION_ID` as fallback)                      |
-| `PICOCLAW_IS_MAIN`         | `1`                                                  | MCP server env var — enables cross-conversation task management                                       |
-| `BUILD_COMMIT`             | `unknown`                                            | `src/config.ts` → git commit hash, injected at Docker build time                                      |
-| `BUILD_TIME`               | `unknown`                                            | `src/config.ts` → build timestamp, injected at Docker build time                                      |
-| `SYSTEM_PROMPT_OVERRIDE`   | (empty)                                              | When set, fully replaces Claude Code preset + org CLAUDE.md                                           |
-| `OUTBOUND_TTL_DAYS`        | `7`                                                  | Days to keep delivered outbound messages before cleanup                                               |
-| `TASK_LOG_RETENTION`       | `100`                                                | Max task run logs kept per task (oldest pruned on sync)                                               |
+| Variable | Default | Code location |
+|---|---|---|
+| `ANTHROPIC_BASE_URL` | (empty; SDK defaults to `https://api.anthropic.com`) | Used by SDK internally; set for third-party API proxies |
+| `ANTHROPIC_API_KEY` | (required) | Used by SDK internally |
+| `APP_VERSION` | `1.0.0` | `src/config.ts` → health response, `X-Build-Version` header; overridden by `BUILD_VERSION` Docker ARG |
+| `API_TOKEN` | (required) | `src/config.ts` → auth middleware |
+| `PORT` | `9000` | `src/config.ts` |
+| `MAX_EXECUTION_MS` | `300000` | `src/config.ts` → AbortController timeout |
+| `MEMORY_DIR` | `/data/memory` | `src/config.ts` → agent cwd, persona, `.claude/` session state |
+| `STORE_DIR` | `/data/store` | `src/config.ts` → persistent SQLite sync target |
+| `ASSISTANT_NAME` | `Pico` | `src/config.ts` → agent display name, transcript archiving |
+| `LOG_LEVEL` | `info` | `src/logger.ts` → pino log level (`debug`, `info`, `warn`, `error`) |
+| `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | `src/config.ts` → chat response |
+| `ORG_DIR` | (empty) | `src/config.ts` → org persona, org skills, managed MCP config |
+| `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` (fallback) | `src/config.ts` → org skills directory |
+| `PICOCLAW_DB_PATH` | `/tmp/messages.db` | MCP server env var (set by agent-engine; `NANOCLAW_DB_PATH` as fallback) |
+| `PICOCLAW_CONVERSATION_ID` | per-request | MCP server env var (set by agent-engine; `NANOCLAW_CONVERSATION_ID` as fallback) |
+| `PICOCLAW_IS_MAIN` | `1` | MCP server env var — enables cross-conversation task management |
+| `BUILD_COMMIT` | `unknown` | `src/config.ts` → git commit hash, injected at Docker build time |
+| `BUILD_TIME` | `unknown` | `src/config.ts` → build timestamp, injected at Docker build time |
+| `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces Claude Code preset + org CLAUDE.md |
+| `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |
+| `TASK_LOG_RETENTION` | `100` | Max task run logs kept per task (oldest pruned on sync) |
 
 ## Common Gotchas
 
