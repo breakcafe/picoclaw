@@ -36,10 +36,10 @@ This two-tier design mirrors NanoClaw's global + per-group CLAUDE.md pattern, ad
 
 ### File locations
 
-| File | Purpose | Loaded by |
-|------|---------|-----------|
-| `/data/memory/CLAUDE.md` | User persona (identity, capabilities, rules) | SDK/CLI auto-discovery (`cwd` + `settingSources`) |
-| `$ORG_DIR/CLAUDE.md` | Org persona overlay (shared policies) | `loadOrgClaudeMd()` → `systemPrompt.append` (requires `ORG_DIR` env var) |
+| File                     | Purpose                                      | Loaded by                                                                |
+| ------------------------ | -------------------------------------------- | ------------------------------------------------------------------------ |
+| `/data/memory/CLAUDE.md` | User persona (identity, capabilities, rules) | SDK/CLI auto-discovery (`cwd` + `settingSources`)                        |
+| `$ORG_DIR/CLAUDE.md`     | Org persona overlay (shared policies)        | `loadOrgClaudeMd()` → `systemPrompt.append` (requires `ORG_DIR` env var) |
 
 The agent's working directory is `/data/memory`, so it can read and write any file under this path.
 
@@ -69,6 +69,7 @@ You are Pico, a helpful assistant that specializes in [your domain].
 ## Tools
 
 You have access to MCP tools:
+
 - `mcp__picoclaw__send_message` — send a message immediately (useful during long tasks)
 - `mcp__picoclaw__schedule_task` — create a scheduled task
 - `mcp__picoclaw__list_tasks` — view existing tasks
@@ -92,6 +93,7 @@ For scheduled tasks, the runtime automatically prepends `[SCHEDULED TASK]` to th
 
 ```markdown
 ## Task behavior
+
 When a message starts with `[SCHEDULED TASK]`, output results in structured JSON.
 For interactive chat, use natural language.
 ```
@@ -183,11 +185,11 @@ Skills extend the agent's capabilities without modifying PicoClaw's source code.
 
 Skills are loaded from three sources and merged at startup:
 
-| Tier | Source | Override behavior |
-|------|--------|-------------------|
-| Built-in | Bundled with PicoClaw image | Base layer |
-| Org | `$ORG_DIR/skills/` (when `ORG_DIR` is set) | Overrides built-in skills of the same name |
-| User | `/data/memory/skills/` | **Additive only** — cannot override org or built-in skills of the same name; same-name skills are skipped |
+| Tier     | Source                                     | Override behavior                                                                                         |
+| -------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| Built-in | Bundled with PicoClaw image                | Base layer                                                                                                |
+| Org      | `$ORG_DIR/skills/` (when `ORG_DIR` is set) | Overrides built-in skills of the same name                                                                |
+| User     | `/data/memory/skills/`                     | **Additive only** — cannot override org or built-in skills of the same name; same-name skills are skipped |
 
 The merge priority is: **built-in** → **org** (overrides built-in) → **user** (additive only). This ensures that organization-level skill policies cannot be bypassed by user-created skills.
 
@@ -197,17 +199,17 @@ User skills from `/data/memory/skills/` are pre-loaded at startup and can be hot
 
 Not all configuration changes take effect the same way. This table covers every configurable element:
 
-| Configuration | When it takes effect |
-|---|---|
-| `/data/memory/CLAUDE.md` (user persona) | Next `POST /chat` request — CLI subprocess re-reads on every startup |
-| `$ORG_DIR/CLAUDE.md` (org persona) | Next `POST /chat` request — `loadOrgClaudeMd()` reads from disk each time |
-| `.claude/settings.json` | Next `POST /chat` request — CLI re-reads on startup |
-| Skills in `.claude/skills/` (sync target) | Next `POST /chat` request — CLI discovers skills on startup |
-| User skills source (`/data/memory/skills/`) | After `POST /admin/reload-skills`, then the next chat request |
-| Org skills source (`$ORG_DIR/skills/`) | After `POST /admin/reload-skills`, then the next chat request |
-| `managed-mcp.json` (`$ORG_DIR/managed-mcp.json`) | Container restart (copied to `/etc/claude-code/` by entrypoint.sh at boot) |
-| Environment variables (`API_TOKEN`, `MAX_EXECUTION_MS`, etc.) | Container restart (read once by `config.ts` at module load) |
-| Per-request MCP servers (`mcp_servers` field) | Immediately — passed per-request to `query()` |
+| Configuration                                                 | When it takes effect                                                       |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `/data/memory/CLAUDE.md` (user persona)                       | Next `POST /chat` request — CLI subprocess re-reads on every startup       |
+| `$ORG_DIR/CLAUDE.md` (org persona)                            | Next `POST /chat` request — `loadOrgClaudeMd()` reads from disk each time  |
+| `.claude/settings.json`                                       | Next `POST /chat` request — CLI re-reads on startup                        |
+| Skills in `.claude/skills/` (sync target)                     | Next `POST /chat` request — CLI discovers skills on startup                |
+| User skills source (`/data/memory/skills/`)                   | After `POST /admin/reload-skills`, then the next chat request              |
+| Org skills source (`$ORG_DIR/skills/`)                        | After `POST /admin/reload-skills`, then the next chat request              |
+| `managed-mcp.json` (`$ORG_DIR/managed-mcp.json`)              | Container restart (copied to `/etc/claude-code/` by entrypoint.sh at boot) |
+| Environment variables (`API_TOKEN`, `MAX_EXECUTION_MS`, etc.) | Container restart (read once by `config.ts` at module load)                |
+| Per-request MCP servers (`mcp_servers` field)                 | Immediately — passed per-request to `query()`                              |
 
 **Key insight:** CLAUDE.md changes are instant (next request), but skill changes require an explicit reload step. A new skill requires at minimum two HTTP calls to activate: `POST /admin/reload-skills` to sync it into `.claude/skills/`, then the next `POST /chat` to use it.
 
@@ -215,12 +217,12 @@ Not all configuration changes take effect the same way. This table covers every 
 
 When the agent creates a skill during a chat session (writing to `.claude/skills/`), the following lifecycle applies:
 
-| Event | Behavior |
-|---|---|
-| Same request | Not effective — CLI loaded skills at subprocess startup |
-| Next request (no reload) | Effective — CLI re-reads `.claude/skills/` |
+| Event                             | Behavior                                                                                             |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Same request                      | Not effective — CLI loaded skills at subprocess startup                                              |
+| Next request (no reload)          | Effective — CLI re-reads `.claude/skills/`                                                           |
 | After `POST /admin/reload-skills` | **Preserved** — the persist step copies non-managed skills to `/data/memory/skills/` before clearing |
-| After container restart | **Preserved** — entrypoint.sh runs the same persist-before-clear logic |
+| After container restart           | **Preserved** — entrypoint.sh runs the same persist-before-clear logic                               |
 
 If the agent writes a skill to `/data/memory/skills/` instead (the user skills source directory), it survives reloads naturally but requires a reload call before the next chat request can use it.
 
@@ -300,7 +302,7 @@ When asked to review code:
 
 Provides instructions for using external tools or APIs available in the container.
 
-```markdown
+````markdown
 ---
 name: python-data-analysis
 description: Analyze data using Python pandas
@@ -332,7 +334,9 @@ print(df.describe())
 print(df.groupby('category').mean())
 "
 ```
-```
+````
+
+````
 
 #### Type 3: MCP tool documentation
 
@@ -371,8 +375,9 @@ Create a daily report at 9am:
   "schedule_value": "0 9 * * 1-5",
   "context_mode": "isolated"
 }
-```
-```
+````
+
+````
 
 ### Skill authoring best practices
 
@@ -387,7 +392,7 @@ docker run --rm -it \
   -v ./my-skill:/data/memory/skills/my-skill \
   -e API_TOKEN=test -e ANTHROPIC_BASE_URL=https://api.anthropic.com -e ANTHROPIC_API_KEY=xxx \
   picoclaw:latest
-```
+````
 
 ## Skills Engine (Advanced)
 
@@ -421,14 +426,14 @@ The engine tracks applied skills, file hashes, and structured outcomes in `.nano
 
 The PicoClaw container includes:
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Node.js | 22 | Runtime |
-| Python 3 | System | Script execution, data analysis |
-| pip packages | pandas, numpy, matplotlib, requests | Data processing |
-| Chromium | System | Web browsing (agent-browser) |
-| git | System | Version control operations |
-| jq | System | JSON processing |
-| Claude Code | Latest | CLI for agent SDK |
+| Tool         | Version                             | Purpose                         |
+| ------------ | ----------------------------------- | ------------------------------- |
+| Node.js      | 22                                  | Runtime                         |
+| Python 3     | System                              | Script execution, data analysis |
+| pip packages | pandas, numpy, matplotlib, requests | Data processing                 |
+| Chromium     | System                              | Web browsing (agent-browser)    |
+| git          | System                              | Version control operations      |
+| jq           | System                              | JSON processing                 |
+| Claude Code  | Latest                              | CLI for agent SDK               |
 
 Skills can leverage any of these tools in their instructions.

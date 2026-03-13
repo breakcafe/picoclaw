@@ -8,14 +8,14 @@ PicoClaw is a serverless adaptation of [NanoClaw](https://github.com/qwibitai/na
 
 This architecture works well for persistent, multi-channel deployments but creates friction in serverless environments:
 
-| Concern | NanoClaw (Docker child containers) | PicoClaw (single container) |
-|---------|------------------------------------|-----------------------------|
-| Cold start | Host + child container spin-up | Single process boot |
-| Resource model | N containers × memory | Single process |
-| Scheduling | Internal cron loop | External cron triggers |
-| Channel routing | Multi-adapter router | HTTP API only |
-| Filesystem | Source tree + container volumes | Mounted volumes at `/data/*` |
-| State isolation | Per-container filesystem | Per-conversation SQLite rows |
+| Concern         | NanoClaw (Docker child containers) | PicoClaw (single container)  |
+| --------------- | ---------------------------------- | ---------------------------- |
+| Cold start      | Host + child container spin-up     | Single process boot          |
+| Resource model  | N containers × memory              | Single process               |
+| Scheduling      | Internal cron loop                 | External cron triggers       |
+| Channel routing | Multi-adapter router               | HTTP API only                |
+| Filesystem      | Source tree + container volumes    | Mounted volumes at `/data/*` |
+| State isolation | Per-container filesystem           | Per-conversation SQLite rows |
 
 The core insight: in a serverless (Lambda/FC) context, the platform already provides the execution container. Adding Docker-in-Docker adds latency, complexity, and resource overhead with no isolation benefit — the cloud platform's sandbox is the security boundary.
 
@@ -36,10 +36,12 @@ PicoClaw eliminates this layer:
 ### The Problem
 
 Serverless platforms (Lambda, FC) typically provide:
+
 - **Ephemeral local storage** (`/tmp`): fast, SSD-backed, but lost on container recycling.
 - **Network-attached persistent storage** (EFS, NAS): durable but with higher latency and SQLite compatibility risks.
 
 SQLite on NFS/EFS has known issues:
+
 - File locking may not work correctly across NFS clients.
 - WAL mode can corrupt if multiple processes access the same database file on network storage.
 - Latency for frequent small writes (common in chat applications) degrades performance.
@@ -82,6 +84,7 @@ PicoClaw wraps the user's prompt in a `MessageStream` (async iterable) instead o
 When `query()` receives a **string** prompt, it sets `isSingleUserTurn = true`. After the first `result` message, the SDK closes stdin to the CLI process. This triggers a shutdown cascade that kills any running subagents — even if they're mid-execution.
 
 When `query()` receives an **AsyncIterable**, `isSingleUserTurn = false`. The SDK keeps stdin open, allowing:
+
 - Background agents to complete their work.
 - Agent Teams to coordinate through the full lifecycle.
 - The caller to control when the session ends (by calling `end()` on the stream).
@@ -92,13 +95,14 @@ PicoClaw's `MessageStream` pushes one message and immediately calls `end()`, but
 
 The three-volume model (`memory`, `org`, `store`) separates concerns:
 
-| Volume | Lifecycle | Write Pattern | Sharing |
-|--------|-----------|---------------|---------|
-| `memory` | Long-lived | Agent writes (persona, archives, `.claude/` session state) | Shared across deploys |
-| `org` | Deploy-time (optional) | Human/CI writes org resources | Read-only at runtime; when `ORG_DIR` is set, provides org persona, skills, and MCP config |
-| `store` | Long-lived | Sync from `/tmp` after each request | Shared across deploys |
+| Volume   | Lifecycle              | Write Pattern                                              | Sharing                                                                                   |
+| -------- | ---------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `memory` | Long-lived             | Agent writes (persona, archives, `.claude/` session state) | Shared across deploys                                                                     |
+| `org`    | Deploy-time (optional) | Human/CI writes org resources                              | Read-only at runtime; when `ORG_DIR` is set, provides org persona, skills, and MCP config |
+| `store`  | Long-lived             | Sync from `/tmp` after each request                        | Shared across deploys                                                                     |
 
 This separation enables:
+
 - **Org resources as deployment artifacts**: update org persona, skills, or MCP config by mounting a new volume at `/data/org`, no image rebuild.
 - **Independent backup policies**: `store` (critical) vs org resources (reproducible).
 - **Session state co-located with memory**: `.claude/` lives inside `MEMORY_DIR`, so the agent's skills, session files, and workspace are all on the same volume — simplifying deployment from 4 mounts to 3.
@@ -134,6 +138,7 @@ PicoClaw's `POST /task/check` endpoint inverts the control:
 3. Executes at most one task, then returns.
 
 **One task per call** is intentional:
+
 - Prevents a single Lambda invocation from running indefinitely if many tasks are due.
 - Allows the platform to manage concurrency and timeout per task execution.
 - Backlogs are visible via the `remaining` field in the response.
@@ -148,11 +153,13 @@ const timeoutHandle = setTimeout(() => abortController.abort(), timeoutMs);
 ```
 
 This is passed directly to `query()`, which threads it through to the CLI subprocess. When aborted:
+
 - The SDK terminates the CLI process.
 - Any in-progress API call or tool execution is cancelled.
 - PicoClaw catches the `AbortError` and returns `status: "timeout"` with any partial result.
 
 The timeout has two levels:
+
 - **Server-level**: `MAX_EXECUTION_MS` environment variable (default: 300s).
 - **Per-request**: `max_execution_ms` in the chat request body, capped at the server-level maximum.
 
@@ -212,43 +219,43 @@ PicoClaw (HTTP API + single process):
 
 ### Module-by-Module Mapping
 
-| Module | NanoClaw | PicoClaw | Change |
-|--------|----------|----------|--------|
-| Entry point | `index.ts` (598 lines): message loop, trigger detection, group registration, container dispatch | `index.ts` (79 lines): boot + shutdown + start Express | Drastically simplified |
-| Agent engine | `container-runner.ts` (707 lines) + `container/agent-runner/src/index.ts` (558 lines) = two-layer architecture | `agent-engine.ts` (~500 lines) = single-layer SDK call | Docker IPC → same-process call |
-| Message input | Channel polling → IPC files → MessageStream | HTTP POST → SQLite → XML format → MessageStream | Input source changed; MessageStream pattern preserved |
-| Message output | stdout markers → container-runner parse → channel router | query() result → HTTP JSON/SSE response | Output channel simplified |
-| Database | 7 tables (messages, chats, registered_groups, sessions, router_state, scheduled_tasks, task_run_logs) | 5 tables (conversations, messages, outbound_messages, scheduled_tasks, task_run_logs) | Removed multi-group tables; added conversations/outbound |
-| Task scheduling | Internal 60s polling loop (`startSchedulerLoop`) | External cron calls `POST /task/check` | Push → pull inversion |
-| MCP tools | IPC file monitoring (`ipc-mcp-stdio.ts`), filesystem-based communication | SQLite direct access (`mcp-server.ts`), shared database | IPC files → shared SQLite |
-| Skills | Container-internal `.claude/skills/` per group | Three-tier sync: built-in → org → user (additive) → `.claude/skills/`, with hot-reload | Enhanced with priority overlay |
-| Memory | Per-group CLAUDE.md (`/workspace/group/CLAUDE.md`) + global | Single-user CLAUDE.md (`/data/memory/CLAUDE.md`) + org (`$ORG_DIR/CLAUDE.md`) | Multi-group → single-user |
-| Session resume | session_id stored in DB → passed to container | session_id + last_assistant_uuid → SDK `resume` + `resumeSessionAt` | Added precise message-level resume |
-| Security | Docker container isolation + Credential Proxy | Bearer Token + Bash env scrubbing + container boundary | OS isolation → process isolation |
-| Concurrency | GroupQueue (max 5 concurrent groups) | Per-conversation mutex lock (`conversation-lock.ts`), 409 on conflict | Queue-based → lock-based |
+| Module          | NanoClaw                                                                                                       | PicoClaw                                                                               | Change                                                   |
+| --------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Entry point     | `index.ts` (598 lines): message loop, trigger detection, group registration, container dispatch                | `index.ts` (79 lines): boot + shutdown + start Express                                 | Drastically simplified                                   |
+| Agent engine    | `container-runner.ts` (707 lines) + `container/agent-runner/src/index.ts` (558 lines) = two-layer architecture | `agent-engine.ts` (~500 lines) = single-layer SDK call                                 | Docker IPC → same-process call                           |
+| Message input   | Channel polling → IPC files → MessageStream                                                                    | HTTP POST → SQLite → XML format → MessageStream                                        | Input source changed; MessageStream pattern preserved    |
+| Message output  | stdout markers → container-runner parse → channel router                                                       | query() result → HTTP JSON/SSE response                                                | Output channel simplified                                |
+| Database        | 7 tables (messages, chats, registered_groups, sessions, router_state, scheduled_tasks, task_run_logs)          | 5 tables (conversations, messages, outbound_messages, scheduled_tasks, task_run_logs)  | Removed multi-group tables; added conversations/outbound |
+| Task scheduling | Internal 60s polling loop (`startSchedulerLoop`)                                                               | External cron calls `POST /task/check`                                                 | Push → pull inversion                                    |
+| MCP tools       | IPC file monitoring (`ipc-mcp-stdio.ts`), filesystem-based communication                                       | SQLite direct access (`mcp-server.ts`), shared database                                | IPC files → shared SQLite                                |
+| Skills          | Container-internal `.claude/skills/` per group                                                                 | Three-tier sync: built-in → org → user (additive) → `.claude/skills/`, with hot-reload | Enhanced with priority overlay                           |
+| Memory          | Per-group CLAUDE.md (`/workspace/group/CLAUDE.md`) + global                                                    | Single-user CLAUDE.md (`/data/memory/CLAUDE.md`) + org (`$ORG_DIR/CLAUDE.md`)          | Multi-group → single-user                                |
+| Session resume  | session_id stored in DB → passed to container                                                                  | session_id + last_assistant_uuid → SDK `resume` + `resumeSessionAt`                    | Added precise message-level resume                       |
+| Security        | Docker container isolation + Credential Proxy                                                                  | Bearer Token + Bash env scrubbing + container boundary                                 | OS isolation → process isolation                         |
+| Concurrency     | GroupQueue (max 5 concurrent groups)                                                                           | Per-conversation mutex lock (`conversation-lock.ts`), 409 on conflict                  | Queue-based → lock-based                                 |
 
 ### Code Reuse from NanoClaw
 
-| Component | Reuse | Notes |
-|-----------|-------|-------|
-| `MessageStream` | ~95% | Removed IPC polling logic |
-| `PreCompactHook` | ~90% | Archive path adapted to `/data/memory/conversations` |
-| `parseTranscript` / `formatTranscriptMarkdown` | ~95% | Nearly identical |
-| Skills sync | ~75% | Additive merge replaces priority overlay; org/user tier separation added |
-| Task scheduling logic | ~80% | Removed internal loop, kept calculation logic |
-| MCP tool definitions | ~70% | Changed from IPC files to SQLite direct access |
+| Component                                      | Reuse | Notes                                                                    |
+| ---------------------------------------------- | ----- | ------------------------------------------------------------------------ |
+| `MessageStream`                                | ~95%  | Removed IPC polling logic                                                |
+| `PreCompactHook`                               | ~90%  | Archive path adapted to `/data/memory/conversations`                     |
+| `parseTranscript` / `formatTranscriptMarkdown` | ~95%  | Nearly identical                                                         |
+| Skills sync                                    | ~75%  | Additive merge replaces priority overlay; org/user tier separation added |
+| Task scheduling logic                          | ~80%  | Removed internal loop, kept calculation logic                            |
+| MCP tool definitions                           | ~70%  | Changed from IPC files to SQLite direct access                           |
 
 ### Features Intentionally Not Migrated
 
-| NanoClaw Feature | Reason |
-|------------------|--------|
-| IPC follow-up messages | Replaced by HTTP multi-turn conversation |
-| Container idle timeout | PicoClaw lifecycle controlled by external platform |
-| Group management | Single-user model, no group concept |
-| Channel adapter system | HTTP API is the only channel |
-| Credential Proxy | Environment variables injected directly + Bash hook scrubbing |
-| Mount Security | Volume mount boundaries provide equivalent isolation |
-| Sender Allowlist | Bearer Token authentication replaces sender validation |
+| NanoClaw Feature       | Reason                                                        |
+| ---------------------- | ------------------------------------------------------------- |
+| IPC follow-up messages | Replaced by HTTP multi-turn conversation                      |
+| Container idle timeout | PicoClaw lifecycle controlled by external platform            |
+| Group management       | Single-user model, no group concept                           |
+| Channel adapter system | HTTP API is the only channel                                  |
+| Credential Proxy       | Environment variables injected directly + Bash hook scrubbing |
+| Mount Security         | Volume mount boundaries provide equivalent isolation          |
+| Sender Allowlist       | Bearer Token authentication replaces sender validation        |
 
 ## Why Per-Conversation Locking
 
