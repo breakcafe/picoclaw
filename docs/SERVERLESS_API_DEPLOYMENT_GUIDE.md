@@ -66,19 +66,22 @@ HTTP Request
   /tmp/messages.db  -->  /data/store/messages.db
 ```
 
-### 2.3 Mounted Volumes
+### 2.3 Data Paths
 
-Default paths (overridable via environment variables):
+Persistent volumes (must be mounted on durable storage for cross-request state):
 
 | Path | Env Var | Purpose |
 |------|---------|---------|
 | `/data/memory` | `MEMORY_DIR` | CLAUDE.md persona, conversation archives, working directory, `.claude/` SDK session state |
 | `/data/org` | `ORG_DIR` | Org CLAUDE.md, managed-mcp.json, org skills (optional, read-only) |
-| `$ORG_DIR/skills` | `SKILLS_DIR` | Org skill definitions (legacy fallback: `/data/skills` when `ORG_DIR` is unset) |
 | `/data/store` | `STORE_DIR` | Persistent SQLite database |
-| `/tmp/messages.db` | `LOCAL_DB_PATH` | Local runtime database (ephemeral) |
 
-All `/data/*` paths must be on persistent storage (EFS, NAS, or local volumes) for cross-request state to survive.
+Derived / ephemeral paths (not mounted separately):
+
+| Path | Env Var | Purpose |
+|------|---------|---------|
+| `$ORG_DIR/skills` | `SKILLS_DIR` | Org skill definitions (derived from `ORG_DIR`; legacy fallback: `/data/skills`) |
+| `/tmp/messages.db` | `LOCAL_DB_PATH` | Local runtime database (ephemeral, synced to `STORE_DIR` after each request) |
 
 **Auto-memory (non-functional):** Claude Code's auto-memory feature (`MEMORY.md` auto-generation) is gated behind an internal CLI feature flag (`tengu_herring_clock`, default `false`). In SDK/non-interactive mode, the auto-memory system prompt is never injected, so `MEMORY.md` is never automatically written — regardless of the `CLAUDE_CODE_DISABLE_AUTO_MEMORY` setting. The `entrypoint.sh` script sets up a symlink from the SDK's internal auto-memory path to `/data/memory/` as a forward-compatibility measure, but the feature is currently inert. If cross-session memory is needed, instruct the agent via the persona (`CLAUDE.md`) to explicitly read/write files in `/data/memory/`.
 
@@ -270,7 +273,6 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_BASE_URL` | Anthropic API base URL (SDK defaults to `https://api.anthropic.com` when unset). Set for third-party API proxies (e.g., `https://your-proxy.com/anthropic`). |
 | `ANTHROPIC_API_KEY` | Claude API key (or equivalent OAuth token) |
 | `API_TOKEN` | Bearer token for HTTP API authentication |
 
@@ -278,6 +280,7 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `ANTHROPIC_BASE_URL` | (empty; SDK uses `https://api.anthropic.com`) | Anthropic API base URL. Only needed for third-party API proxies. |
 | `APP_VERSION` | `1.0.0` | Application version; overridden by `BUILD_VERSION` Docker build arg |
 | `PORT` | `9000` | HTTP server port |
 | `MAX_EXECUTION_MS` | `300000` | Agent execution timeout in ms (5 minutes) |
@@ -363,6 +366,8 @@ No authentication required.
   }
 }
 ```
+
+> **Note:** The `sessions` field checks `$MEMORY_DIR/.claude/` (SDK session state inside the memory volume). It is not a separate mount — the field name is kept for API backward compatibility.
 
 `status` values:
 
@@ -977,8 +982,8 @@ Mitigations:
 - [ ] `POST /chat` creates a new conversation successfully
 - [ ] `POST /chat` with `conversation_id` resumes correctly (multi-turn)
 - [ ] `GET /chat` lists conversations
-- [ ] `GET /chat/:id/messages` returns message history
-- [ ] `DELETE /chat/:id` deletes conversation (204)
+- [ ] `GET /chat/:conversation_id/messages` returns message history
+- [ ] `DELETE /chat/:conversation_id` deletes conversation (204)
 - [ ] `session_end_marker_detected` triggers as expected
 - [ ] `POST /task` + `POST /task/check` execute scheduled tasks
 - [ ] `POST /admin/reload-skills` reloads skills from all tiers
@@ -987,5 +992,5 @@ Mitigations:
 - [ ] All `/data/*` volumes are mounted and writable (`memory`, `store`; `org` is optional/read-only)
 - [ ] External cron is configured to call `POST /task/check`
 - [ ] Logging, alerting, and rate limiting are configured
-- [ ] Secrets (`API_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`) are injected via secret manager, not in image or repository
+- [ ] Secrets (`API_TOKEN`, `ANTHROPIC_API_KEY`) are injected via secret manager, not in image or repository
 - [ ] Concurrency controls limit to one active instance per conversation scope

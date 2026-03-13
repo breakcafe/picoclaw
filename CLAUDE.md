@@ -250,6 +250,10 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 | `API_TOKEN` | (required) | `src/config.ts` → auth middleware |
 | `PORT` | `9000` | `src/config.ts` |
 | `MAX_EXECUTION_MS` | `300000` | `src/config.ts` → AbortController timeout |
+| `MEMORY_DIR` | `/data/memory` | `src/config.ts` → agent cwd, persona, `.claude/` session state |
+| `STORE_DIR` | `/data/store` | `src/config.ts` → persistent SQLite sync target |
+| `ASSISTANT_NAME` | `Pico` | `src/config.ts` → agent display name, transcript archiving |
+| `LOG_LEVEL` | `info` | `src/logger.ts` → pino log level (`debug`, `info`, `warn`, `error`) |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | `src/config.ts` → chat response |
 | `ORG_DIR` | (empty) | `src/config.ts` → org persona, org skills, managed MCP config |
 | `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` (fallback) | `src/config.ts` → org skills directory |
