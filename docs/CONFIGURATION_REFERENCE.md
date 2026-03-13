@@ -57,6 +57,16 @@ Quick-reference for all configuration surfaces. For detailed explanations, see t
 |----------|--------|
 | `SESSIONS_DIR` | Ignored with warning. Use `$MEMORY_DIR/.claude/` instead. |
 
+### SDK Internal Settings
+
+Written to `.claude/settings.json` by `entrypoint.sh` at startup. Not user-configurable.
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | `1` | Enable multi-agent team collaboration |
+| `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD` | `1` | Discover CLAUDE.md in skill directories |
+| `CLAUDE_CODE_DISABLE_AUTO_MEMORY` | `0` | Auto-memory toggle (gated by internal feature flag, currently inert) |
+
 ### Docker Build Args
 
 | Build Arg | Maps To | Default | Purpose |
@@ -150,7 +160,9 @@ All except `/health` require `Authorization: Bearer <API_TOKEN>`.
 | `thinking` | boolean | `false` | Enable extended thinking |
 | `max_thinking_tokens` | number | `10000` | Max thinking tokens |
 | `show_tool_use` | boolean | `false` | Stream tool invocation events |
-| `mcp_servers` | object | — | Per-request MCP servers (see §7) |
+| `mcp_servers` | object | — | Per-request MCP servers (see §8) |
+
+**Not yet exposed:** `model` (model selection), `max_turns` (turn limit), `max_budget_usd` (budget cap). These exist in the Claude Agent SDK but PicoClaw does not pass them through.
 
 ### SSE Events (when `stream: true`)
 
@@ -165,7 +177,30 @@ All except `/health` require `Authorization: Bearer <API_TOKEN>`.
 
 ---
 
-## 5. Persona & System Prompt
+## 5. POST /task Options
+
+| Field | Type | Default | Purpose |
+|-------|------|---------|---------|
+| `id` | string | _(auto-generate)_ | Custom task ID |
+| `prompt` | string | _(required)_ | Task instruction for the agent |
+| `schedule_type` | string | _(required)_ | `cron`, `interval`, or `once` |
+| `schedule_value` | string | _(required)_ | Schedule expression (see below) |
+| `context_mode` | string | `isolated` | `group` (shared conversation) or `isolated` (fresh each run) |
+| `conversation_id` | string | _(auto-create)_ | Target conversation (required for `group` mode) |
+
+### Schedule expression formats
+
+| Type | Format | Example |
+|------|--------|---------|
+| `cron` | 5-field cron (affected by `TZ`) | `0 9 * * 1-5` (weekdays 9am) |
+| `interval` | Milliseconds as string | `3600000` (every hour) |
+| `once` | Local time string (no `Z` or timezone offset) | `2026-03-15T14:00:00` |
+
+`PUT /task/:task_id` supports partial updates of all fields above plus `status` (`active` / `paused` / `completed`).
+
+---
+
+## 6. Persona & System Prompt
 
 Assembly order (top = base, bottom = highest priority):
 
@@ -184,7 +219,7 @@ Assembly order (top = base, bottom = highest priority):
 
 ---
 
-## 6. Skills
+## 7. Skills
 
 ### Three-Tier Merge (load order)
 
@@ -204,7 +239,7 @@ Skills created by the agent during chat (written to `.claude/skills/`) are autom
 
 ---
 
-## 7. MCP Servers
+## 8. MCP Servers
 
 ### Sources (3 layers)
 
@@ -236,7 +271,7 @@ Skills created by the agent during chat (written to `.claude/skills/`) are autom
 
 ---
 
-## 8. Runtime Controls
+## 9. Runtime Controls
 
 ### Shutdown
 
@@ -262,7 +297,7 @@ Runs automatically after every HTTP response and on shutdown: `wal_checkpoint(TR
 
 ---
 
-## 9. Response Headers
+## 10. Response Headers
 
 Every HTTP response includes:
 
@@ -271,3 +306,114 @@ Every HTTP response includes:
 | `X-Request-ID` | Echoes caller header or generates `req-<UUID>` |
 | `X-Build-Version` | `APP_VERSION` |
 | `X-Build-Commit` | `BUILD_COMMIT` |
+
+---
+
+## 11. FAQ
+
+### Q1: How do I override the system prompt?
+
+Three methods, increasing in control:
+
+**A. Org CLAUDE.md (append, recommended):** Create `$ORG_DIR/CLAUDE.md` with org-wide rules. Appended after the Claude Code preset; does not replace it.
+
+```bash
+docker run -v /path/to/org:/data/org:ro -e ORG_DIR=/data/org ...
+```
+
+**B. User CLAUDE.md (agent identity):** Create `/data/memory/CLAUDE.md` to define the agent's persona and behavioral rules. Auto-discovered by the SDK via `cwd`.
+
+**C. SYSTEM_PROMPT_OVERRIDE (full replace):** Set the env var to completely replace the Claude Code preset + org CLAUDE.md. User CLAUDE.md still loads on top. Warning: removes built-in tool usage guidelines and safety rules.
+
+### Q2: Can I select a specific model?
+
+Not currently exposed. PicoClaw does not pass a `model` option to `query()` — the Claude Agent SDK uses its default model. There is no `MODEL` env var or `model` request parameter.
+
+To add model selection, modify `src/agent-engine.ts` to pass `model` in the `query()` options.
+
+### Q3: How are API keys managed?
+
+Two distinct keys:
+
+| Key | Purpose | Set via |
+|-----|---------|---------|
+| `ANTHROPIC_API_KEY` | Claude API access | Environment variable (required) |
+| `API_TOKEN` | PicoClaw HTTP API auth | Environment variable (required) |
+
+`ANTHROPIC_API_KEY` lifecycle: injected via env var → passed to SDK `query()` via `env` option → SDK subprocess calls Anthropic API → `PreToolUse` hook scrubs it from Bash environment before any shell command.
+
+For third-party API proxies, set `ANTHROPIC_BASE_URL`:
+
+```bash
+docker run -e ANTHROPIC_BASE_URL=https://your-proxy.com/anthropic -e ANTHROPIC_API_KEY=proxy-key ...
+```
+
+### Q4: What is the default API_TOKEN?
+
+There is no hardcoded default. `API_TOKEN` is required — if unset, the server returns `500`.
+
+| Scenario | Token source |
+|----------|-------------|
+| `picoclaw.sh` script | Auto-generates `picoclaw-<16-char-hex>` via `openssl rand` |
+| `docker-compose.yml` | `${API_TOKEN:-dev-token-123}` from `.env` |
+| Manual Docker | Must be explicitly provided |
+
+### Q5: How do I enable extended thinking?
+
+Per-request via `POST /chat`:
+
+```json
+{
+  "message": "Analyze this problem",
+  "stream": true,
+  "thinking": true,
+  "max_thinking_tokens": 5000
+}
+```
+
+- Requires `stream: true` to see `thinking` SSE events
+- In non-streaming mode, thinking occurs internally but is not returned
+- No global env var to enable by default
+
+### Q6: How do I add external tools to the agent?
+
+| Method | Scope | Config location |
+|--------|-------|-----------------|
+| Org MCP servers | All requests | `$ORG_DIR/managed-mcp.json` |
+| Per-request MCP servers | Single request | `mcp_servers` field in `POST /chat` |
+| Built-in MCP tools | All requests | `src/mcp-server.ts` (requires code change) |
+
+Org MCP servers are auto-discovered by the CLI from `/etc/claude-code/managed-mcp.json` (copied from `$ORG_DIR` at startup).
+
+---
+
+## 12. Configuration Cross-Reference
+
+How each setting can be configured:
+
+| Setting | Env Var | Per-Request | Config File |
+|---------|---------|-------------|-------------|
+| API key | `ANTHROPIC_API_KEY` | — | — |
+| API endpoint | `ANTHROPIC_BASE_URL` | — | — |
+| HTTP auth token | `API_TOKEN` | — | — |
+| Server port | `PORT` | — | — |
+| Global timeout cap | `MAX_EXECUTION_MS` | — | — |
+| Request timeout | — | `max_execution_ms` | — |
+| Agent display name | `ASSISTANT_NAME` | — | — |
+| Log level | `LOG_LEVEL` | — | — |
+| Timezone | `TZ` | — | — |
+| Session end marker | `SESSION_END_MARKER` | — | — |
+| Streaming | — | `stream` | — |
+| Extended thinking | — | `thinking` | — |
+| Thinking token cap | — | `max_thinking_tokens` | — |
+| Tool use display | — | `show_tool_use` | — |
+| Dynamic MCP servers | — | `mcp_servers` | — |
+| Org MCP servers | — | — | `$ORG_DIR/managed-mcp.json` |
+| System prompt override | `SYSTEM_PROMPT_OVERRIDE` | — | — |
+| Org persona | — | — | `$ORG_DIR/CLAUDE.md` |
+| User persona | — | — | `$MEMORY_DIR/CLAUDE.md` |
+| Storage paths | `MEMORY_DIR` / `STORE_DIR` | — | — |
+| Org directory | `ORG_DIR` | — | — |
+| Data cleanup | `OUTBOUND_TTL_DAYS` / `TASK_LOG_RETENTION` | — | — |
+| Model selection | **not exposed** | **not exposed** | — |
+| Agent teams | — | — | `.claude/settings.json` (auto) |
