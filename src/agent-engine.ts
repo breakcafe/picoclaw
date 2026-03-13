@@ -10,6 +10,8 @@ import {
 
 import {
   ASSISTANT_NAME,
+  CLAUDE_FALLBACK_MODEL,
+  CLAUDE_MODEL,
   LOCAL_DB_PATH,
   MAX_EXECUTION_MS,
   MEMORY_DIR,
@@ -42,6 +44,8 @@ export interface AgentRunInput {
   isScheduledTask?: boolean;
   maxThinkingTokens?: number;
   showToolUse?: boolean;
+  /** Per-request model override (full ID or short name). */
+  model?: string;
   /** Per-request MCP servers merged with the built-in picoclaw server. */
   mcpServers?: Record<string, McpServerConfig>;
 }
@@ -51,6 +55,7 @@ export interface AgentRunOutput {
   result: string | null;
   newSessionId?: string;
   lastAssistantUuid?: string;
+  model?: string;
   error?: string;
 }
 
@@ -377,6 +382,7 @@ export class AgentEngine implements AgentRunner {
 
     let newSessionId: string | undefined;
     let lastAssistantUuid: string | undefined;
+    let actualModel: string | undefined;
     let lastResult: string | null = null;
     let lastStreamedLength = 0;
 
@@ -439,10 +445,15 @@ export class AgentEngine implements AgentRunner {
         ...Object.keys(mergedMcpServers).map((name) => `mcp__${name}__*`),
       ];
 
+      const model = input.model || CLAUDE_MODEL || undefined;
+      const fallbackModel = CLAUDE_FALLBACK_MODEL || undefined;
+
       for await (const message of query({
         prompt: promptStream,
         options: {
           abortController,
+          model,
+          fallbackModel,
           cwd: MEMORY_DIR,
           additionalDirectories:
             additionalDirectories.length > 0
@@ -486,6 +497,7 @@ export class AgentEngine implements AgentRunner {
       }) as AsyncIterable<any>) {
         if (message.type === 'system' && message.subtype === 'init') {
           newSessionId = message.session_id;
+          actualModel = message.model;
         }
 
         // Stream incremental text and thinking from content_block_delta events
@@ -544,6 +556,7 @@ export class AgentEngine implements AgentRunner {
         result: lastResult,
         newSessionId,
         lastAssistantUuid,
+        model: actualModel,
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -554,6 +567,7 @@ export class AgentEngine implements AgentRunner {
           result: lastResult,
           newSessionId,
           lastAssistantUuid,
+          model: actualModel,
           error: `Execution aborted after ${timeoutMs}ms. Use conversation_id to continue.`,
         };
       }
@@ -563,6 +577,7 @@ export class AgentEngine implements AgentRunner {
         result: lastResult,
         newSessionId,
         lastAssistantUuid,
+        model: actualModel,
         error: errorMessage,
       };
     } finally {

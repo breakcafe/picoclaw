@@ -58,6 +58,10 @@ export const TASK_LOG_RETENTION = parseIntWithDefault(
   100,
 );
 
+export const CLAUDE_MODEL = process.env.CLAUDE_MODEL || undefined;
+export const CLAUDE_FALLBACK_MODEL =
+  process.env.CLAUDE_FALLBACK_MODEL || undefined;
+
 export const SYSTEM_PROMPT_OVERRIDE = process.env.SYSTEM_PROMPT_OVERRIDE || '';
 
 export const TIMEZONE =

@@ -1,5 +1,11 @@
 # PicoClaw
 
+![version](https://img.shields.io/badge/version-1.2.16-blue)
+![license](https://img.shields.io/badge/license-MIT-green)
+![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)
+![sdk](https://img.shields.io/badge/claude--agent--sdk-0.2.74-purple)
+![tokens](repo-tokens/badge.svg)
+
 Serverless-first Claude Agent runtime. Request-driven HTTP API with persistent memory, multi-turn conversations, and scheduled tasks.
 
 Forked from [NanoClaw](https://github.com/qwibitai/nanoclaw) — replaces the always-on multi-channel orchestrator with a single-container, per-request execution model designed for AWS Lambda, Alibaba Cloud FC, and similar platforms.
@@ -270,6 +276,8 @@ make test-e2e             # full build + run + test pipeline
 | `ASSISTANT_NAME` | `Pico` | Agent display name |
 | `TZ` | System | Timezone for cron scheduling |
 | `LOG_LEVEL` | `info` | Pino log level |
+| `CLAUDE_MODEL` | (empty) | Model for agent execution (full ID or short name) |
+| `CLAUDE_FALLBACK_MODEL` | (empty) | Fallback model on primary failure |
 | `ORG_DIR` | (empty) | Org directory path — contains `CLAUDE.md`, `managed-mcp.json`, `skills/` |
 | `STORE_DIR` | `/data/store` | Persistent database volume |
 | `MEMORY_DIR` | `/data/memory` | User memory and persona volume (agent cwd) |

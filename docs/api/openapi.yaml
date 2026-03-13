@@ -50,7 +50,7 @@ paths:
                 ok:
                   value:
                     status: ok
-                    version: 1.2.15
+                    version: 1.2.16
                     commit: abc1234
                     build_time: '2026-03-12T10:00:00Z'
                     max_execution_ms: 300000
@@ -125,6 +125,7 @@ paths:
                     conversation_id: conv-0df6aee0-86e1-45ac-b33b-c13086b72c36
                     message_id: msg-3aaf5d3f-a17b-4e8e-bec3-a33df4c9af86
                     result: '2'
+                    model: claude-sonnet-4-6
                     session_id: 3e49773a-b4a6-4c53-8cd9-b3f96c5377e3
                     duration_ms: 6701
                     error: null
@@ -632,7 +633,7 @@ components:
         Present on every response.
       schema:
         type: string
-        example: 1.2.15
+        example: 1.2.16
     X-Build-Commit:
       description: |
         Short git commit hash of the build, injected at Docker build time.
@@ -776,6 +777,14 @@ components:
             Stream tool invocation events. When true and stream=true, SSE
             output includes 'tool_use' events showing which tools the agent
             calls and their inputs.
+        model:
+          type: string
+          description: |
+            Model override for this request. Omit to use the CLI default
+            (recommended — avoids locking to a specific model version).
+            Accepts full model IDs (e.g. `claude-opus-4-6`) or short names
+            (`opus`, `sonnet`, `haiku`). Precedence: per-request > `CLAUDE_MODEL`
+            env var > CLI default.
         mcp_servers:
           type: object
           description: |
@@ -868,6 +877,10 @@ components:
         result:
           type: string
           nullable: true
+        model:
+          type: string
+          nullable: true
+          description: Actual model used for this request (from SDK init).
         session_id:
           type: string
           nullable: true
