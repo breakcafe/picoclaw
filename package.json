@@ -1,6 +1,6 @@
 {
   "name": "picoclaw",
-  "version": "1.2.15",
+  "version": "1.2.16",
   "description": "Serverless-first Claude Agent runtime with persistent memory mounts.",
   "type": "module",
   "main": "dist/index.js",

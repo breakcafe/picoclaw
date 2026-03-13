@@ -50,7 +50,7 @@ paths:
                 ok:
                   value:
                     status: ok
-                    version: 1.2.15
+                    version: 1.2.16
                     commit: abc1234
                     build_time: '2026-03-12T10:00:00Z'
                     max_execution_ms: 300000
@@ -633,7 +633,7 @@ components:
         Present on every response.
       schema:
         type: string
-        example: 1.2.15
+        example: 1.2.16
     X-Build-Commit:
       description: |
         Short git commit hash of the build, injected at Docker build time.

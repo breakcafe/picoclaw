@@ -334,7 +334,7 @@ If the caller sends an `X-Request-ID` header, the same value is echoed back. Oth
 Every response includes build metadata headers:
 
 ```http
-X-Build-Version: 1.2.15
+X-Build-Version: 1.2.16
 X-Build-Commit: abc1234
 ```
 
@@ -353,7 +353,7 @@ No authentication required.
 ```json
 {
   "status": "ok",
-  "version": "1.2.15",
+  "version": "1.2.16",
   "commit": "abc1234",
   "build_time": "2026-03-12T10:00:00Z",
   "max_execution_ms": 300000,
@@ -815,10 +815,10 @@ Pre-built images are published to GitHub Container Registry. Public pull — no 
 docker pull ghcr.io/breakcafe/picoclaw:latest
 
 # Specific version
-docker pull ghcr.io/breakcafe/picoclaw:1.2.15
+docker pull ghcr.io/breakcafe/picoclaw:1.2.16
 
 # Version + commit (for exact build provenance)
-docker pull ghcr.io/breakcafe/picoclaw:1.2.15-abc1234
+docker pull ghcr.io/breakcafe/picoclaw:1.2.16-abc1234
 
 # Lambda variant
 docker pull ghcr.io/breakcafe/picoclaw:latest-lambda
