@@ -76,6 +76,27 @@ src/config.ts         → all env var defaults
 src/types.ts          → shared interfaces (Conversation, ScheduledTask, etc.)
 ```
 
+### Boot sequence
+
+```
+entrypoint.sh
+  ├── mkdir MEMORY_DIR, /data/store
+  ├── symlink ~/.claude → $MEMORY_DIR/.claude
+  ├── write settings.json (if absent)
+  ├── copy managed-mcp.json → /etc/claude-code/ (if ORG_DIR set)
+  ├── persist runtime-created skills → $MEMORY_DIR/skills/
+  └── three-tier skill sync (bash level)
+
+src/index.ts main()
+  ├── ensureDataDirectories()
+  ├── initDatabase()
+  ├── ensureClaudeSettings()       ← write settings.json (if absent, redundant with entrypoint)
+  ├── syncSkills()                 ← three-tier skill sync (TS level, redundant but safe)
+  └── Express listen on PORT
+```
+
+The two-pass skill sync (entrypoint.sh + index.ts) is intentionally redundant: entrypoint.sh handles the Docker path, index.ts handles the local Node.js path (`npm start`).
+
 ### Request lifecycle
 
 1. HTTP hits Express router → `authMiddleware` validates Bearer token
@@ -111,11 +132,10 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
 ### Volume mount semantics
 
 | Mount | Runtime access | Agent `cwd` | Purpose |
-|-------|---------------|-------------|---------|
+|---|---|---|---|
 | `/data/org` | Read-only | No | Org persona, org skills, managed MCP config (optional) |
-| `/data/memory` | Read/Write | **Yes** (set as cwd) | User persona (`CLAUDE.md`), agent workspace |
-| `/data/sessions` | Read/Write | No | `.claude/` session state for SDK resume |
-| `/data/store` | Write (sync target) | No | Persistent copy of SQLite DB |
+| `/data/memory` | Read/Write | **Yes** (set as cwd) | User persona (`CLAUDE.md`), agent workspace, `.claude/` SDK session state |
+| `/data/store` | Write (sync target) | No | Persistent SQLite (conversations, messages, scheduled tasks, run logs); synced from `/tmp/messages.db` after each response |
 | `/tmp` | Read/Write | No | Local runtime DB (ephemeral, fast) |
 
 ### Persona and system prompt
@@ -124,7 +144,7 @@ PicoClaw uses a **two-tier CLAUDE.md** model for the agent's persona and system 
 implemented in `src/agent-engine.ts`:
 
 | Tier | File | Code mechanism | Purpose |
-|------|------|----------------|---------|
+|---|---|---|---|
 | Org | `$ORG_DIR/CLAUDE.md` | `loadOrgClaudeMd()` → `systemPrompt: { preset: 'claude_code', append }` | Organization-wide policies, shared rules |
 | User | `/data/memory/CLAUDE.md` | `cwd: MEMORY_DIR` + `settingSources: ['project', 'user']` → SDK auto-discovers | Agent identity, capabilities, user-specific rules |
 
@@ -183,7 +203,7 @@ additional MCP servers to a specific request. These are merged with the built-in
 Supported transport types (maps to SDK `McpServerConfig`):
 
 | Transport | Required fields |
-|-----------|----------------|
+|---|---|
 | `http` | `url` (and optional `headers`) |
 | `sse` | `url` (and optional `headers`) |
 | `stdio` | `command` (and optional `args`, `env`) |
@@ -210,8 +230,9 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 
 1. **Memory and conversation history are core** — never treat as optional. Cross-request
    personalization depends on persistent mounted paths.
-2. **Persistent data model** — `MEMORY_DIR`, `STORE_DIR`, `SESSIONS_DIR`
-   must all be preserved on mounted volumes. `ORG_DIR` is read-only and optional.
+2. **Persistent data model** — `MEMORY_DIR` and `STORE_DIR`
+   must be preserved on mounted volumes. `ORG_DIR` is read-only and optional.
+   SDK session state lives at `$MEMORY_DIR/.claude/` (no separate `SESSIONS_DIR`).
 3. **Graceful stop must sync data** — both `POST /control/stop` and `SIGTERM`/`SIGINT`
    trigger `syncDatabaseToVolume()` → `closeDatabase()` → exit.
 4. **SDK version alignment** — `@anthropic-ai/claude-agent-sdk`: `0.2.34`,
@@ -222,13 +243,17 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 ## Key Environment Variables
 
 | Variable | Default | Code location |
-|----------|---------|---------------|
+|---|---|---|
 | `ANTHROPIC_BASE_URL` | (empty; SDK defaults to `https://api.anthropic.com`) | Used by SDK internally; set for third-party API proxies |
 | `ANTHROPIC_API_KEY` | (required) | Used by SDK internally |
 | `APP_VERSION` | `1.0.0` | `src/config.ts` → health response, `X-Build-Version` header; overridden by `BUILD_VERSION` Docker ARG |
 | `API_TOKEN` | (required) | `src/config.ts` → auth middleware |
 | `PORT` | `9000` | `src/config.ts` |
 | `MAX_EXECUTION_MS` | `300000` | `src/config.ts` → AbortController timeout |
+| `MEMORY_DIR` | `/data/memory` | `src/config.ts` → agent cwd, persona, `.claude/` session state |
+| `STORE_DIR` | `/data/store` | `src/config.ts` → persistent SQLite sync target |
+| `ASSISTANT_NAME` | `Pico` | `src/config.ts` → agent display name, transcript archiving |
+| `LOG_LEVEL` | `info` | `src/logger.ts` → pino log level (`debug`, `info`, `warn`, `error`) |
 | `SESSION_END_MARKER` | `[[PICOCLAW_SESSION_END]]` | `src/config.ts` → chat response |
 | `ORG_DIR` | (empty) | `src/config.ts` → org persona, org skills, managed MCP config |
 | `SKILLS_DIR` | `$ORG_DIR/skills` or `/data/skills` (fallback) | `src/config.ts` → org skills directory |
@@ -238,7 +263,6 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 | `BUILD_COMMIT` | `unknown` | `src/config.ts` → git commit hash, injected at Docker build time |
 | `BUILD_TIME` | `unknown` | `src/config.ts` → build timestamp, injected at Docker build time |
 | `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces Claude Code preset + org CLAUDE.md |
-| `USER_SKILLS_DIR` | `/data/memory/skills` | User-created skills directory (additive supplement to org skills) |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |
 | `TASK_LOG_RETENTION` | `100` | Max task run logs kept per task (oldest pruned on sync) |
 
@@ -271,9 +295,14 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
   SDK's auto-memory path to `/data/memory/` as a forward-compatibility measure, but the
   feature is currently inert. Cross-session memory must be implemented in the persona
   (`CLAUDE.md`) by instructing the agent to read/write files in `/data/memory/` explicitly.
-- **Org skills are authoritative**: User skills (from `USER_SKILLS_DIR`) are additive only —
+- **Org skills are authoritative**: User skills (`$MEMORY_DIR/skills/`) are additive only —
   they cannot override org or built-in skills of the same name. This ensures org policies
   remain the authoritative source.
+- **`additionalDirectories` is NOT skill discovery**: `discoverAdditionalDirectories()`
+  passes org skill subdirectory paths to `query()` as `additionalDirectories`. This only
+  grants file access and CLAUDE.md discovery in those paths — it does NOT make them skill
+  sources. Skill discovery always comes from `.claude/skills/` via `syncSkills()`. Adding
+  a new skill directory to `additionalDirectories` will not register its SKILL.md files.
 
 ## Change Guardrails
 
@@ -285,12 +314,14 @@ npm run format:check                # must pass
 ```
 
 Also check:
+
 - OpenAPI spec (`docs/api/openapi.yaml`) updated if API contract changed
 - `CHANGELOG.md` updated for user-visible changes
 - Stop path still syncs data and exits cleanly
 
 ## Docs
 
+- @docs/CONFIGURATION_REFERENCE.md — all env vars, API endpoints, volumes, and controls at a glance
 - @docs/SERVERLESS_API_DEPLOYMENT_GUIDE.md — full operations and deployment manual
 - @docs/API_INTEGRATION_GUIDE.md — downstream HTTP API integration guide
 - @docs/SKILLS_AND_PERSONA_GUIDE.md — skill authoring and persona configuration

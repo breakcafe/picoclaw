@@ -17,7 +17,7 @@ The token is configured via the `API_TOKEN` environment variable on the PicoClaw
 Every HTTP response includes these headers:
 
 | Header | Description |
-|--------|-------------|
+|---|---|
 | `X-Request-ID` | Request tracking identifier for log correlation. Echoes caller-provided value or generates `req-<UUID>`. |
 | `X-Build-Version` | Application version (from `package.json`, injected at Docker build time). |
 | `X-Build-Commit` | Short git commit hash of the build. |
@@ -92,7 +92,7 @@ curl -N -X POST http://localhost:9000/chat \
 SSE events:
 
 | Event | Data | When |
-|-------|------|------|
+|---|---|---|
 | `start` | `{"conversation_id", "message_id"}` | Agent starts processing |
 | `thinking` | `{"text": "..."}` | Thinking process (requires `thinking: true`) |
 | `tool_use` | `{"tool": "...", "input": {...}}` | Tool invocation (requires `show_tool_use: true`) |
@@ -108,7 +108,7 @@ import EventSource from 'eventsource';
 const response = await fetch('http://localhost:9000/chat', {
   method: 'POST',
   headers: {
-    'Authorization': 'Bearer your-token',
+    Authorization: 'Bearer your-token',
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({ message: 'Hello', stream: true }),
@@ -257,7 +257,7 @@ curl -X POST http://localhost:9000/chat \
 Supported transport types:
 
 | Transport | Config | Example |
-|-----------|--------|---------|
+|---|---|---|
 | HTTP (Streamable HTTP) | `{ "type": "http", "url": "...", "headers": {...} }` | Remote MCP servers |
 | SSE | `{ "type": "sse", "url": "...", "headers": {...} }` | SSE-based MCP servers |
 | stdio | `{ "type": "stdio", "command": "...", "args": [...], "env": {...} }` | Local subprocess |
@@ -286,7 +286,7 @@ curl -X POST http://localhost:9000/task \
 **Schedule types:**
 
 | Type | `schedule_value` format | Example |
-|------|------------------------|---------|
+|---|---|---|
 | `cron` | Standard 5-field cron expression | `0 9 * * 1-5` (weekdays 9am) |
 | `interval` | Milliseconds as string | `3600000` (every hour) |
 | `once` | Local time string (no timezone suffix) | `2026-03-15T14:00:00` |
@@ -294,7 +294,7 @@ curl -X POST http://localhost:9000/task \
 **Context modes:**
 
 | Mode | Behavior |
-|------|----------|
+|---|---|
 | `group` | Runs within an existing conversation (requires `conversation_id`) |
 | `isolated` | Creates a fresh temporary conversation for each execution |
 
@@ -345,6 +345,7 @@ curl -X POST http://localhost:9000/control/stop \
 ```
 
 The server will:
+
 1. Sync the database to the persistent volume.
 2. Close database connections.
 3. Exit the process.
@@ -403,7 +404,7 @@ Returns the current skills from all three tiers and the effective (merged) list.
 ### HTTP Status Codes
 
 | Code | Meaning |
-|------|---------|
+|---|---|
 | 200 | Success |
 | 204 | Success (no content, e.g., DELETE) |
 | 400 | Invalid request (missing fields, bad schedule) |
@@ -417,7 +418,7 @@ Returns the current skills from all three tiers and the effective (merged) list.
 The `status` field in chat responses can be:
 
 | Value | Meaning | Action |
-|-------|---------|--------|
+|---|---|---|
 | `success` | Agent completed normally | Use `result` |
 | `timeout` | Agent hit execution time limit | Partial result may be available; retry with same `conversation_id` to continue |
 | `error` | Agent encountered an error | Check `error` field for details |
@@ -434,7 +435,7 @@ The `status` field in chat responses can be:
 ### POST /chat
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+|---|---|---|---|
 | `message` | string | Yes | User message text |
 | `conversation_id` | string | No | Existing conversation to continue (creates new if omitted) |
 | `sender` | string | No | Sender identifier (default: `user`) |
@@ -449,7 +450,7 @@ The `status` field in chat responses can be:
 ### POST /task
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+|---|---|---|---|
 | `id` | string | No | Custom task ID (auto-generated if omitted) |
 | `prompt` | string | Yes | Task instruction for the agent |
 | `schedule_type` | string | Yes | `cron`, `interval`, or `once` |

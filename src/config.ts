@@ -27,7 +27,6 @@ export const SESSION_END_MARKER =
 
 export const STORE_DIR = process.env.STORE_DIR || '/data/store';
 export const MEMORY_DIR = process.env.MEMORY_DIR || '/data/memory';
-export const SESSIONS_DIR = process.env.SESSIONS_DIR || '/data/sessions';
 
 /**
  * Organization directory — a single read-only mount containing

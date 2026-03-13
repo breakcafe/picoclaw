@@ -3,7 +3,7 @@
 ## Trust Model
 
 | Entity | Trust Level | Rationale |
-|--------|-------------|-----------|
+|---|---|---|
 | HTTP caller (with valid token) | Trusted | Bearer token authenticates the caller |
 | HTTP caller (no token) | Untrusted | Only `/health` is accessible |
 | Agent (Claude SDK) | Sandboxed | Runs with controlled tool set, no direct secret access |
@@ -38,12 +38,11 @@ The agent never sees deployment secrets:
 PicoClaw operates within well-defined mounted volumes:
 
 | Path | Purpose | Access |
-|------|---------|--------|
+|---|---|---|
 | `/data/org` | Org persona, org skills, managed MCP config | Read-only (optional, via `ORG_DIR`) |
-| `/data/memory` | User persona (`CLAUDE.md`), agent workspace | Read/Write |
-| `/data/sessions` | Claude session state (`.claude/`) | Read/Write |
-| `/data/store` | Persistent SQLite database | Read/Write |
-| `/tmp` | Local working database | Read/Write (ephemeral) |
+| `/data/memory` | User persona (`CLAUDE.md`), agent workspace, `.claude/` SDK session state | Read/Write |
+| `/data/store` | Persistent SQLite (conversations, messages, tasks); sync target from `/tmp` | Read/Write |
+| `/tmp` | Runtime SQLite (`messages.db`); fast local I/O, synced to `/data/store` after each response | Read/Write (ephemeral) |
 
 The agent has full Bash access within the container, but the container itself limits the blast radius.
 
@@ -90,7 +89,7 @@ The MCP server enforces ownership rules:
 ## Security Assessment
 
 | Area | Rating | Details |
-|------|--------|---------|
+|---|---|---|
 | Authentication | Good | Bearer token; unauthenticated access limited to `/health` (version info only) |
 | Secret isolation | Good | PreToolUse hook scrubs `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `API_TOKEN` from Bash environment |
 | File isolation | Acceptable | Agent can access all files within the container (by design); volume mount boundaries limit scope |

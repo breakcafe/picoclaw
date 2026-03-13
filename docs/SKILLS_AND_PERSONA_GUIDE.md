@@ -37,7 +37,7 @@ This two-tier design mirrors NanoClaw's global + per-group CLAUDE.md pattern, ad
 ### File locations
 
 | File | Purpose | Loaded by |
-|------|---------|-----------|
+|---|---|---|
 | `/data/memory/CLAUDE.md` | User persona (identity, capabilities, rules) | SDK/CLI auto-discovery (`cwd` + `settingSources`) |
 | `$ORG_DIR/CLAUDE.md` | Org persona overlay (shared policies) | `loadOrgClaudeMd()` → `systemPrompt.append` (requires `ORG_DIR` env var) |
 
@@ -69,9 +69,33 @@ You are Pico, a helpful assistant that specializes in [your domain].
 ## Tools
 
 You have access to MCP tools:
+
 - `mcp__picoclaw__send_message` — send a message immediately (useful during long tasks)
 - `mcp__picoclaw__schedule_task` — create a scheduled task
 - `mcp__picoclaw__list_tasks` — view existing tasks
+```
+
+### What the agent sees as input
+
+The agent does not receive a raw message string. `src/router.ts` formats the conversation history into structured XML context:
+
+```xml
+<context timezone="Asia/Shanghai" />
+<messages>
+  <message sender="Alice" time="2026-03-13 10:00:00">你好</message>
+  <message sender="Pico" time="2026-03-13 10:00:10">你好，请说。</message>
+</messages>
+```
+
+This means the agent always knows the current timezone, message timestamps, and sender identities. Persona instructions can reference these (e.g., "address the user by name", "adjust formality based on time of day").
+
+For scheduled tasks, the runtime automatically prepends `[SCHEDULED TASK]` to the prompt. You can use this in your persona to differentiate task-triggered behavior from interactive chat:
+
+```markdown
+## Task behavior
+
+When a message starts with `[SCHEDULED TASK]`, output results in structured JSON.
+For interactive chat, use natural language.
 ```
 
 ### Persona best practices
@@ -79,8 +103,11 @@ You have access to MCP tools:
 1. **Be specific about the domain.** A focused persona produces better results than a generic one.
 2. **Define output format.** If the agent's output will be parsed by downstream systems, specify the expected format.
 3. **Set boundaries.** Clearly state what the agent should and should not do.
-4. **List available MCP tools.** The agent performs better when it knows what tools are available.
+4. **List available MCP tools.** The agent performs better when it knows what tools are available. Always use the full prefixed name (`mcp__<server>__<tool>`) — the agent sees only prefixed names, not bare tool names.
 5. **Let the agent organize its own workspace.** Don't prescribe a rigid directory hierarchy — the agent can create subdirectories as needed under `/data/memory/`.
+6. **Write trigger conditions, not just identity.** Instead of "You are a finance assistant", write "When the user asks about budgets or expenses, query the finance MCP first."
+7. **Specify tool priority and degradation.** Don't assume the model will choose the right tool. Write "Use `mcp__finance__query` for real data. If the tool returns an error, say what data is missing — do not fabricate numbers."
+8. **Specify what is forbidden.** Explicit prohibitions ("Never expose internal API URLs") are more effective than vague guidelines.
 
 ### Org persona (optional)
 
@@ -129,6 +156,10 @@ Keep the memory volume simple and SDK-native. The agent creates subdirectories a
 /data/memory/
   CLAUDE.md              # User persona (recommended, not required)
   skills/                # User-created skills (auto-discovered, hot-reloadable)
+  .claude/               # SDK session state (settings, session files, synced skills)
+    settings.json
+    skills/              # Three-tier skill sync destination
+    sessions/            # SDK session files for resume
   conversations/         # Archived transcripts (rare — see note below)
   [agent-managed files]  # The agent organizes its own workspace
 
@@ -144,6 +175,8 @@ No prescriptive subdirectory structure is enforced. All `/data/*` volumes can be
 
 > **Note on auto-memory:** Claude Code's built-in auto-memory feature (`MEMORY.md` auto-generation) is gated behind an internal CLI feature flag and is currently non-functional in SDK/non-interactive mode. `MEMORY.md` will not be auto-generated. If cross-session memory is needed, instruct the agent via the persona (`CLAUDE.md`) to explicitly read/write files in `/data/memory/`.
 
+> **Note on `.claude/CLAUDE.md`:** With `.claude/` now inside `MEMORY_DIR`, the path `/data/memory/.claude/CLAUDE.md` corresponds to the `'user'` setting source (`~/.claude/CLAUDE.md`). This file does not exist by default and is never created by PicoClaw. If it is accidentally created, its content will be additively loaded on top of the user persona — it will not override or replace the main `/data/memory/CLAUDE.md`.
+
 ## Writing Skills
 
 Skills extend the agent's capabilities without modifying PicoClaw's source code. PicoClaw supports a three-tier skill system with well-defined merge semantics.
@@ -153,7 +186,7 @@ Skills extend the agent's capabilities without modifying PicoClaw's source code.
 Skills are loaded from three sources and merged at startup:
 
 | Tier | Source | Override behavior |
-|------|--------|-------------------|
+|---|---|---|
 | Built-in | Bundled with PicoClaw image | Base layer |
 | Org | `$ORG_DIR/skills/` (when `ORG_DIR` is set) | Overrides built-in skills of the same name |
 | User | `/data/memory/skills/` | **Additive only** — cannot override org or built-in skills of the same name; same-name skills are skipped |
@@ -161,6 +194,37 @@ Skills are loaded from three sources and merged at startup:
 The merge priority is: **built-in** → **org** (overrides built-in) → **user** (additive only). This ensures that organization-level skill policies cannot be bypassed by user-created skills.
 
 User skills from `/data/memory/skills/` are pre-loaded at startup and can be hot-reloaded via `POST /admin/reload-skills` without restarting the container.
+
+### Configuration reload timing
+
+Not all configuration changes take effect the same way. This table covers every configurable element:
+
+| Configuration | When it takes effect |
+|---|---|
+| `/data/memory/CLAUDE.md` (user persona) | Next `POST /chat` request — CLI subprocess re-reads on every startup |
+| `$ORG_DIR/CLAUDE.md` (org persona) | Next `POST /chat` request — `loadOrgClaudeMd()` reads from disk each time |
+| `.claude/settings.json` | Next `POST /chat` request — CLI re-reads on startup |
+| Skills in `.claude/skills/` (sync target) | Next `POST /chat` request — CLI discovers skills on startup |
+| User skills source (`/data/memory/skills/`) | After `POST /admin/reload-skills`, then the next chat request |
+| Org skills source (`$ORG_DIR/skills/`) | After `POST /admin/reload-skills`, then the next chat request |
+| `managed-mcp.json` (`$ORG_DIR/managed-mcp.json`) | Container restart (copied to `/etc/claude-code/` by entrypoint.sh at boot) |
+| Environment variables (`API_TOKEN`, `MAX_EXECUTION_MS`, etc.) | Container restart (read once by `config.ts` at module load) |
+| Per-request MCP servers (`mcp_servers` field) | Immediately — passed per-request to `query()` |
+
+**Key insight:** CLAUDE.md changes are instant (next request), but skill changes require an explicit reload step. A new skill requires at minimum two HTTP calls to activate: `POST /admin/reload-skills` to sync it into `.claude/skills/`, then the next `POST /chat` to use it.
+
+### Skills created by the agent
+
+When the agent creates a skill during a chat session (writing to `.claude/skills/`), the following lifecycle applies:
+
+| Event | Behavior |
+|---|---|
+| Same request | Not effective — CLI loaded skills at subprocess startup |
+| Next request (no reload) | Effective — CLI re-reads `.claude/skills/` |
+| After `POST /admin/reload-skills` | **Preserved** — the persist step copies non-managed skills to `/data/memory/skills/` before clearing |
+| After container restart | **Preserved** — entrypoint.sh runs the same persist-before-clear logic |
+
+If the agent writes a skill to `/data/memory/skills/` instead (the user skills source directory), it survives reloads naturally but requires a reload call before the next chat request can use it.
 
 ### Skill directory structure
 
@@ -238,7 +302,7 @@ When asked to review code:
 
 Provides instructions for using external tools or APIs available in the container.
 
-```markdown
+````markdown
 ---
 name: python-data-analysis
 description: Analyze data using Python pandas
@@ -270,7 +334,9 @@ print(df.describe())
 print(df.groupby('category').mean())
 "
 ```
-```
+````
+
+````
 
 #### Type 3: MCP tool documentation
 
@@ -309,8 +375,9 @@ Create a daily report at 9am:
   "schedule_value": "0 9 * * 1-5",
   "context_mode": "isolated"
 }
-```
-```
+````
+
+````
 
 ### Skill authoring best practices
 
@@ -325,7 +392,7 @@ docker run --rm -it \
   -v ./my-skill:/data/memory/skills/my-skill \
   -e API_TOKEN=test -e ANTHROPIC_BASE_URL=https://api.anthropic.com -e ANTHROPIC_API_KEY=xxx \
   picoclaw:latest
-```
+````
 
 ## Skills Engine (Advanced)
 
@@ -360,7 +427,7 @@ The engine tracks applied skills, file hashes, and structured outcomes in `.nano
 The PicoClaw container includes:
 
 | Tool | Version | Purpose |
-|------|---------|---------|
+|---|---|---|
 | Node.js | 22 | Runtime |
 | Python 3 | System | Script execution, data analysis |
 | pip packages | pandas, numpy, matplotlib, requests | Data processing |

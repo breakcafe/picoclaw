@@ -9,7 +9,7 @@ PicoClaw is a serverless adaptation of [NanoClaw](https://github.com/qwibitai/na
 This architecture works well for persistent, multi-channel deployments but creates friction in serverless environments:
 
 | Concern | NanoClaw (Docker child containers) | PicoClaw (single container) |
-|---------|------------------------------------|-----------------------------|
+|---|---|---|
 | Cold start | Host + child container spin-up | Single process boot |
 | Resource model | N containers × memory | Single process |
 | Scheduling | Internal cron loop | External cron triggers |
@@ -27,7 +27,7 @@ PicoClaw eliminates this layer:
 
 1. **The Claude Agent SDK runs in-process.** `query()` spawns a CLI subprocess internally — that's the SDK's own execution model, not something we add. Wrapping it in another Docker container adds a third process layer with no functional benefit.
 
-2. **Filesystem isolation is replaced by volume semantics.** Instead of each container having its own filesystem, PicoClaw mounts four well-defined volumes. The agent's `cwd` is set to `MEMORY_DIR`, and skills are synced to `.claude/skills/` at startup.
+2. **Filesystem isolation is replaced by volume semantics.** Instead of each container having its own filesystem, PicoClaw mounts three well-defined volumes. The agent's `cwd` is set to `MEMORY_DIR`, and skills are synced to `.claude/skills/` at startup.
 
 3. **Session state moves from container lifecycle to database rows.** NanoClaw ties a session to a container's lifetime. PicoClaw stores `session_id` and `last_assistant_uuid` in SQLite, enabling resume across separate HTTP requests.
 
@@ -36,10 +36,12 @@ PicoClaw eliminates this layer:
 ### The Problem
 
 Serverless platforms (Lambda, FC) typically provide:
+
 - **Ephemeral local storage** (`/tmp`): fast, SSD-backed, but lost on container recycling.
 - **Network-attached persistent storage** (EFS, NAS): durable but with higher latency and SQLite compatibility risks.
 
 SQLite on NFS/EFS has known issues:
+
 - File locking may not work correctly across NFS clients.
 - WAL mode can corrupt if multiple processes access the same database file on network storage.
 - Latency for frequent small writes (common in chat applications) degrades performance.
@@ -82,27 +84,28 @@ PicoClaw wraps the user's prompt in a `MessageStream` (async iterable) instead o
 When `query()` receives a **string** prompt, it sets `isSingleUserTurn = true`. After the first `result` message, the SDK closes stdin to the CLI process. This triggers a shutdown cascade that kills any running subagents — even if they're mid-execution.
 
 When `query()` receives an **AsyncIterable**, `isSingleUserTurn = false`. The SDK keeps stdin open, allowing:
+
 - Background agents to complete their work.
 - Agent Teams to coordinate through the full lifecycle.
 - The caller to control when the session ends (by calling `end()` on the stream).
 
 PicoClaw's `MessageStream` pushes one message and immediately calls `end()`, but the iterable type prevents premature stdin closure during agent execution.
 
-## Why Four Separate Volumes
+## Why Three Separate Volumes
 
-The four-volume model (`memory`, `skills`, `sessions`, `store`) separates concerns:
+The three-volume model (`memory`, `org`, `store`) separates concerns:
 
 | Volume | Lifecycle | Write Pattern | Sharing |
-|--------|-----------|---------------|---------|
-| `memory` | Long-lived | Agent writes (persona, archives) | Shared across deploys |
+|---|---|---|---|
+| `memory` | Long-lived | Agent writes (persona, archives, `.claude/` session state) | Shared across deploys |
 | `org` | Deploy-time (optional) | Human/CI writes org resources | Read-only at runtime; when `ORG_DIR` is set, provides org persona, skills, and MCP config |
-| `sessions` | Per-instance | SDK writes `.claude/` state | Instance-specific |
 | `store` | Long-lived | Sync from `/tmp` after each request | Shared across deploys |
 
 This separation enables:
+
 - **Org resources as deployment artifacts**: update org persona, skills, or MCP config by mounting a new volume at `/data/org`, no image rebuild.
 - **Independent backup policies**: `store` (critical) vs org resources (reproducible).
-- **Session isolation**: each container instance can have its own `.claude/` state without conflicts.
+- **Session state co-located with memory**: `.claude/` lives inside `MEMORY_DIR`, so the agent's skills, session files, and workspace are all on the same volume — simplifying deployment from 4 mounts to 3.
 
 ## Why ORG_DIR
 
@@ -135,6 +138,7 @@ PicoClaw's `POST /task/check` endpoint inverts the control:
 3. Executes at most one task, then returns.
 
 **One task per call** is intentional:
+
 - Prevents a single Lambda invocation from running indefinitely if many tasks are due.
 - Allows the platform to manage concurrency and timeout per task execution.
 - Backlogs are visible via the `remaining` field in the response.
@@ -149,11 +153,13 @@ const timeoutHandle = setTimeout(() => abortController.abort(), timeoutMs);
 ```
 
 This is passed directly to `query()`, which threads it through to the CLI subprocess. When aborted:
+
 - The SDK terminates the CLI process.
 - Any in-progress API call or tool execution is cancelled.
 - PicoClaw catches the `AbortError` and returns `status: "timeout"` with any partial result.
 
 The timeout has two levels:
+
 - **Server-level**: `MAX_EXECUTION_MS` environment variable (default: 300s).
 - **Per-request**: `max_execution_ms` in the chat request body, capped at the server-level maximum.
 
@@ -166,9 +172,9 @@ Cross-request conversation continuity uses the SDK's built-in session resume:
 1. First request: `query()` returns a `system/init` message with `session_id`, and `assistant` messages with `uuid` values.
 2. PicoClaw stores `session_id` and the last `assistant.uuid` in the `conversations` table.
 3. Next request: `query()` receives `resume: session_id` and `resumeSessionAt: last_assistant_uuid`.
-4. The SDK locates the session file on disk (in `SESSIONS_DIR/.claude/`) and resumes from the specified message.
+4. The SDK locates the session file on disk (in `MEMORY_DIR/.claude/`) and resumes from the specified message.
 
-This is why `SESSIONS_DIR` must be persistent — the SDK's session files contain the full conversation state needed for resume.
+This is why `MEMORY_DIR` must be persistent — the SDK's session files (stored in `.claude/` within the memory volume) contain the full conversation state needed for resume.
 
 ## Security Model Changes
 
@@ -214,7 +220,7 @@ PicoClaw (HTTP API + single process):
 ### Module-by-Module Mapping
 
 | Module | NanoClaw | PicoClaw | Change |
-|--------|----------|----------|--------|
+|---|---|---|---|
 | Entry point | `index.ts` (598 lines): message loop, trigger detection, group registration, container dispatch | `index.ts` (79 lines): boot + shutdown + start Express | Drastically simplified |
 | Agent engine | `container-runner.ts` (707 lines) + `container/agent-runner/src/index.ts` (558 lines) = two-layer architecture | `agent-engine.ts` (~500 lines) = single-layer SDK call | Docker IPC → same-process call |
 | Message input | Channel polling → IPC files → MessageStream | HTTP POST → SQLite → XML format → MessageStream | Input source changed; MessageStream pattern preserved |
@@ -231,7 +237,7 @@ PicoClaw (HTTP API + single process):
 ### Code Reuse from NanoClaw
 
 | Component | Reuse | Notes |
-|-----------|-------|-------|
+|---|---|---|
 | `MessageStream` | ~95% | Removed IPC polling logic |
 | `PreCompactHook` | ~90% | Archive path adapted to `/data/memory/conversations` |
 | `parseTranscript` / `formatTranscriptMarkdown` | ~95% | Nearly identical |
@@ -242,7 +248,7 @@ PicoClaw (HTTP API + single process):
 ### Features Intentionally Not Migrated
 
 | NanoClaw Feature | Reason |
-|------------------|--------|
+|---|---|
 | IPC follow-up messages | Replaced by HTTP multi-turn conversation |
 | Container idle timeout | PicoClaw lifecycle controlled by external platform |
 | Group management | Single-user model, no group concept |

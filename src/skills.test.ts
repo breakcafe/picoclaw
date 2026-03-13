@@ -19,17 +19,16 @@ const dirs = vi.hoisted(() => {
   const tmpDir = _fs.mkdtempSync(_path.join(_os.tmpdir(), 'picoclaw-skills-'));
   const builtInDir = _path.join(tmpDir, 'built-in-skills');
   const orgDir = _path.join(tmpDir, 'org-skills');
-  const userDir = _path.join(tmpDir, 'user-skills');
-  const sessionsDir = _path.join(tmpDir, 'sessions');
-  const destination = _path.join(sessionsDir, '.claude', 'skills');
+  const memoryDir = _path.join(tmpDir, 'memory');
+  // USER_SKILLS_DIR is hardcoded to $MEMORY_DIR/skills (no env var override).
+  const userDir = _path.join(memoryDir, 'skills');
+  const destination = _path.join(memoryDir, '.claude', 'skills');
 
   process.env.BUILT_IN_SKILLS_DIR = builtInDir;
   process.env.SKILLS_DIR = orgDir;
-  process.env.USER_SKILLS_DIR = userDir;
-  process.env.SESSIONS_DIR = sessionsDir;
-  process.env.MEMORY_DIR = _path.join(tmpDir, 'memory');
+  process.env.MEMORY_DIR = memoryDir;
 
-  return { tmpDir, builtInDir, orgDir, userDir, sessionsDir, destination };
+  return { tmpDir, builtInDir, orgDir, userDir, memoryDir, destination };
 });
 
 import fs from 'fs';
@@ -58,6 +57,15 @@ function clearAllSources(): void {
     }
     fs.mkdirSync(dir, { recursive: true });
   }
+  // Also clear the destination to prevent cross-test leaking via persist step.
+  if (fs.existsSync(dirs.destination)) {
+    for (const entry of fs.readdirSync(dirs.destination)) {
+      const p = path.join(dirs.destination, entry);
+      if (fs.statSync(p).isDirectory()) {
+        fs.rmSync(p, { recursive: true, force: true });
+      }
+    }
+  }
 }
 
 describe('syncSkills', () => {
@@ -74,8 +82,6 @@ describe('syncSkills', () => {
     }
     delete process.env.BUILT_IN_SKILLS_DIR;
     delete process.env.SKILLS_DIR;
-    delete process.env.USER_SKILLS_DIR;
-    delete process.env.SESSIONS_DIR;
     delete process.env.MEMORY_DIR;
   });
 
@@ -118,38 +124,69 @@ describe('syncSkills', () => {
     expect(content).toBe('# org version\n');
   });
 
-  it('removes deleted skills on reload (full reconciliation)', () => {
+  it('removes skills deleted from both user dir and destination', () => {
     clearAllSources();
     createSkill(dirs.userDir, 'temp-skill');
     syncSkills();
     expect(listEffective()).toContain('temp-skill');
 
-    // Delete the source skill
+    // To fully remove a user skill, delete from BOTH the persistent source
+    // AND the destination before syncing.  If only user dir is deleted, the
+    // persist step will copy the destination copy back to user dir.
     fs.rmSync(path.join(dirs.userDir, 'temp-skill'), { recursive: true });
+    fs.rmSync(path.join(dirs.destination, 'temp-skill'), { recursive: true });
     syncSkills();
 
     expect(listEffective()).not.toContain('temp-skill');
   });
 
-  it('reload clears orphaned skills not in any source', () => {
+  it('persists runtime-created skills to user dir on reload', () => {
     clearAllSources();
     createSkill(dirs.builtInDir, 'alpha');
     syncSkills();
-    const firstSync = listEffective();
 
-    // Manually inject an orphan skill into destination
-    createSkill(dirs.destination, 'orphan');
-    expect(listEffective()).toContain('orphan');
+    // Simulate a skill created during chat (written to destination directly).
+    createSkill(dirs.destination, 'runtime-created');
+    expect(listEffective()).toContain('runtime-created');
 
-    // Reload should remove the orphan
+    // Reload should persist the runtime skill to userDir and keep it.
     syncSkills();
-    expect(listEffective()).toEqual(firstSync);
+    expect(listEffective()).toContain('alpha');
+    expect(listEffective()).toContain('runtime-created');
+    // Verify it was copied to the persistent user skills directory.
+    expect(
+      fs.existsSync(path.join(dirs.userDir, 'runtime-created', 'SKILL.md')),
+    ).toBe(true);
+  });
+
+  it('does not persist runtime skills that shadow managed sources', () => {
+    clearAllSources();
+    createSkill(dirs.builtInDir, 'builtin-skill');
+    createSkill(dirs.orgDir, 'org-skill');
+    syncSkills();
+
+    // Inject skills with same names as managed sources into destination.
+    // These should NOT be persisted (they are managed copies, not runtime-created).
+    fs.writeFileSync(
+      path.join(dirs.destination, 'builtin-skill', 'SKILL.md'),
+      '# tampered\n',
+    );
+    syncSkills();
+
+    // User dir should NOT contain the managed skill names.
+    expect(fs.existsSync(path.join(dirs.userDir, 'builtin-skill'))).toBe(false);
+    expect(fs.existsSync(path.join(dirs.userDir, 'org-skill'))).toBe(false);
   });
 
   it('handles missing source directories gracefully', () => {
     // Remove all source dirs entirely
     for (const dir of [dirs.builtInDir, dirs.orgDir, dirs.userDir]) {
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+    // Clear the destination too — previous tests may have left skills that
+    // the persist step would otherwise copy back to userDir.
+    if (fs.existsSync(dirs.destination)) {
+      fs.rmSync(dirs.destination, { recursive: true, force: true });
     }
 
     syncSkills();

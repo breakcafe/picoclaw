@@ -52,7 +52,6 @@ docker-run: _ensure-data-dirs ## Run container interactively with volume mounts
 		--env-file .env \
 		-v $(CURDIR)/dev-data/memory:/data/memory \
 		-v $(CURDIR)/dev-data/store:/data/store \
-		-v $(CURDIR)/dev-data/sessions:/data/sessions \
 		$(IMAGE_NAME):$(IMAGE_TAG)
 
 docker-run-bg: _ensure-data-dirs ## Run container in background
@@ -62,7 +61,6 @@ docker-run-bg: _ensure-data-dirs ## Run container in background
 		--env-file .env \
 		-v $(CURDIR)/dev-data/memory:/data/memory \
 		-v $(CURDIR)/dev-data/store:/data/store \
-		-v $(CURDIR)/dev-data/sessions:/data/sessions \
 		$(IMAGE_NAME):$(IMAGE_TAG)
 
 docker-stop: ## Stop the running container
@@ -182,15 +180,14 @@ clean: docker-stop ## Stop container and remove images
 	docker rmi $(IMAGE_NAME):$(IMAGE_TAG) 2>/dev/null || true
 	docker rmi $(IMAGE_NAME):lambda 2>/dev/null || true
 
-clean-data: ## Remove local dev store and sessions (keeps memory)
-	rm -rf dev-data/store dev-data/sessions
+clean-data: ## Remove local dev store and .claude state (keeps memory persona)
+	rm -rf dev-data/store dev-data/memory/.claude
 
 # ── Internal ─────────────────────────────────────────────
 
 _ensure-data-dirs:
-	@mkdir -p dev-data/memory dev-data/memory/conversations
+	@mkdir -p dev-data/memory dev-data/memory/.claude/skills dev-data/memory/conversations
 	@mkdir -p dev-data/store
-	@mkdir -p dev-data/sessions/.claude/skills
 	@test -f dev-data/memory/CLAUDE.md || printf '# PicoClaw Memory\n\nYou are a helpful assistant.\n' > dev-data/memory/CLAUDE.md
 
 _wait-ready:

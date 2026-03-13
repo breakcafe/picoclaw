@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 
 import { Router } from 'express';
 
@@ -8,7 +9,6 @@ import {
   BUILD_TIME,
   MAX_EXECUTION_MS,
   MEMORY_DIR,
-  SESSIONS_DIR,
   SKILLS_DIR,
   STORE_DIR,
 } from '../config.js';
@@ -31,7 +31,9 @@ export function healthRoutes(): Router {
     const volumes = {
       memory: isDirectoryWritable(MEMORY_DIR),
       skills: fs.existsSync(SKILLS_DIR),
-      sessions: isDirectoryWritable(SESSIONS_DIR),
+      // "sessions" checks $MEMORY_DIR/.claude/ (SDK session state).
+      // Field name kept for API backward compatibility; not a separate volume.
+      sessions: isDirectoryWritable(path.join(MEMORY_DIR, '.claude')),
       store: isDirectoryWritable(STORE_DIR),
     };
 
