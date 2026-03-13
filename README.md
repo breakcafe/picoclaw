@@ -1,5 +1,9 @@
 # PicoClaw
 
+![version](https://img.shields.io/badge/version-1.2.16-blue)
+![license](https://img.shields.io/badge/license-MIT-green)
+![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)
+![sdk](https://img.shields.io/badge/claude--agent--sdk-0.2.74-purple)
 ![tokens](repo-tokens/badge.svg)
 
 Serverless-first Claude Agent runtime. Request-driven HTTP API with persistent memory, multi-turn conversations, and scheduled tasks.
