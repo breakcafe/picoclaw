@@ -780,9 +780,11 @@ components:
         model:
           type: string
           description: |
-            Model to use for this request. Accepts full model IDs
-            (e.g. `claude-opus-4-6`) or short names (`opus`, `sonnet`, `haiku`).
-            Precedence: per-request `model` > `CLAUDE_MODEL` env var > CLI default.
+            Model override for this request. Omit to use the CLI default
+            (recommended — avoids locking to a specific model version).
+            Accepts full model IDs (e.g. `claude-opus-4-6`) or short names
+            (`opus`, `sonnet`, `haiku`). Precedence: per-request > `CLAUDE_MODEL`
+            env var > CLI default.
         mcp_servers:
           type: object
           description: |

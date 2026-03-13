@@ -162,12 +162,12 @@ All except `/health` require `Authorization: Bearer <API_TOKEN>`.
 | `thinking` | boolean | `false` | Enable extended thinking |
 | `max_thinking_tokens` | number | `10000` | Max thinking tokens |
 | `show_tool_use` | boolean | `false` | Stream tool invocation events |
-| `model` | string | env / CLI default | Model override (full ID or short name like `opus`, `sonnet`, `haiku`) |
+| `model` | string | _(omit recommended)_ | Model override (full ID or short name). Omit to follow CLI default — avoids locking to a specific version |
 | `mcp_servers` | object | — | Per-request MCP servers (see §8) |
 
 **Not yet exposed:** `max_turns` (turn limit), `max_budget_usd` (budget cap). These exist in the Claude Agent SDK but PicoClaw does not pass them through.
 
-**Model precedence:** per-request `model` > `CLAUDE_MODEL` env var > CLI default.
+**Model precedence:** per-request `model` > `CLAUDE_MODEL` env var > CLI default. Recommended: omit both to let the CLI track the latest default model automatically.
 
 ### SSE Events (when `stream: true`)
 
