@@ -4,13 +4,18 @@ Guide for downstream developers building systems that call PicoClaw's HTTP API.
 
 ## Authentication
 
-All endpoints except `GET /health` require a Bearer token:
+When `API_TOKEN` is set, all endpoints except `GET /health` require a Bearer token:
 
 ```http
 Authorization: Bearer <API_TOKEN>
 ```
 
 The token is configured via the `API_TOKEN` environment variable on the PicoClaw server.
+
+**Auth-free mode:** When `API_TOKEN` is not set, authentication is disabled and all
+endpoints are accessible without a token. This is intended for local development or
+trusted-network deployments (e.g. behind a VPC or cloud-native gateway that handles
+its own authentication).
 
 ## Response Headers
 
@@ -408,7 +413,7 @@ Returns the current skills from all three tiers and the effective (merged) list.
 | 200 | Success |
 | 204 | Success (no content, e.g., DELETE) |
 | 400 | Invalid request (missing fields, bad schedule) |
-| 401 | Missing or invalid Bearer token |
+| 401 | Missing or invalid Bearer token (only when `API_TOKEN` is set) |
 | 404 | Conversation or task not found |
 | 409 | Conflict (conversation busy or currently running) |
 | 500 | Server error |

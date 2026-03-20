@@ -6,7 +6,7 @@ info:
     HTTP API for PicoClaw (serverless-oriented runtime).
 
     Notes:
-    - All endpoints except `/health` require Bearer token authentication.
+    - All endpoints except `/health` require Bearer token authentication when `API_TOKEN` is set. When `API_TOKEN` is unset, authentication is disabled (auth-free mode for local/trusted-network deployments).
     - `POST /chat` supports both JSON response mode and SSE streaming mode.
     - Memory and conversation history are persisted via mounted storage and reused across separate requests.
     - Scheduled tasks are externally triggered by calling `/task/check`.

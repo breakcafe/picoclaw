@@ -1,10 +1,9 @@
 # PicoClaw
 
-![version](https://img.shields.io/badge/version-1.2.16-blue)
-![license](https://img.shields.io/badge/license-MIT-green)
-![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)
-![sdk](https://img.shields.io/badge/claude--agent--sdk-0.2.74-purple)
-![tokens](repo-tokens/badge.svg)
+[![version](https://img.shields.io/badge/version-1.2.17-blue)](https://github.com/breakcafe/picoclaw/releases)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org/)
+[![sdk](https://img.shields.io/badge/claude--agent--sdk-0.2.74-purple)](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk)
 
 Serverless-first Claude Agent runtime. Request-driven HTTP API with persistent memory, multi-turn conversations, and scheduled tasks.
 
@@ -113,7 +112,12 @@ docker run --rm -it \
 ```bash
 npm ci
 npm run build
+
+# With authentication (recommended for production)
 API_TOKEN=dev-token ANTHROPIC_BASE_URL=https://api.anthropic.com ANTHROPIC_API_KEY=sk-ant-xxx npm start
+
+# Without authentication (local development / trusted network)
+ANTHROPIC_BASE_URL=https://api.anthropic.com ANTHROPIC_API_KEY=sk-ant-xxx npm start
 ```
 
 ### Verify
@@ -122,16 +126,21 @@ API_TOKEN=dev-token ANTHROPIC_BASE_URL=https://api.anthropic.com ANTHROPIC_API_K
 # Health check
 curl http://localhost:9000/health
 
-# Send a message
+# Send a message (with API_TOKEN set)
 curl -X POST http://localhost:9000/chat \
   -H "Authorization: Bearer your-token" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello, what can you do?"}'
+
+# Send a message (auth-free mode, API_TOKEN unset)
+curl -X POST http://localhost:9000/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Hello, what can you do?"}'
 ```
 
 ## API Overview
 
-All routes except `/health` require `Authorization: Bearer <API_TOKEN>`.
+All routes except `/health` require `Authorization: Bearer <API_TOKEN>` when `API_TOKEN` is set. When `API_TOKEN` is unset, authentication is disabled and all endpoints are accessible without a token (suitable for local development or VPC-internal deployments).
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -265,12 +274,12 @@ make test-e2e             # full build + run + test pipeline
 |---|---|
 | `ANTHROPIC_BASE_URL` | Anthropic API base URL (SDK defaults to `https://api.anthropic.com` when unset). Set for third-party API proxies. |
 | `ANTHROPIC_API_KEY` | Claude API key (or OAuth token equivalent) |
-| `API_TOKEN` | Bearer token for HTTP API authentication |
 
 ### Optional
 
 | Variable | Default | Description |
 |---|---|---|
+| `API_TOKEN` | _(empty)_ | Bearer token for HTTP API authentication. When unset, authentication is disabled — all endpoints are publicly accessible. Recommended for production; omit for local dev or trusted-network deployments. |
 | `PORT` | `9000` | HTTP server port |
 | `MAX_EXECUTION_MS` | `300000` | Maximum agent execution time (5 min) |
 | `ASSISTANT_NAME` | `Pico` | Agent display name |

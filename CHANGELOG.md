@@ -2,6 +2,25 @@
 
 All notable changes to PicoClaw will be documented in this file.
 
+## [1.2.17]
+
+### Added
+
+- **Auth-free mode**: When `API_TOKEN` is not set (empty or unset), authentication is
+  disabled — all endpoints are accessible without a Bearer token. Suitable for local
+  development, VPC-internal deployments (e.g. Alibaba Cloud FC behind SLB), or any
+  trusted-network environment. A warning is logged at startup when auth is disabled.
+- **Version badge auto-sync**: Pre-commit hook automatically updates the version badge
+  in README.md from `package.json`, keeping documentation in sync with releases.
+- **README badge links**: Badges now link to their relevant destinations (releases page,
+  LICENSE file, Node.js site, npm package) instead of rendering as plain images.
+
+### Changed
+
+- `API_TOKEN` is no longer a required environment variable. When unset, the auth
+  middleware passes all requests through without token validation.
+- Version bumped to 1.2.17.
+
 ## [Unreleased]
 
 ### Added

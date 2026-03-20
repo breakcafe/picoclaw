@@ -5,16 +5,17 @@
 | Entity | Trust Level | Rationale |
 |---|---|---|
 | HTTP caller (with valid token) | Trusted | Bearer token authenticates the caller |
-| HTTP caller (no token) | Untrusted | Only `/health` is accessible |
+| HTTP caller (no token, auth enabled) | Untrusted | Only `/health` is accessible |
+| HTTP caller (auth disabled) | Trusted | All endpoints accessible when `API_TOKEN` is unset — intended for local dev or VPC-internal deployments |
 | Agent (Claude SDK) | Sandboxed | Runs with controlled tool set, no direct secret access |
 | MCP Server subprocess | Internal | Shares SQLite, scoped by conversation ownership |
-| External cron trigger | Trusted | Must provide Bearer token for `/task/check` |
+| External cron trigger | Trusted | Must provide Bearer token for `/task/check` (when auth enabled) |
 
 ## Security Boundaries
 
 ### 1. HTTP API Authentication (Primary Boundary)
 
-All endpoints except `/health` require a Bearer token:
+When `API_TOKEN` is set, all endpoints except `/health` require a Bearer token:
 
 ```http
 Authorization: Bearer <API_TOKEN>
@@ -22,7 +23,12 @@ Authorization: Bearer <API_TOKEN>
 
 - `API_TOKEN` is set via environment variable at deployment time.
 - Missing or invalid tokens receive `401 Unauthorized`.
-- If `API_TOKEN` is not configured, the server returns `500` to prevent open access.
+
+**Auth-free mode:** When `API_TOKEN` is not set (empty or unset), authentication is
+disabled entirely — all endpoints are accessible without a token. This mode is intended
+for local development or deployments behind a trusted network boundary (e.g. Alibaba
+Cloud FC behind SLB, AWS Lambda behind API Gateway with its own auth). A warning is
+logged at startup when auth is disabled.
 
 ### 2. Secret Isolation
 
@@ -90,7 +96,7 @@ The MCP server enforces ownership rules:
 
 | Area | Rating | Details |
 |---|---|---|
-| Authentication | Good | Bearer token; unauthenticated access limited to `/health` (version info only) |
+| Authentication | Good | Bearer token when `API_TOKEN` is set; auth-free mode for trusted-network deployments when unset |
 | Secret isolation | Good | PreToolUse hook scrubs `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `API_TOKEN` from Bash environment |
 | File isolation | Acceptable | Agent can access all files within the container (by design); volume mount boundaries limit scope |
 | Database security | Acceptable | No encryption at rest; relies on volume permission controls |
