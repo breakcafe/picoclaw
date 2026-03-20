@@ -3,6 +3,7 @@ import path from 'path';
 
 import {
   ANTHROPIC_BASE_URL,
+  API_TOKEN,
   APP_VERSION,
   BUILD_COMMIT,
   BUILD_TIME,
@@ -71,6 +72,11 @@ async function main(): Promise<void> {
       logger.info(
         { baseUrl: ANTHROPIC_BASE_URL },
         'Using custom Anthropic base URL',
+      );
+    }
+    if (!API_TOKEN) {
+      logger.warn(
+        'API_TOKEN is not set — authentication disabled. All endpoints are publicly accessible.',
       );
     }
     logger.info(

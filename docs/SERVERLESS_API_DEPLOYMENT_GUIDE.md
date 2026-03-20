@@ -276,12 +276,12 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | Variable | Description |
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude API key (or equivalent OAuth token) |
-| `API_TOKEN` | Bearer token for HTTP API authentication |
 
 ### 4.2 Optional
 
 | Variable | Default | Description |
 |---|---|---|
+| `API_TOKEN` | _(empty)_ | Bearer token for HTTP API authentication. When unset, authentication is disabled — all endpoints are publicly accessible. Recommended for production; omit for local dev or trusted-network deployments (e.g. FC behind SLB). |
 | `ANTHROPIC_BASE_URL` | (empty; SDK uses `https://api.anthropic.com`) | Anthropic API base URL. Only needed for third-party API proxies. |
 | `APP_VERSION` | `1.0.0` | Application version; overridden by `BUILD_VERSION` Docker build arg |
 | `PORT` | `9000` | HTTP server port |
@@ -306,18 +306,22 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 
 ## 5. Authentication & Request Tracking
 
-All endpoints except `GET /health` require:
+When `API_TOKEN` is set, all endpoints except `GET /health` require:
 
 ```http
 Authorization: Bearer <API_TOKEN>
 ```
 
-Error responses:
+Error responses (when `API_TOKEN` is set):
 
 | Code | Condition |
 |---|---|
 | `401 Unauthorized` | Token missing or invalid |
-| `500 Internal Server Error` | Server-side `API_TOKEN` not configured |
+
+**Auth-free mode:** When `API_TOKEN` is not set (empty or unset), authentication is
+disabled — all endpoints are accessible without a token. A warning is logged at startup.
+This is intended for local development or deployments behind a trusted network boundary
+(e.g. Alibaba Cloud FC behind SLB, AWS Lambda behind API Gateway with its own auth layer).
 
 ### 5.1 Request ID
 
@@ -334,7 +338,7 @@ If the caller sends an `X-Request-ID` header, the same value is echoed back. Oth
 Every response includes build metadata headers:
 
 ```http
-X-Build-Version: 1.2.16
+X-Build-Version: 1.2.17
 X-Build-Commit: abc1234
 ```
 
@@ -946,6 +950,7 @@ Recommended metrics to monitor:
 
 - Verify the `Authorization: Bearer <token>` header is present.
 - Confirm the token matches the server's `API_TOKEN` environment variable exactly.
+- If you intend to run without authentication (e.g. local dev), ensure `API_TOKEN` is completely unset (not set to an empty string in a `.env` file).
 
 ### 9.2 `conversation_id not found` (404)
 

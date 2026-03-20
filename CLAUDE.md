@@ -99,7 +99,7 @@ The two-pass skill sync (entrypoint.sh + index.ts) is intentionally redundant: e
 
 ### Request lifecycle
 
-1. HTTP hits Express router → `authMiddleware` validates Bearer token
+1. HTTP hits Express router → `authMiddleware` validates Bearer token (skipped when `API_TOKEN` is unset)
 2. Route handler resolves/creates conversation in SQLite
 3. `acquireConversationLock()` prevents concurrent execution on same conversation (409 if busy)
 4. `AgentEngine.run()` wraps prompt in `MessageStream`, calls `query()`
@@ -247,7 +247,7 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 | `ANTHROPIC_BASE_URL` | (empty; SDK defaults to `https://api.anthropic.com`) | Used by SDK internally; set for third-party API proxies |
 | `ANTHROPIC_API_KEY` | (required) | Used by SDK internally |
 | `APP_VERSION` | `1.0.0` | `src/config.ts` → health response, `X-Build-Version` header; overridden by `BUILD_VERSION` Docker ARG |
-| `API_TOKEN` | (required) | `src/config.ts` → auth middleware |
+| `API_TOKEN` | _(empty)_ | `src/config.ts` → auth middleware. When unset, auth is disabled (all endpoints public). |
 | `PORT` | `9000` | `src/config.ts` |
 | `MAX_EXECUTION_MS` | `300000` | `src/config.ts` → AbortController timeout |
 | `MEMORY_DIR` | `/data/memory` | `src/config.ts` → agent cwd, persona, `.claude/` session state |

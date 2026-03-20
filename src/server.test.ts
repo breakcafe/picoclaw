@@ -7,6 +7,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentRunner, StreamCallbacks } from './agent-engine.js';
 
+function makeFakeEngine(): AgentRunner {
+  return {
+    async run() {
+      return {
+        status: 'success',
+        result: 'mock-result [[PICOCLAW_SESSION_END]]',
+        newSessionId: 'session-abc',
+        lastAssistantUuid: 'assistant-abc',
+      };
+    },
+  };
+}
+
 describe('http server', () => {
   let closeDatabase: (() => void) | undefined;
   let resetDatabase: (() => void) | undefined;
@@ -30,16 +43,7 @@ describe('http server', () => {
     closeDatabase = dbModule.closeDatabase;
     resetDatabase = dbModule._resetDatabaseForTests;
 
-    fakeEngine = {
-      async run() {
-        return {
-          status: 'success',
-          result: 'mock-result [[PICOCLAW_SESSION_END]]',
-          newSessionId: 'session-abc',
-          lastAssistantUuid: 'assistant-abc',
-        };
-      },
-    };
+    fakeEngine = makeFakeEngine();
     stopSpy = vi.fn();
 
     const serverModule = await import('./server.js');
@@ -466,5 +470,83 @@ describe('http server', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(stopSpy).toHaveBeenCalledWith('unit-test');
+  });
+});
+
+describe('http server (auth-free mode)', () => {
+  let closeDatabase: (() => void) | undefined;
+  let resetDatabase: (() => void) | undefined;
+  let app: import('express').Express;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    delete process.env.API_TOKEN;
+
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'picoclaw-noauth-'));
+
+    const dbModule = await import('./db.js');
+    dbModule.initDatabase({
+      persistentDbPath: path.join(rootDir, 'store', 'messages.db'),
+      localDbPath: path.join(rootDir, 'tmp', 'messages.db'),
+      forceReinitialize: true,
+    });
+
+    closeDatabase = dbModule.closeDatabase;
+    resetDatabase = dbModule._resetDatabaseForTests;
+
+    const serverModule = await import('./server.js');
+    app = serverModule.createServer(makeFakeEngine());
+  });
+
+  afterEach(() => {
+    closeDatabase?.();
+    resetDatabase?.();
+  });
+
+  it('allows chat requests without Authorization header', async () => {
+    const response = await request(app)
+      .post('/chat')
+      .send({ message: 'hello from auth-free' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('success');
+    expect(response.body.conversation_id).toMatch(/^conv-/);
+  });
+
+  it('allows task creation without Authorization header', async () => {
+    const response = await request(app).post('/task').send({
+      prompt: 'do work',
+      schedule_type: 'interval',
+      schedule_value: '60000',
+      context_mode: 'isolated',
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.id).toMatch(/^task-/);
+  });
+
+  it('allows control/stop without Authorization header', async () => {
+    const stopSpy = vi.fn();
+    const serverModule = await import('./server.js');
+    const stopApp = serverModule.createServer(makeFakeEngine(), {
+      onStop: stopSpy,
+    });
+
+    const response = await request(stopApp)
+      .post('/control/stop')
+      .send({ reason: 'auth-free-test' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('stopping');
+  });
+
+  it('still allows requests with Authorization header (ignored)', async () => {
+    const response = await request(app)
+      .post('/chat')
+      .set('Authorization', 'Bearer any-token-is-fine')
+      .send({ message: 'hello with optional token' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('success');
   });
 });

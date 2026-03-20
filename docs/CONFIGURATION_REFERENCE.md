@@ -9,12 +9,12 @@ Quick-reference for all configuration surfaces. For detailed explanations, see t
 | Variable | Purpose |
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude API key (scrubbed from agent Bash environment) |
-| `API_TOKEN` | Bearer token for HTTP API authentication |
 
 ### Runtime
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `API_TOKEN` | _(empty)_ | Bearer token for HTTP API authentication. When unset, authentication is disabled — all endpoints are publicly accessible. Set for production; omit for local dev or trusted-network deployments. |
 | `ANTHROPIC_BASE_URL` | _(empty; SDK uses `api.anthropic.com`)_ | API proxy URL. Only needed for third-party proxies. |
 | `PORT` | `9000` | HTTP server port |
 | `MAX_EXECUTION_MS` | `300000` | Agent execution timeout (ms) |
