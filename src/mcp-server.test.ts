@@ -6,9 +6,6 @@
  * called _parse() on schema instances. zod v4 schemas lack _parse, causing
  * "keyValidator._parse is not a function" at runtime. The fix was upgrading to
  * @modelcontextprotocol/sdk@1.27.1 which supports both zod v3 and v4.
- *
- * Bug 3: MCP schedule_task defaulted context_mode to 'group' while the HTTP API,
- * database schema, and documentation all default to 'isolated'.
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
