@@ -123,7 +123,7 @@ server.tool(
     prompt: z.string().describe('Prompt to run when task executes'),
     schedule_type: z.enum(['cron', 'interval', 'once']),
     schedule_value: z.string(),
-    context_mode: z.enum(['group', 'isolated']).default('group'),
+    context_mode: z.enum(['group', 'isolated']).default('isolated'),
     target_conversation_id: z.string().optional(),
   },
   async (args) => {

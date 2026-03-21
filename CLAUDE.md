@@ -236,7 +236,7 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 3. **Graceful stop must sync data** — both `POST /control/stop` and `SIGTERM`/`SIGINT`
    trigger `syncDatabaseToVolume()` → `closeDatabase()` → exit.
 4. **SDK version alignment** — `@anthropic-ai/claude-agent-sdk`: `0.2.74`,
-   `@modelcontextprotocol/sdk`: `1.12.1`. Do not downgrade.
+   `@modelcontextprotocol/sdk`: `1.27.1`. Do not downgrade.
 5. **Dual-DB sync is the only safe write path** — never write directly to
    `/data/store/messages.db`. Always operate on `/tmp/messages.db` and let sync copy it.
 
@@ -297,6 +297,11 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
   SDK's auto-memory path to `/data/memory/` as a forward-compatibility measure, but the
   feature is currently inert. Cross-session memory must be implemented in the persona
   (`CLAUDE.md`) by instructing the agent to read/write files in `/data/memory/` explicitly.
+- **Zod v4 + MCP SDK**: `@modelcontextprotocol/sdk@1.27.1` supports `zod ^3.25 || ^4.0`,
+  so MCP tool schemas in `src/mcp-server.ts` use the standard `import { z } from 'zod'`
+  (v4). If the MCP SDK is ever downgraded below 1.27.1, MCP tools with parameters will
+  break at runtime with `keyValidator._parse is not a function` because older SDK versions
+  only support zod v3.
 - **Org skills are authoritative**: User skills (`$MEMORY_DIR/skills/`) are additive only —
   they cannot override org or built-in skills of the same name. This ensures org policies
   remain the authoritative source.

@@ -2,6 +2,25 @@
 
 All notable changes to PicoClaw will be documented in this file.
 
+## [1.2.18]
+
+### Fixed
+
+- **MCP zod v4 incompatibility**: Built-in MCP tools with parameters (`send_message`,
+  `schedule_task`, etc.) failed at runtime with `keyValidator._parse is not a function`.
+  Root cause: `@modelcontextprotocol/sdk@1.12.1` internally depends on zod v3 and calls
+  `_parse()` on schema instances, but the project's `zod@4.3.6` produces v4 schemas that
+  lack this method. Fix: upgrade `@modelcontextprotocol/sdk` from 1.12.1 to 1.27.1, which
+  supports `zod ^3.25 || ^4.0` natively.
+- **`context_mode` default inconsistency**: MCP `schedule_task` tool defaulted `context_mode`
+  to `group`, while the HTTP `POST /task` endpoint, database schema, and all documentation
+  default to `isolated`. Aligned MCP tool default to `isolated`.
+
+### Changed
+
+- **MCP SDK upgrade**: `@modelcontextprotocol/sdk` 1.12.1 → 1.27.1.
+- Version bumped to 1.2.18.
+
 ## [1.2.17]
 
 ### Added
