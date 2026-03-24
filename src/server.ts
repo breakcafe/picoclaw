@@ -32,17 +32,29 @@ export function createServer(
     next();
   });
 
-  // Per-request logging
+  // Per-request logging (route handlers can set res.locals.usage for token metrics)
   app.use((req: Request, res: Response, next: NextFunction) => {
     const start = Date.now();
     res.on('finish', () => {
       const durationMs = Date.now() - start;
+      const usage = res.locals.usage as
+        | {
+            inputTokens?: number;
+            outputTokens?: number;
+            totalCostUsd?: number;
+          }
+        | undefined;
       const entry = {
         requestId: req.requestId,
         method: req.method,
         url: req.originalUrl,
         statusCode: res.statusCode,
         durationMs,
+        ...(usage && {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          totalCostUsd: usage.totalCostUsd,
+        }),
       };
       if (res.statusCode >= 500) {
         logger.warn(entry, 'Request completed');

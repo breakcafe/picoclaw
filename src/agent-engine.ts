@@ -559,10 +559,14 @@ export class AgentEngine implements AgentRunner {
               await onChunk(text);
             }
           }
-          // Extract usage metrics from SDK result message
+          // Extract usage metrics from SDK result message.
+          // The top-level usage object uses snake_case (input_tokens) while
+          // the typed NonNullableUsage interface uses camelCase (inputTokens).
+          // Handle both naming conventions defensively.
+          const u = message.usage;
           usage = {
-            inputTokens: message.usage?.inputTokens ?? 0,
-            outputTokens: message.usage?.outputTokens ?? 0,
+            inputTokens: u?.inputTokens ?? u?.input_tokens ?? 0,
+            outputTokens: u?.outputTokens ?? u?.output_tokens ?? 0,
             totalCostUsd: message.total_cost_usd ?? 0,
             numTurns: message.num_turns ?? 0,
             durationApiMs: message.duration_api_ms ?? 0,

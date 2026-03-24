@@ -318,6 +318,11 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
         ...(output.usage && { usage: output.usage }),
       };
 
+      // Expose usage to per-request middleware log (server.ts)
+      if (output.usage) {
+        res.locals.usage = output.usage;
+      }
+
       logger.info(
         {
           requestId: req.requestId,
