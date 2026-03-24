@@ -853,7 +853,6 @@ components:
 
     ChatResponse:
       type: object
-      additionalProperties: false
       required:
         - status
         - conversation_id
@@ -900,6 +899,26 @@ components:
         session_end_marker_detected:
           type: boolean
           description: True when the marker is found in result or outbound messages.
+        usage:
+          type: object
+          nullable: true
+          description: Token usage and cost metrics from the agent execution (present when SDK provides data).
+          properties:
+            inputTokens:
+              type: integer
+              minimum: 0
+            outputTokens:
+              type: integer
+              minimum: 0
+            totalCostUsd:
+              type: number
+              minimum: 0
+            numTurns:
+              type: integer
+              minimum: 0
+            durationApiMs:
+              type: integer
+              minimum: 0
 
     ChatInternalErrorResponse:
       type: object

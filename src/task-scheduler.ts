@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { CronExpressionParser } from 'cron-parser';
 
 import { AgentRunner } from './agent-engine.js';
+import { AgentUsage } from './types.js';
 import { TIMEZONE } from './config.js';
 import {
   ensureConversation,
@@ -98,6 +99,7 @@ export interface TaskExecutionResult {
   duration_ms: number;
   next_run: string | null;
   error?: string;
+  usage?: AgentUsage;
 }
 
 export async function runTask(
@@ -109,6 +111,7 @@ export async function runTask(
   let resultText: string | null = null;
   let error: string | undefined;
   let status: 'success' | 'timeout' | 'error' = 'success';
+  let usage: AgentUsage | undefined;
 
   const baseConversation =
     task.context_mode === 'group'
@@ -137,6 +140,7 @@ export async function runTask(
     resultText = agentOutput.result;
     status = agentOutput.status;
     error = agentOutput.error;
+    usage = agentOutput.usage;
 
     if (task.context_mode === 'group') {
       updateConversationSession(
@@ -189,6 +193,7 @@ export async function runTask(
     duration_ms: durationMs,
     next_run: nextRun,
     error,
+    usage,
   };
 }
 

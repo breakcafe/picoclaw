@@ -7,10 +7,14 @@ import {
   APP_VERSION,
   BUILD_COMMIT,
   BUILD_TIME,
+  CLAUDE_MODEL,
   MEMORY_DIR,
+  ORG_DIR,
   PORT,
+  SDK_LOG_LEVEL,
   SKILLS_DIR,
   STORE_DIR,
+  SYSTEM_PROMPT_OVERRIDE,
 } from './config.js';
 import { closeDatabase, initDatabase, syncDatabaseToVolume } from './db.js';
 import { logger } from './logger.js';
@@ -42,6 +46,50 @@ async function main(): Promise<void> {
   initDatabase();
   ensureClaudeSettings();
   syncSkills();
+
+  const orgClaudeMdExists = ORG_DIR
+    ? fs.existsSync(path.join(ORG_DIR, 'CLAUDE.md'))
+    : false;
+  const userClaudeMdExists = fs.existsSync(path.join(MEMORY_DIR, 'CLAUDE.md'));
+
+  // Detect org-managed MCP servers from managed-mcp.json
+  const managedMcpNames: string[] = [];
+  if (ORG_DIR) {
+    const managedMcpPath = path.join(ORG_DIR, 'managed-mcp.json');
+    if (fs.existsSync(managedMcpPath)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(managedMcpPath, 'utf-8'));
+        if (raw?.mcpServers && typeof raw.mcpServers === 'object') {
+          managedMcpNames.push(...Object.keys(raw.mcpServers));
+        }
+      } catch {
+        // Malformed JSON — will be reported by entrypoint.sh or SDK at runtime
+      }
+    }
+  }
+
+  logger.info(
+    {
+      paths: {
+        memoryDir: MEMORY_DIR,
+        storeDir: STORE_DIR,
+        orgDir: ORG_DIR || '(not set)',
+        skillsDir: SKILLS_DIR,
+      },
+      persona: {
+        orgClaudeMd: orgClaudeMdExists,
+        userClaudeMd: userClaudeMdExists,
+        systemPromptOverride: Boolean(SYSTEM_PROMPT_OVERRIDE),
+      },
+      mcp: {
+        builtIn: ['picoclaw'],
+        orgManaged: managedMcpNames,
+      },
+      model: CLAUDE_MODEL || '(cli default)',
+      sdkLogLevel: SDK_LOG_LEVEL,
+    },
+    'Startup diagnostics',
+  );
 
   let isShuttingDown = false;
   let server: ReturnType<ReturnType<typeof createServer>['listen']>;

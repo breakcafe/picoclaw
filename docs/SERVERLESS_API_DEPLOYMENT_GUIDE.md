@@ -289,6 +289,7 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | `ASSISTANT_NAME` | `Pico` | Agent display name |
 | `TZ` | System timezone | Timezone for cron expression parsing |
 | `LOG_LEVEL` | `info` | Pino log level (`debug`, `info`, `warn`, `error`) |
+| `SDK_LOG_LEVEL` | `off` | Claude Agent SDK stderr output: `off` (default) or `debug` (pipes through pino at debug level) |
 | `STORE_DIR` | `/data/store` | Persistent database volume |
 | `MEMORY_DIR` | `/data/memory` | Memory and persona volume |
 | `ORG_DIR` | (empty) | Org directory path (CLAUDE.md, managed-mcp.json, skills/) |

@@ -16,9 +16,12 @@ import {
   MAX_EXECUTION_MS,
   MEMORY_DIR,
   ORG_DIR,
+  SDK_LOG_LEVEL,
   SKILLS_DIR,
   SYSTEM_PROMPT_OVERRIDE,
 } from './config.js';
+import { logger } from './logger.js';
+import { AgentUsage } from './types.js';
 
 /**
  * MCP server configuration for stdio, SSE, or HTTP transports.
@@ -57,6 +60,7 @@ export interface AgentRunOutput {
   lastAssistantUuid?: string;
   model?: string;
   error?: string;
+  usage?: AgentUsage;
 }
 
 export interface StreamCallbacks {
@@ -385,6 +389,7 @@ export class AgentEngine implements AgentRunner {
     let actualModel: string | undefined;
     let lastResult: string | null = null;
     let lastStreamedLength = 0;
+    let usage: AgentUsage | undefined;
 
     try {
       const sdkEnv: Record<string, string | undefined> = {
@@ -474,6 +479,12 @@ export class AgentEngine implements AgentRunner {
           includePartialMessages: true,
           maxThinkingTokens: input.maxThinkingTokens,
           env: sdkEnv,
+          stderr:
+            SDK_LOG_LEVEL === 'debug'
+              ? (data: string) => {
+                  logger.debug({ source: 'sdk' }, data.trimEnd());
+                }
+              : undefined,
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
           settingSources: ['project', 'user'],
@@ -548,8 +559,32 @@ export class AgentEngine implements AgentRunner {
               await onChunk(text);
             }
           }
+          // Extract usage metrics from SDK result message
+          usage = {
+            inputTokens: message.usage?.inputTokens ?? 0,
+            outputTokens: message.usage?.outputTokens ?? 0,
+            totalCostUsd: message.total_cost_usd ?? 0,
+            numTurns: message.num_turns ?? 0,
+            durationApiMs: message.duration_api_ms ?? 0,
+          };
         }
       }
+
+      logger.info(
+        {
+          conversationId: input.conversationId,
+          status: 'success',
+          model: actualModel,
+          ...(usage && {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            totalCostUsd: usage.totalCostUsd,
+            numTurns: usage.numTurns,
+            durationApiMs: usage.durationApiMs,
+          }),
+        },
+        'Agent execution completed',
+      );
 
       return {
         status: 'success',
@@ -557,11 +592,20 @@ export class AgentEngine implements AgentRunner {
         newSessionId,
         lastAssistantUuid,
         model: actualModel,
+        usage,
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       const isAbort = err instanceof Error && err.name === 'AbortError';
       if (isAbort) {
+        logger.info(
+          {
+            conversationId: input.conversationId,
+            status: 'timeout',
+            timeoutMs,
+          },
+          'Agent execution timed out',
+        );
         return {
           status: 'timeout',
           result: lastResult,
@@ -569,9 +613,14 @@ export class AgentEngine implements AgentRunner {
           lastAssistantUuid,
           model: actualModel,
           error: `Execution aborted after ${timeoutMs}ms. Use conversation_id to continue.`,
+          usage,
         };
       }
 
+      logger.error(
+        { conversationId: input.conversationId, err },
+        'Agent execution failed',
+      );
       return {
         status: 'error',
         result: lastResult,
@@ -579,6 +628,7 @@ export class AgentEngine implements AgentRunner {
         lastAssistantUuid,
         model: actualModel,
         error: errorMessage,
+        usage,
       };
     } finally {
       clearTimeout(timeoutHandle);

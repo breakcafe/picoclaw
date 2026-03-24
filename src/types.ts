@@ -48,6 +48,14 @@ export interface ScheduledTask {
   created_at: string;
 }
 
+export interface AgentUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalCostUsd: number;
+  numTurns: number;
+  durationApiMs: number;
+}
+
 export interface TaskRunLog {
   task_id: string;
   run_at: string;

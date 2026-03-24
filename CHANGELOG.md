@@ -2,6 +2,28 @@
 
 All notable changes to PicoClaw will be documented in this file.
 
+## [1.2.19]
+
+### Added
+
+- **Agent usage metrics**: Chat and task responses now include an optional `usage`
+  object with `inputTokens`, `outputTokens`, `totalCostUsd`, `numTurns`, and
+  `durationApiMs` extracted from the Claude Agent SDK result message.
+- **SDK debug logging**: New `SDK_LOG_LEVEL` env var (`off` by default, set to
+  `debug` to pipe Claude Agent SDK stderr output through pino at debug level).
+- **Startup diagnostics**: Boot sequence logs mounted volume paths, persona file
+  presence (org/user CLAUDE.md, SYSTEM_PROMPT_OVERRIDE flag), model config, and
+  SDK log level as a single structured log entry.
+- **Enhanced request logging**: Chat requests log conversation ID, stream mode, and
+  isNew flag at request start; log token usage and cost at request completion.
+
+### Changed
+
+- `AgentRunOutput` interface extended with optional `usage` field.
+- `TaskExecutionResult` interface extended with optional `usage` field.
+- OpenAPI spec updated with `usage` object in `ChatResponse` schema.
+- Version bumped to 1.2.19.
+
 ## [1.2.18]
 
 ### Fixed

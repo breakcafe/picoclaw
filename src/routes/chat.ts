@@ -210,6 +210,16 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
       });
     }
 
+    logger.info(
+      {
+        requestId: req.requestId,
+        conversationId,
+        isNew,
+        stream,
+      },
+      'Chat request received',
+    );
+
     let releaseLock: (() => void) | undefined;
     const startedAt = Date.now();
     const chunkBuffer: string[] = [];
@@ -305,7 +315,23 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
         outbound_messages: outboundMessages,
         session_end_marker: SESSION_END_MARKER,
         session_end_marker_detected: hasSessionEndMarker,
+        ...(output.usage && { usage: output.usage }),
       };
+
+      logger.info(
+        {
+          requestId: req.requestId,
+          conversationId,
+          status: output.status,
+          durationMs,
+          ...(output.usage && {
+            inputTokens: output.usage.inputTokens,
+            outputTokens: output.usage.outputTokens,
+            totalCostUsd: output.usage.totalCostUsd,
+          }),
+        },
+        'Chat request completed',
+      );
 
       if (stream) {
         for (const outbound of outboundMessages) {

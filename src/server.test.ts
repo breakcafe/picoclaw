@@ -435,6 +435,52 @@ describe('http server', () => {
     });
   });
 
+  it('includes usage metrics in chat response when engine returns them', async () => {
+    const usageEngine: AgentRunner = {
+      async run() {
+        return {
+          status: 'success',
+          result: 'answer',
+          newSessionId: 'session-u',
+          lastAssistantUuid: 'uuid-u',
+          usage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            totalCostUsd: 0.003,
+            numTurns: 2,
+            durationApiMs: 1500,
+          },
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const usageApp = serverModule.createServer(usageEngine);
+
+    const response = await request(usageApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'test' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 50,
+      totalCostUsd: 0.003,
+      numTurns: 2,
+      durationApiMs: 1500,
+    });
+  });
+
+  it('omits usage from response when engine does not return it', async () => {
+    const response = await request(app)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'no usage' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).not.toHaveProperty('usage');
+  });
+
   it('does not pass mcpServers when mcp_servers is omitted', async () => {
     let capturedInput: any;
     const captureEngine: AgentRunner = {
