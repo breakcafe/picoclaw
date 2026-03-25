@@ -252,7 +252,11 @@ export function taskRoutes(agentEngine: AgentRunner): Router {
           wait: false,
         });
       }
-      const result = await runTask(task, agentEngine, persona?.trim() || undefined);
+      const result = await runTask(
+        task,
+        agentEngine,
+        persona?.trim() || undefined,
+      );
       if (result.usage) {
         res.locals.usage = result.usage;
       }

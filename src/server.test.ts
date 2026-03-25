@@ -631,7 +631,10 @@ describe('http server', () => {
     await request(captureApp)
       .post('/chat')
       .set('Authorization', 'Bearer test-token')
-      .send({ message: 'test persona', persona: 'You are a helpful assistant.' });
+      .send({
+        message: 'test persona',
+        persona: 'You are a helpful assistant.',
+      });
 
     expect(capturedInput.dynamicPersona).toBe('You are a helpful assistant.');
   });
