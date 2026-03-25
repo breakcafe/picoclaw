@@ -52,11 +52,28 @@ Response:
   "duration_ms": 3200,
   "outbound_messages": [],
   "session_end_marker": "[[PICOCLAW_SESSION_END]]",
-  "session_end_marker_detected": false
+  "session_end_marker_detected": false,
+  "usage": {
+    "inputTokens": 150,
+    "outputTokens": 42,
+    "totalCostUsd": 0.002,
+    "numTurns": 1,
+    "durationApiMs": 2800
+  }
 }
 ```
 
 Save `conversation_id` for follow-up messages.
+
+The `usage` field is optional — present when the SDK provides metrics, absent otherwise. Fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `inputTokens` | integer | Input tokens consumed |
+| `outputTokens` | integer | Output tokens generated |
+| `totalCostUsd` | number | Total API cost in USD |
+| `numTurns` | integer | Number of agent turns (API calls) |
+| `durationApiMs` | integer | Time spent in API calls (ms) |
 
 ### Continue a conversation
 

@@ -66,3 +66,10 @@ export const SYSTEM_PROMPT_OVERRIDE = process.env.SYSTEM_PROMPT_OVERRIDE || '';
 
 export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/**
+ * Controls Claude Agent SDK stderr output.
+ * 'off' (default) — SDK stderr is not captured.
+ * 'debug' — SDK stderr is piped through pino at debug level.
+ */
+export const SDK_LOG_LEVEL = process.env.SDK_LOG_LEVEL || 'off';

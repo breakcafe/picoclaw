@@ -252,6 +252,9 @@ export function taskRoutes(agentEngine: AgentRunner): Router {
         });
       }
       const result = await runTask(task, agentEngine);
+      if (result.usage) {
+        res.locals.usage = result.usage;
+      }
       res.json(result);
     } catch (err) {
       if (err instanceof ConversationBusyError) {
@@ -287,6 +290,9 @@ export function taskRoutes(agentEngine: AgentRunner): Router {
         });
       }
       const executed = await runTask(task, agentEngine);
+      if (executed.usage) {
+        res.locals.usage = executed.usage;
+      }
       res.json({
         checked: dueTasks.length,
         executed,

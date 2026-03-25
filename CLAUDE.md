@@ -92,6 +92,7 @@ src/index.ts main()
   ├── initDatabase()
   ├── ensureClaudeSettings()       ← write settings.json (if absent, redundant with entrypoint)
   ├── syncSkills()                 ← three-tier skill sync (TS level, redundant but safe)
+  ├── Startup diagnostics log      ← paths, persona, MCP servers, model, SDK log level
   └── Express listen on PORT
 ```
 
@@ -105,7 +106,7 @@ The two-pass skill sync (entrypoint.sh + index.ts) is intentionally redundant: e
 4. `AgentEngine.run()` wraps prompt in `MessageStream`, calls `query()`
 5. SDK spawns CLI subprocess → CLI spawns MCP Server (stdio)
 6. Agent executes tools; MCP tools read/write same SQLite via `PICOCLAW_DB_PATH`
-7. `query()` yields `system/init` (session_id), `assistant` (uuid), `result` messages
+7. `query()` yields `system/init` (session_id, tools, mcp_servers), `assistant` (uuid), `result` messages
 8. Route stores `session_id` + `last_assistant_uuid` for next resume
 9. Conversation lock released in `finally` block
 10. `syncDatabaseToVolume()` runs after response completes
@@ -265,6 +266,7 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 | `CLAUDE_MODEL` | (empty; CLI default) | `src/config.ts` → model for `query()` (full ID or short name) |
 | `CLAUDE_FALLBACK_MODEL` | (empty) | `src/config.ts` → fallback model on primary failure |
 | `SYSTEM_PROMPT_OVERRIDE` | (empty) | When set, fully replaces Claude Code preset + org CLAUDE.md |
+| `SDK_LOG_LEVEL` | `off` | `off` or `debug` — pipes SDK stderr through pino at debug level |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |
 | `TASK_LOG_RETENTION` | `100` | Max task run logs kept per task (oldest pruned on sync) |
 

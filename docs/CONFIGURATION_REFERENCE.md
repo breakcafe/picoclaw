@@ -24,6 +24,7 @@ Quick-reference for all configuration surfaces. For detailed explanations, see t
 | `CLAUDE_FALLBACK_MODEL` | _(empty)_ | Fallback model on primary failure |
 | `SYSTEM_PROMPT_OVERRIDE` | _(empty)_ | Replaces Claude Code preset + org CLAUDE.md entirely |
 | `LOG_LEVEL` | `info` | Pino log level (`debug` / `info` / `warn` / `error`) |
+| `SDK_LOG_LEVEL` | `off` | Claude Agent SDK stderr output: `off` (default) or `debug` (pipes through pino at debug level) |
 | `TZ` | System timezone | Timezone for cron expressions |
 
 ### Paths
