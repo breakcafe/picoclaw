@@ -919,6 +919,11 @@ components:
             durationApiMs:
               type: integer
               minimum: 0
+        warnings:
+          type: array
+          items:
+            type: string
+          description: MCP server validation warnings (reserved names rejected, invalid configs skipped). Only present when issues are detected.
 
     ChatInternalErrorResponse:
       type: object

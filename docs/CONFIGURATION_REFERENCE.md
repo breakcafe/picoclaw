@@ -252,8 +252,10 @@ Skills created by the agent during chat (written to `.claude/skills/`) are autom
 | Source | Scope | Config Location | Availability |
 |---|---|---|---|
 | Built-in `picoclaw` | Always | Hardcoded in `agent-engine.ts` | Every request |
-| Org managed | Always (if configured) | `$ORG_DIR/managed-mcp.json` → `/etc/claude-code/` | Every request |
+| Org managed | Always (if configured) | `$ORG_DIR/managed-mcp.json` → loaded by `src/managed-mcp.ts` | Every request |
 | Per-request | Single request | `mcp_servers` field in `POST /chat` | That request only |
+
+Merge priority (later overrides earlier same-name server): org-managed → built-in `picoclaw` (protected) → per-request. The name `picoclaw` is reserved and cannot be used by org-managed or per-request servers.
 
 ### Per-request transport types
 
@@ -387,7 +389,7 @@ Per-request via `POST /chat`:
 | Per-request MCP servers | Single request | `mcp_servers` field in `POST /chat` |
 | Built-in MCP tools | All requests | `src/mcp-server.ts` (requires code change) |
 
-Org MCP servers are auto-discovered by the CLI from `/etc/claude-code/managed-mcp.json` (copied from `$ORG_DIR` at startup).
+Org MCP servers are loaded programmatically from `$ORG_DIR/managed-mcp.json` by `src/managed-mcp.ts` at startup and merged into `query()` `mcpServers`. They are **not** loaded via CLI auto-discovery from `/etc/claude-code/` (which would conflict with programmatic `--mcp-config`).
 
 ---
 

@@ -83,7 +83,6 @@ entrypoint.sh
   ├── mkdir MEMORY_DIR, /data/store
   ├── symlink ~/.claude → $MEMORY_DIR/.claude
   ├── write settings.json (if absent)
-  ├── copy managed-mcp.json → /etc/claude-code/ (if ORG_DIR set)
   ├── persist runtime-created skills → $MEMORY_DIR/skills/
   └── three-tier skill sync (bash level)
 
@@ -92,6 +91,7 @@ src/index.ts main()
   ├── initDatabase()
   ├── ensureClaudeSettings()       ← write settings.json (if absent, redundant with entrypoint)
   ├── syncSkills()                 ← three-tier skill sync (TS level, redundant but safe)
+  ├── loadManagedMcpServers()      ← read $ORG_DIR/managed-mcp.json into memory cache
   ├── Startup diagnostics log      ← paths, persona, MCP servers, model, SDK log level
   └── Express listen on PORT
 ```
@@ -172,15 +172,18 @@ Key implementation details:
 
 ### Org MCP servers (`managed-mcp.json`)
 
-When `ORG_DIR` is set and `$ORG_DIR/managed-mcp.json` exists, `entrypoint.sh` copies it
-to `/etc/claude-code/managed-mcp.json`. The Claude Code CLI subprocess auto-discovers this
-file and loads the MCP servers — no code changes needed.
+When `ORG_DIR` is set and `$ORG_DIR/managed-mcp.json` exists, `src/managed-mcp.ts`
+reads it at startup and caches the server configs in memory. These are merged
+programmatically into `query()` `mcpServers` for every request — **not** via CLI
+auto-discovery from `/etc/claude-code/`. CLI auto-discovery is avoided because it
+triggers an enterprise MCP exclusion that prevents `--mcp-config` usage, breaking
+the built-in picoclaw server and per-request dynamic servers.
 
-MCP servers come from three sources:
+MCP servers come from three sources, merged with this priority:
 
-1. `managed-mcp.json` (from `$ORG_DIR`) — org-level, CLI auto-discovers
-2. Built-in `picoclaw` — always present, hardcoded in `agent-engine.ts`
-3. Per-request `mcp_servers` — passed via `POST /chat` body
+1. `managed-mcp.json` (from `$ORG_DIR`) — org-level, loaded by `managed-mcp.ts`
+2. Built-in `picoclaw` — always present, protected (cannot be overridden)
+3. Per-request `mcp_servers` — passed via `POST /chat` body (can override managed same-name)
 
 ### Adding a new route
 
@@ -272,6 +275,13 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 
 ## Common Gotchas
 
+- **Reserved MCP server name**: `picoclaw` is reserved for the built-in MCP server.
+  Per-request `mcp_servers` entries using this name are rejected with a warning.
+  managed-mcp.json entries named `picoclaw` are rejected at load time with a warning.
+- **Enterprise MCP exclusion**: Claude Code CLI rejects `--mcp-config` when
+  `/etc/claude-code/managed-mcp.json` exists. PicoClaw avoids this by loading
+  managed-mcp.json programmatically via `src/managed-mcp.ts` instead of copying
+  it to `/etc/claude-code/`. Never place files in `/etc/claude-code/`.
 - **ESM `.js` in imports**: TypeScript compiles `.ts` → `.js` but import paths must already
   say `.js`. Forgetting this causes runtime `ERR_MODULE_NOT_FOUND`.
 - **MCP server is a subprocess**: `src/mcp-server.ts` runs as a stdio child process spawned

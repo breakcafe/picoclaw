@@ -133,7 +133,7 @@ In cloud deployments, the org persona is provisioned from shared storage (e.g., 
 
 ### Org MCP servers (`managed-mcp.json`)
 
-When `ORG_DIR` is set and `$ORG_DIR/managed-mcp.json` exists, PicoClaw copies it to `/etc/claude-code/managed-mcp.json` at startup. The Claude Code CLI auto-discovers managed MCP server configurations from this well-known path, making the servers available to the agent without any per-user configuration.
+When `ORG_DIR` is set and `$ORG_DIR/managed-mcp.json` exists, PicoClaw reads it at startup and caches the server configs in memory (`src/managed-mcp.ts`). These are merged programmatically into `query()` `mcpServers` for every request, alongside the built-in `picoclaw` server and any per-request servers.
 
 This is the recommended way to provision organization-wide MCP servers. The file follows the standard Claude Code managed MCP format:
 
@@ -207,7 +207,7 @@ Not all configuration changes take effect the same way. This table covers every 
 | Skills in `.claude/skills/` (sync target) | Next `POST /chat` request — CLI discovers skills on startup |
 | User skills source (`/data/memory/skills/`) | After `POST /admin/reload-skills`, then the next chat request |
 | Org skills source (`$ORG_DIR/skills/`) | After `POST /admin/reload-skills`, then the next chat request |
-| `managed-mcp.json` (`$ORG_DIR/managed-mcp.json`) | Container restart (copied to `/etc/claude-code/` by entrypoint.sh at boot) |
+| `managed-mcp.json` (`$ORG_DIR/managed-mcp.json`) | Container restart (loaded by `src/managed-mcp.ts` at boot) |
 | Environment variables (`API_TOKEN`, `MAX_EXECUTION_MS`, etc.) | Container restart (read once by `config.ts` at module load) |
 | Per-request MCP servers (`mcp_servers` field) | Immediately — passed per-request to `query()` |
 

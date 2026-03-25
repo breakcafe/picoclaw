@@ -2,6 +2,38 @@
 
 All notable changes to PicoClaw will be documented in this file.
 
+## [1.2.20]
+
+### Fixed
+
+- **MCP server loading conflict**: Claude Code CLI rejects `--mcp-config` when
+  `/etc/claude-code/managed-mcp.json` (enterprise MCP config) is present, which
+  broke the built-in `picoclaw` MCP server in Docker deployments with `ORG_DIR`.
+  Fix: load `managed-mcp.json` programmatically and merge all MCP servers through
+  `query()` `mcpServers` option instead of CLI auto-discovery.
+
+### Added
+
+- **Three-way MCP server merge**: org-managed (from `managed-mcp.json`) →
+  built-in `picoclaw` (protected, cannot be overridden) → per-request (highest
+  priority, can override managed same-name servers).
+- **MCP validation warnings**: Chat responses include an optional `warnings`
+  array when per-request MCP servers have issues (reserved name `picoclaw`,
+  invalid configs). Previously, invalid entries were silently dropped.
+- New `src/managed-mcp.ts` module for reading and caching managed MCP configs.
+
+### Changed
+
+- `entrypoint.sh` no longer copies `managed-mcp.json` to `/etc/claude-code/`.
+  Org MCP servers are now loaded programmatically by the Node.js process.
+- `validateMcpServers()` returns `{ servers, warnings }` instead of just servers.
+- MCP debug log now includes `source` field (`built-in`, `org-managed`, `per-request`).
+- Reserved name `picoclaw` is now rejected at load time in both managed-mcp.json
+  and per-request `mcp_servers` (with descriptive warning in each case).
+- MCP source detection in debug logs correctly identifies per-request servers
+  that override org-managed servers of the same name.
+- Version bumped to 1.2.20.
+
 ## [1.2.19]
 
 ### Added
