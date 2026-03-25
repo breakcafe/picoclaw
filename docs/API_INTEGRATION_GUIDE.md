@@ -257,6 +257,27 @@ PicoClaw supports a session-end marker mechanism. When the agent determines that
 
 This is particularly useful in serverless environments where you want the container to shut down after completing a task.
 
+## Dynamic Context (Persona)
+
+PicoClaw supports injecting dynamic context into the agent's system prompt on a per-request basis. This is highly useful for passing temporal information, user preferences, or external system state without modifying the static `CLAUDE.md` files.
+
+Pass a `persona` string in the request body for either `POST /chat` or `POST /task/trigger`:
+
+```bash
+curl -X POST http://localhost:9000/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Write a greeting",
+    "persona": "### Dynamic Context\nUser ID: 10086\nPreference: Always reply in French."
+  }'
+```
+
+**How it works:**
+The Claude Agent SDK constructs its system prompt in layers. The `persona` field is injected **after the Org persona (`$ORG_DIR/CLAUDE.md`) and before the User persona (`/data/memory/CLAUDE.md`)**. This ensures it acts as a system-level constraint while allowing the agent's core identity (User persona) to remain the final, highest-priority instruction.
+
+*Note: Frequent changes to the `persona` field (e.g., passing the current timestamp down to the second) will invalidate Claude's Prompt Caching. Keep dynamic personas as stable as possible across requests.*
+
 ## Dynamic MCP Servers
 
 PicoClaw can connect to external MCP servers on a per-request basis. Pass `mcp_servers` in the chat request to give the agent access to additional tools:
@@ -362,7 +383,10 @@ Each call to `/task/check` executes at most **one** due task. If multiple tasks 
 curl -X POST http://localhost:9000/task/trigger \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"task_id": "daily-summary"}'
+  -d '{
+    "task_id": "daily-summary",
+    "persona": "### Dynamic Context\nTriggered by: Webhook\nEnvironment: Production"
+  }'
 ```
 
 ## Graceful Shutdown
