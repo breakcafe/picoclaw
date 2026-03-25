@@ -612,6 +612,30 @@ describe('http server', () => {
     expect(capturedInput.mcpServers).toBeUndefined();
   });
 
+  it('passes dynamicPersona to engine when persona is provided', async () => {
+    let capturedInput: any;
+    const captureEngine: AgentRunner = {
+      async run(input) {
+        capturedInput = input;
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-persona',
+          lastAssistantUuid: 'uuid-persona',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'test persona', persona: 'You are a helpful assistant.' });
+
+    expect(capturedInput.dynamicPersona).toBe('You are a helpful assistant.');
+  });
+
   it('accepts stop request and invokes shutdown callback', async () => {
     const response = await request(app)
       .post('/control/stop')

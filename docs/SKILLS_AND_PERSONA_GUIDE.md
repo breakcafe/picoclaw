@@ -4,15 +4,17 @@ How to customize PicoClaw's behavior by writing skills and defining agent person
 
 ## Persona Configuration
 
-The agent persona is defined by `CLAUDE.md` files. PicoClaw supports a **two-tier persona** model where an organization-level (org) persona and a user-level persona are stacked together.
+The agent persona is defined by `CLAUDE.md` files and dynamic API parameters. PicoClaw supports a **three-tier persona** model where an organization-level (org) persona, a dynamic per-request persona, and a user-level persona are stacked together.
 
 ### How persona loading works
 
-The Claude Agent SDK discovers and loads CLAUDE.md files through two complementary mechanisms:
+The Claude Agent SDK discovers and loads CLAUDE.md files through complementary mechanisms:
 
 1. **User persona** (`/data/memory/CLAUDE.md`): The agent engine sets `cwd: MEMORY_DIR` and `settingSources: ['project', 'user']`. The Claude Code CLI automatically discovers `CLAUDE.md` in its working directory — this is standard Claude Code behavior. This file defines the agent's identity, capabilities, and behavioral rules for the specific user.
 
-2. **Org persona** (`$ORG_DIR/CLAUDE.md`): When the `ORG_DIR` environment variable is set and the file exists, PicoClaw loads it via `loadOrgClaudeMd()` and passes it as `systemPrompt: { type: 'preset', preset: 'claude_code', append: orgClaudeMd }`. This appends organization-wide instructions to the Claude Code system prompt. Useful for shared policies, compliance rules, or default behavior across all users.
+2. **Dynamic persona** (API Parameter): When calling `POST /chat` or `POST /task/trigger`, you can pass a `persona` string. This is useful for injecting dynamic context (e.g., current user ID, environment, or temporary preferences) on a per-request basis.
+
+3. **Org persona** (`$ORG_DIR/CLAUDE.md`): When the `ORG_DIR` environment variable is set and the file exists, PicoClaw loads it via `loadOrgClaudeMd()`.
 
 The effective system prompt is assembled in this order:
 
@@ -22,6 +24,9 @@ The effective system prompt is assembled in this order:
 ├─────────────────────────────────────────────┤
 │ Org persona (append)                        │  ← $ORG_DIR/CLAUDE.md
 │ Organization-wide rules, shared policies    │    (loaded by loadOrgClaudeMd() when ORG_DIR is set)
+├─────────────────────────────────────────────┤
+│ Dynamic persona (append)                    │  ← API Request (`persona` field)
+│ Per-request context, user ID, environment   │    (injected via POST /chat or POST /task/trigger)
 ├─────────────────────────────────────────────┤
 │ User persona (project CLAUDE.md)            │  ← /data/memory/CLAUDE.md
 │ Agent identity, user-specific instructions  │    (discovered by SDK via cwd)

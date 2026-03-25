@@ -46,6 +46,7 @@ interface ChatRequestBody {
   show_tool_use?: boolean;
   model?: string;
   mcp_servers?: Record<string, McpServerConfig>;
+  persona?: string;
 }
 
 function getExecutionTimeout(ms?: number): number {
@@ -249,6 +250,7 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
           showToolUse,
           model: body.model?.trim() || undefined,
           mcpServers: mcpServers ?? undefined,
+          dynamicPersona: body.persona?.trim() || undefined,
         },
         streamCallbacks,
       );

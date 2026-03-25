@@ -476,6 +476,14 @@ The `status` field in chat responses can be:
 | `max_thinking_tokens` | number | No | Max thinking tokens (default: 10000, only when `thinking=true`) |
 | `show_tool_use` | boolean | No | Stream tool invocation events (default: false) |
 | `mcp_servers` | object | No | Per-request MCP servers (HTTP/SSE/stdio transports) |
+| `persona` | string | No | Dynamic persona (system prompt) to inject for this request |
+
+### POST /task/trigger
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `task_id` | string | Yes | ID of the task to trigger immediately |
+| `persona` | string | No | Dynamic persona (system prompt) to inject for this execution |
 
 ### POST /task
 

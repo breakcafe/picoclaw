@@ -232,6 +232,7 @@ export function taskRoutes(agentEngine: AgentRunner): Router {
 
   router.post('/task/trigger', async (req: Request, res: Response) => {
     const taskId = (req.body || {}).task_id as string | undefined;
+    const persona = (req.body || {}).persona as string | undefined;
 
     if (!taskId) {
       res.status(400).json({ error: 'task_id is required' });
@@ -251,7 +252,7 @@ export function taskRoutes(agentEngine: AgentRunner): Router {
           wait: false,
         });
       }
-      const result = await runTask(task, agentEngine);
+      const result = await runTask(task, agentEngine, persona?.trim() || undefined);
       if (result.usage) {
         res.locals.usage = result.usage;
       }

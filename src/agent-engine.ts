@@ -52,6 +52,8 @@ export interface AgentRunInput {
   model?: string;
   /** Per-request MCP servers merged with the built-in picoclaw server. */
   mcpServers?: Record<string, McpServerConfig>;
+  /** Dynamic persona injected into the system prompt for this request. */
+  dynamicPersona?: string;
 }
 
 export interface AgentRunOutput {
@@ -488,6 +490,30 @@ export class AgentEngine implements AgentRunner {
       const model = input.model || CLAUDE_MODEL || undefined;
       const fallbackModel = CLAUDE_FALLBACK_MODEL || undefined;
 
+      let finalSystemPrompt: any;
+      if (SYSTEM_PROMPT_OVERRIDE) {
+        finalSystemPrompt = input.dynamicPersona
+          ? `${SYSTEM_PROMPT_OVERRIDE}\n\n${input.dynamicPersona}`
+          : SYSTEM_PROMPT_OVERRIDE;
+      } else {
+        const baseAppend = orgClaudeMd || '';
+        const combinedAppend = input.dynamicPersona
+          ? baseAppend
+            ? `${baseAppend}\n\n${input.dynamicPersona}`
+            : input.dynamicPersona
+          : baseAppend;
+
+        if (combinedAppend) {
+          finalSystemPrompt = {
+            type: 'preset',
+            preset: 'claude_code',
+            append: combinedAppend,
+          };
+        } else {
+          finalSystemPrompt = undefined;
+        }
+      }
+
       for await (const message of query({
         prompt: promptStream,
         options: {
@@ -501,15 +527,7 @@ export class AgentEngine implements AgentRunner {
               : undefined,
           resume: input.sessionId,
           resumeSessionAt: input.resumeAt,
-          systemPrompt: SYSTEM_PROMPT_OVERRIDE
-            ? SYSTEM_PROMPT_OVERRIDE
-            : orgClaudeMd
-              ? {
-                  type: 'preset',
-                  preset: 'claude_code',
-                  append: orgClaudeMd,
-                }
-              : undefined,
+          systemPrompt: finalSystemPrompt,
           allowedTools,
           includePartialMessages: true,
           maxThinkingTokens: input.maxThinkingTokens,
