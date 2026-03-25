@@ -276,6 +276,11 @@ curl -X POST http://localhost:9000/chat \
 **How it works:**
 The Claude Agent SDK constructs its system prompt in layers. The `persona` field is injected **after the Org persona (`$ORG_DIR/CLAUDE.md`) and before the User persona (`/data/memory/CLAUDE.md`)**. This ensures it acts as a system-level constraint while allowing the agent's core identity (User persona) to remain the final, highest-priority instruction.
 
+**Important details for multi-turn conversations:**
+- The dynamic persona is **not saved to the database**. It is strictly a per-request parameter.
+- If you are continuing an existing conversation (by passing `conversation_id`), you **must pass the `persona` field again** on every subsequent request if you want those rules to remain in effect.
+- The physical location of the persona in the final prompt sent to the LLM is always within the `system` block, which means it sits **before** the multi-turn conversation history.
+
 *Note: Frequent changes to the `persona` field (e.g., passing the current timestamp down to the second) will invalidate Claude's Prompt Caching. Keep dynamic personas as stable as possible across requests.*
 
 ## Dynamic MCP Servers
