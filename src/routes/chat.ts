@@ -7,6 +7,7 @@ import {
   McpServerConfig,
   StreamCallbacks,
 } from '../agent-engine.js';
+import { validateSingleMcpServer } from '../managed-mcp.js';
 import {
   ASSISTANT_NAME,
   MAX_EXECUTION_MS,
@@ -71,71 +72,52 @@ function resolveConversation(body: ChatRequestBody): {
   return { id: body.conversation_id, isNew: false };
 }
 
-function validateMcpServers(
-  raw: unknown,
-): Record<string, McpServerConfig> | null {
+const RESERVED_MCP_NAMES = new Set(['picoclaw']);
+
+interface McpValidationResult {
+  servers: Record<string, McpServerConfig> | null;
+  warnings: string[];
+}
+
+function validateMcpServers(raw: unknown): McpValidationResult {
+  const warnings: string[] = [];
+
   if (raw === undefined || raw === null) {
-    return null;
+    return { servers: null, warnings };
   }
 
   if (typeof raw !== 'object' || Array.isArray(raw)) {
-    return null;
+    warnings.push(
+      `mcp_servers: expected an object, got ${Array.isArray(raw) ? 'array' : typeof raw}`,
+    );
+    return { servers: null, warnings };
   }
 
   const result: Record<string, McpServerConfig> = {};
   for (const [name, config] of Object.entries(raw as Record<string, unknown>)) {
-    if (
-      typeof config !== 'object' ||
-      config === null ||
-      Array.isArray(config)
-    ) {
+    if (RESERVED_MCP_NAMES.has(name)) {
+      warnings.push(
+        `mcp_servers: '${name}' is a reserved name and was ignored`,
+      );
       continue;
     }
 
-    const cfg = config as Record<string, unknown>;
-    const type = (cfg.type as string) || 'http';
-
-    if (type === 'http' || type === 'sse') {
-      if (typeof cfg.url !== 'string' || !cfg.url) {
-        continue;
-      }
-      const entry: {
-        type: 'http' | 'sse';
-        url: string;
-        headers?: Record<string, string>;
-      } = {
-        type,
-        url: cfg.url,
-      };
-      if (
-        cfg.headers &&
-        typeof cfg.headers === 'object' &&
-        !Array.isArray(cfg.headers)
-      ) {
-        entry.headers = cfg.headers as Record<string, string>;
-      }
-      result[name] = entry;
-    } else if (type === 'stdio') {
-      if (typeof cfg.command !== 'string' || !cfg.command) {
-        continue;
-      }
-      const entry: {
-        type: 'stdio';
-        command: string;
-        args?: string[];
-        env?: Record<string, string>;
-      } = { type: 'stdio', command: cfg.command };
-      if (Array.isArray(cfg.args)) {
-        entry.args = cfg.args as string[];
-      }
-      if (cfg.env && typeof cfg.env === 'object' && !Array.isArray(cfg.env)) {
-        entry.env = cfg.env as Record<string, string>;
-      }
-      result[name] = entry;
+    const validated = validateSingleMcpServer(config);
+    if (validated) {
+      result[name] = validated;
+    } else {
+      const type =
+        typeof config === 'object' && config !== null
+          ? ((config as Record<string, unknown>).type as string) || 'http'
+          : 'unknown';
+      warnings.push(`mcp_servers: '${name}' skipped (invalid ${type} config)`);
     }
   }
 
-  return Object.keys(result).length > 0 ? result : null;
+  return {
+    servers: Object.keys(result).length > 0 ? result : null,
+    warnings,
+  };
 }
 
 function containsSessionEndMarker(text: string | null | undefined): boolean {
@@ -197,7 +179,9 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
           ? 10000
           : undefined;
     const showToolUse = body.show_tool_use === true;
-    const mcpServers = validateMcpServers(body.mcp_servers);
+    const { servers: mcpServers, warnings: mcpWarnings } = validateMcpServers(
+      body.mcp_servers,
+    );
 
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -207,6 +191,7 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
       writeSseEvent(res, 'start', {
         conversation_id: conversationId,
         message_id: userMessageId,
+        ...(mcpWarnings.length > 0 && { warnings: mcpWarnings }),
       });
     }
 
@@ -316,6 +301,7 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
         session_end_marker: SESSION_END_MARKER,
         session_end_marker_detected: hasSessionEndMarker,
         ...(output.usage && { usage: output.usage }),
+        ...(mcpWarnings.length > 0 && { warnings: mcpWarnings }),
       };
 
       // Expose usage to per-request middleware log (server.ts)

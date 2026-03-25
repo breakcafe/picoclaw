@@ -284,9 +284,17 @@ Supported transport types:
 | SSE | `{ "type": "sse", "url": "...", "headers": {...} }` | SSE-based MCP servers |
 | stdio | `{ "type": "stdio", "command": "...", "args": [...], "env": {...} }` | Local subprocess |
 
-Per-request MCP servers are merged with the built-in `picoclaw` MCP server. The agent sees tools from all servers with the naming pattern `mcp__<server_name>__<tool_name>`.
+Per-request MCP servers are merged with the built-in `picoclaw` MCP server and any org-managed servers (from `managed-mcp.json`). The agent sees tools from all servers with the naming pattern `mcp__<server_name>__<tool_name>`.
 
-If `type` is omitted, it defaults to `http`. Invalid entries (missing required fields) are silently ignored.
+If `type` is omitted, it defaults to `http`. Invalid entries produce a `warnings` array in the response instead of being silently dropped.
+
+### Server Name Restrictions
+
+- `picoclaw` is reserved and cannot be used as a per-request MCP server name.
+  Attempts to use it are rejected with a warning in the response.
+- Per-request servers can override org-managed servers of the same name
+  (the per-request config takes precedence for that request only).
+- Merge priority: org-managed → built-in `picoclaw` (protected) → per-request (highest).
 
 ## Scheduled Tasks
 

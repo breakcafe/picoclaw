@@ -18,6 +18,7 @@ import {
 } from './config.js';
 import { closeDatabase, initDatabase, syncDatabaseToVolume } from './db.js';
 import { logger } from './logger.js';
+import { getManagedMcpNames, loadManagedMcpServers } from './managed-mcp.js';
 import { createServer } from './server.js';
 import { ensureClaudeSettings, syncSkills } from './skills.js';
 
@@ -52,21 +53,12 @@ async function main(): Promise<void> {
     : false;
   const userClaudeMdExists = fs.existsSync(path.join(MEMORY_DIR, 'CLAUDE.md'));
 
-  // Detect org-managed MCP servers from managed-mcp.json
-  const managedMcpNames: string[] = [];
-  if (ORG_DIR) {
-    const managedMcpPath = path.join(ORG_DIR, 'managed-mcp.json');
-    if (fs.existsSync(managedMcpPath)) {
-      try {
-        const raw = JSON.parse(fs.readFileSync(managedMcpPath, 'utf-8'));
-        if (raw?.mcpServers && typeof raw.mcpServers === 'object') {
-          managedMcpNames.push(...Object.keys(raw.mcpServers));
-        }
-      } catch {
-        // Malformed JSON — will be reported by entrypoint.sh or SDK at runtime
-      }
-    }
-  }
+  // Load org-managed MCP servers from managed-mcp.json into memory.
+  // These are merged programmatically into query() mcpServers option
+  // instead of relying on CLI auto-discovery from /etc/claude-code/,
+  // which conflicts with --mcp-config (enterprise MCP exclusion).
+  loadManagedMcpServers();
+  const managedMcpNames = getManagedMcpNames();
 
   logger.info(
     {

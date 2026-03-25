@@ -27,15 +27,12 @@ JSON
 fi
 
 # ── Org directory setup ──────────────────────────────────────────
-# When ORG_DIR is set, copy managed-mcp.json to the Claude Code CLI
-# system path so the CLI subprocess auto-discovers org MCP servers.
+# NOTE: managed-mcp.json is loaded programmatically by src/managed-mcp.ts
+# and merged into query() mcpServers, NOT via CLI auto-discovery from
+# /etc/claude-code/. CLI auto-discovery triggers an enterprise MCP config
+# exclusion that prevents --mcp-config usage, breaking the built-in
+# picoclaw MCP server and per-request dynamic servers.
 ORG_DIR="${ORG_DIR:-}"
-if [ -n "${ORG_DIR}" ] && [ -d "${ORG_DIR}" ]; then
-  if [ -f "${ORG_DIR}/managed-mcp.json" ]; then
-    mkdir -p /etc/claude-code
-    cp "${ORG_DIR}/managed-mcp.json" /etc/claude-code/managed-mcp.json
-  fi
-fi
 
 # ── Three-tier skill sync ────────────────────────────────────────
 # Load order: built-in → org (authoritative) → user (additive only)

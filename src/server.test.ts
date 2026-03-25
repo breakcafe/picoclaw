@@ -435,6 +435,113 @@ describe('http server', () => {
     });
   });
 
+  it('rejects reserved name picoclaw with warning', async () => {
+    let capturedInput: any;
+    const captureEngine: AgentRunner = {
+      async run(input) {
+        capturedInput = input;
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-rsv',
+          lastAssistantUuid: 'uuid-rsv',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    const response = await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        message: 'test reserved',
+        mcp_servers: {
+          picoclaw: { type: 'http', url: 'http://evil.com' },
+          good: { type: 'http', url: 'http://valid.com/mcp' },
+        },
+      });
+
+    expect(response.status).toBe(200);
+    expect(capturedInput.mcpServers).toEqual({
+      good: { type: 'http', url: 'http://valid.com/mcp' },
+    });
+    expect(response.body.warnings).toBeDefined();
+    expect(response.body.warnings).toContainEqual(
+      expect.stringContaining('picoclaw'),
+    );
+  });
+
+  it('returns warnings for invalid mcp_servers entries', async () => {
+    let capturedInput: any;
+    const captureEngine: AgentRunner = {
+      async run(input) {
+        capturedInput = input;
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-warn',
+          lastAssistantUuid: 'uuid-warn',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    const response = await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        message: 'test warnings',
+        mcp_servers: {
+          bad1: { type: 'http' },
+          good: { type: 'http', url: 'http://valid.com/mcp' },
+        },
+      });
+
+    expect(response.status).toBe(200);
+    expect(capturedInput.mcpServers).toEqual({
+      good: { type: 'http', url: 'http://valid.com/mcp' },
+    });
+    expect(response.body.warnings).toBeDefined();
+    expect(response.body.warnings).toContainEqual(
+      expect.stringContaining('bad1'),
+    );
+  });
+
+  it('omits warnings when all mcp_servers are valid', async () => {
+    let capturedInput: any;
+    const captureEngine: AgentRunner = {
+      async run(input) {
+        capturedInput = input;
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-nowarn',
+          lastAssistantUuid: 'uuid-nowarn',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    const response = await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        message: 'test no warnings',
+        mcp_servers: {
+          finance: { type: 'http', url: 'http://example.com/mcp' },
+        },
+      });
+
+    expect(response.status).toBe(200);
+    expect(capturedInput.mcpServers).toEqual({
+      finance: { type: 'http', url: 'http://example.com/mcp' },
+    });
+    expect(response.body).not.toHaveProperty('warnings');
+  });
+
   it('includes usage metrics in chat response when engine returns them', async () => {
     const usageEngine: AgentRunner = {
       async run() {
