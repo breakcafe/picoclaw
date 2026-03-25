@@ -395,6 +395,10 @@ export class AgentEngine implements AgentRunner {
       const sdkEnv: Record<string, string | undefined> = {
         ...process.env,
       };
+      // Unset CLAUDECODE to prevent "nested session" rejection when
+      // PicoClaw itself is launched inside a Claude Code session
+      // (e.g. during local development with `npm run dev`).
+      delete sdkEnv.CLAUDECODE;
 
       const orgClaudeMd = loadOrgClaudeMd();
       const additionalDirectories = discoverAdditionalDirectories();
