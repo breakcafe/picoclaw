@@ -7,16 +7,25 @@ import { logger } from './logger.js';
 
 let cachedServers: Record<string, McpServerConfig> = {};
 
+export interface McpServerValidationResult {
+  config: McpServerConfig | null;
+  /** Present when config is null — describes why validation failed. */
+  reason?: string;
+}
+
 /**
  * Validate a single MCP server config entry.
- * Returns a typed McpServerConfig or null if invalid.
+ * Returns `{ config }` on success, `{ config: null, reason }` on failure.
  * Shared by managed-mcp loading and per-request validation.
  */
 export function validateSingleMcpServer(
   config: unknown,
-): McpServerConfig | null {
+): McpServerValidationResult {
   if (typeof config !== 'object' || config === null || Array.isArray(config)) {
-    return null;
+    return {
+      config: null,
+      reason: `expected an object, got ${config === null ? 'null' : Array.isArray(config) ? 'array' : typeof config}`,
+    };
   }
 
   const cfg = config as Record<string, unknown>;
@@ -24,7 +33,10 @@ export function validateSingleMcpServer(
 
   if (type === 'http' || type === 'sse') {
     if (typeof cfg.url !== 'string' || !cfg.url) {
-      return null;
+      return {
+        config: null,
+        reason: `${type} server requires a non-empty 'url' string`,
+      };
     }
     const entry: {
       type: 'http' | 'sse';
@@ -38,12 +50,15 @@ export function validateSingleMcpServer(
     ) {
       entry.headers = cfg.headers as Record<string, string>;
     }
-    return entry;
+    return { config: entry };
   }
 
   if (type === 'stdio') {
     if (typeof cfg.command !== 'string' || !cfg.command) {
-      return null;
+      return {
+        config: null,
+        reason: `stdio server requires a non-empty 'command' string`,
+      };
     }
     const entry: {
       type: 'stdio';
@@ -57,10 +72,13 @@ export function validateSingleMcpServer(
     if (cfg.env && typeof cfg.env === 'object' && !Array.isArray(cfg.env)) {
       entry.env = cfg.env as Record<string, string>;
     }
-    return entry;
+    return { config: entry };
   }
 
-  return null;
+  return {
+    config: null,
+    reason: `unsupported transport type '${type}' (expected http, sse, or stdio)`,
+  };
 }
 
 /**
@@ -90,13 +108,13 @@ export function loadManagedMcpServers(): Record<string, McpServerConfig> {
           );
           continue;
         }
-        const validated = validateSingleMcpServer(config);
+        const { config: validated, reason } = validateSingleMcpServer(config);
         if (validated) {
           cachedServers[name] = validated;
         } else {
           logger.warn(
-            { server: name },
-            'Skipped invalid server in managed-mcp.json',
+            { server: name, reason },
+            `managed-mcp.json: skipped invalid server '${name}' — ${reason}`,
           );
         }
       }

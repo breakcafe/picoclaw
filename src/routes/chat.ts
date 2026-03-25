@@ -102,15 +102,11 @@ function validateMcpServers(raw: unknown): McpValidationResult {
       continue;
     }
 
-    const validated = validateSingleMcpServer(config);
+    const { config: validated, reason } = validateSingleMcpServer(config);
     if (validated) {
       result[name] = validated;
     } else {
-      const type =
-        typeof config === 'object' && config !== null
-          ? ((config as Record<string, unknown>).type as string) || 'http'
-          : 'unknown';
-      warnings.push(`mcp_servers: '${name}' skipped (invalid ${type} config)`);
+      warnings.push(`mcp_servers: '${name}' skipped — ${reason}`);
     }
   }
 
