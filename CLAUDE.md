@@ -106,7 +106,7 @@ The two-pass skill sync (entrypoint.sh + index.ts) is intentionally redundant: e
 4. `AgentEngine.run()` wraps prompt in `MessageStream`, calls `query()`
 5. SDK spawns CLI subprocess → CLI spawns MCP Server (stdio)
 6. Agent executes tools; MCP tools read/write same SQLite via `PICOCLAW_DB_PATH`
-7. `query()` yields `system/init` (session_id), `assistant` (uuid), `result` messages
+7. `query()` yields `system/init` (session_id, tools, mcp_servers), `assistant` (uuid), `result` messages
 8. Route stores `session_id` + `last_assistant_uuid` for next resume
 9. Conversation lock released in `finally` block
 10. `syncDatabaseToVolume()` runs after response completes

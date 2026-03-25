@@ -431,6 +431,17 @@ export class AgentEngine implements AgentRunner {
         ...input.mcpServers,
       };
 
+      logger.debug(
+        {
+          conversationId: input.conversationId,
+          mcpServers: Object.entries(mergedMcpServers).map(([name, cfg]) => ({
+            name,
+            type: ('command' in cfg ? 'stdio' : cfg.type) || 'http',
+          })),
+        },
+        'MCP servers configured for request',
+      );
+
       // Build allowedTools with wildcards for each MCP server.
       const allowedTools = [
         'Bash',
@@ -513,6 +524,15 @@ export class AgentEngine implements AgentRunner {
         if (message.type === 'system' && message.subtype === 'init') {
           newSessionId = message.session_id;
           actualModel = message.model;
+          logger.debug(
+            {
+              conversationId: input.conversationId,
+              model: message.model,
+              tools: message.tools,
+              mcpServers: message.mcp_servers,
+            },
+            'SDK session initialized — tools and MCP servers discovered',
+          );
         }
 
         // Stream incremental text and thinking from content_block_delta events
