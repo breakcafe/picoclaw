@@ -454,9 +454,9 @@ export class AgentEngine implements AgentRunner {
             source:
               name === 'picoclaw'
                 ? 'built-in'
-                : name in managedServers
-                  ? 'org-managed'
-                  : 'per-request',
+                : name in perRequestServers
+                  ? 'per-request'
+                  : 'org-managed',
           })),
         },
         'MCP servers configured for request',

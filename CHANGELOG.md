@@ -28,6 +28,10 @@ All notable changes to PicoClaw will be documented in this file.
   Org MCP servers are now loaded programmatically by the Node.js process.
 - `validateMcpServers()` returns `{ servers, warnings }` instead of just servers.
 - MCP debug log now includes `source` field (`built-in`, `org-managed`, `per-request`).
+- Reserved name `picoclaw` is now rejected at load time in both managed-mcp.json
+  and per-request `mcp_servers` (with descriptive warning in each case).
+- MCP source detection in debug logs correctly identifies per-request servers
+  that override org-managed servers of the same name.
 - Version bumped to 1.2.20.
 
 ## [1.2.19]

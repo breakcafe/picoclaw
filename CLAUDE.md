@@ -277,7 +277,7 @@ pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 
 - **Reserved MCP server name**: `picoclaw` is reserved for the built-in MCP server.
   Per-request `mcp_servers` entries using this name are rejected with a warning.
-  managed-mcp.json entries named `picoclaw` are overridden by the built-in server.
+  managed-mcp.json entries named `picoclaw` are rejected at load time with a warning.
 - **Enterprise MCP exclusion**: Claude Code CLI rejects `--mcp-config` when
   `/etc/claude-code/managed-mcp.json` exists. PicoClaw avoids this by loading
   managed-mcp.json programmatically via `src/managed-mcp.ts` instead of copying

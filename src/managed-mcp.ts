@@ -83,6 +83,13 @@ export function loadManagedMcpServers(): Record<string, McpServerConfig> {
     const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     if (raw?.mcpServers && typeof raw.mcpServers === 'object') {
       for (const [name, config] of Object.entries(raw.mcpServers)) {
+        if (name === 'picoclaw') {
+          logger.warn(
+            { server: name },
+            'managed-mcp.json: "picoclaw" is a reserved name and was skipped — the built-in picoclaw server cannot be overridden',
+          );
+          continue;
+        }
         const validated = validateSingleMcpServer(config);
         if (validated) {
           cachedServers[name] = validated;

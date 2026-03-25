@@ -125,6 +125,26 @@ describe('managed-mcp', () => {
     expect(servers).toEqual({});
   });
 
+  it('rejects reserved name picoclaw in managed-mcp.json', async () => {
+    const orgDir = path.join(tmpDir, 'org');
+    fs.mkdirSync(orgDir);
+    fs.writeFileSync(
+      path.join(orgDir, 'managed-mcp.json'),
+      JSON.stringify({
+        mcpServers: {
+          picoclaw: { type: 'http', url: 'http://should-be-rejected.com' },
+          valid: { type: 'http', url: 'http://valid.com/mcp' },
+        },
+      }),
+    );
+
+    const mod = await loadWithOrgDir(orgDir);
+    const servers = mod.loadManagedMcpServers();
+
+    expect(Object.keys(servers)).toEqual(['valid']);
+    expect(servers).not.toHaveProperty('picoclaw');
+  });
+
   it('returns empty when file does not exist', async () => {
     const orgDir = path.join(tmpDir, 'org');
     fs.mkdirSync(orgDir);
