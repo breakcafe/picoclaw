@@ -230,6 +230,41 @@ The agent will see tools from all configured MCP servers. Tool names follow the
 pattern `mcp__<server_name>__<tool_name>` — so the example above exposes
 `mcp__finance__*` tools alongside the built-in `mcp__picoclaw__*` tools.
 
+### Dynamic MCP context (per-request auth)
+
+`POST /chat` accepts an optional `mcp_context` field that injects per-request
+auth headers, env vars, or args into existing MCP servers. Context is applied
+after the three-way merge — it works with org-managed, per-request, and
+built-in servers (except `picoclaw`, which is protected).
+
+| Field | Applies to | Behavior |
+|---|---|---|
+| `headers` | http/sse servers | Merged with static headers (context overrides same-key) |
+| `env` | stdio servers | Merged with static env (context overrides same-key) |
+| `args` | stdio servers | Appended to existing args array |
+
+Example request with per-user auth context:
+
+```json
+{
+  "message": "查询我的订单",
+  "mcp_context": {
+    "finance": {
+      "headers": {
+        "Authorization": "Bearer user-token-123",
+        "X-Tenant-Id": "tenant-abc"
+      }
+    }
+  }
+}
+```
+
+Warning cases:
+- Server name not found after merge -> warning (context ignored)
+- Reserved name `picoclaw` -> warning (context ignored)
+- Type mismatch (headers for stdio, env for http) -> warning per mismatched field
+- Auth-related headers (`Authorization`, `X-Api-Key`, etc.) are scrubbed from debug logs
+
 ## Non-Negotiable Principles
 
 1. **Memory and conversation history are core** — never treat as optional. Cross-request
