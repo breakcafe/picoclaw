@@ -490,7 +490,10 @@ export class AgentEngine implements AgentRunner {
       const model = input.model || CLAUDE_MODEL || undefined;
       const fallbackModel = CLAUDE_FALLBACK_MODEL || undefined;
 
-      let finalSystemPrompt: any;
+      let finalSystemPrompt:
+        | string
+        | { type: 'preset'; preset: 'claude_code'; append?: string }
+        | undefined;
       if (SYSTEM_PROMPT_OVERRIDE) {
         finalSystemPrompt = input.dynamicPersona
           ? `${SYSTEM_PROMPT_OVERRIDE}\n\n${input.dynamicPersona}`

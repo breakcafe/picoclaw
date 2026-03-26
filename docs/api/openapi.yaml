@@ -486,6 +486,10 @@ paths:
       description: |
         Fetches due tasks and executes only the first one.
         If no due tasks exist, returns checked=0.
+
+        Note: Dynamic persona (`persona` field) is not supported on this endpoint.
+        Tasks executed via `/task/check` always run without a dynamic persona.
+        To inject a dynamic persona, use `POST /task/trigger` instead.
       operationId: checkDueTasks
       responses:
         '200':
@@ -787,6 +791,7 @@ components:
             env var > CLI default.
         persona:
           type: string
+          maxLength: 10000
           description: |
             Dynamic persona (system prompt) to inject for this request.
             Appended after the org persona and before the user persona.
@@ -1148,6 +1153,7 @@ components:
           minLength: 1
         persona:
           type: string
+          maxLength: 10000
           description: |
             Dynamic persona (system prompt) to inject for this execution.
             Appended after the org persona and before the user persona.

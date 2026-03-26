@@ -382,6 +382,8 @@ Response when a task was executed:
 
 Each call to `/task/check` executes at most **one** due task. If multiple tasks are due, call it repeatedly or increase cron frequency.
 
+> **Note:** `/task/check` does not support the `persona` field. Tasks executed via external cron always run without a dynamic persona. To inject a dynamic persona into a task execution, use `POST /task/trigger` instead.
+
 ### Manually trigger a specific task
 
 ```bash
