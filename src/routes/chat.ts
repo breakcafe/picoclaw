@@ -5,9 +5,13 @@ import { Request, Response, Router } from 'express';
 import {
   AgentRunner,
   McpServerConfig,
+  McpServerContext,
   StreamCallbacks,
 } from '../agent-engine.js';
-import { validateSingleMcpServer } from '../managed-mcp.js';
+import {
+  validateSingleMcpContext,
+  validateSingleMcpServer,
+} from '../managed-mcp.js';
 import {
   ASSISTANT_NAME,
   MAX_EXECUTION_MS,
@@ -46,6 +50,7 @@ interface ChatRequestBody {
   show_tool_use?: boolean;
   model?: string;
   mcp_servers?: Record<string, McpServerConfig>;
+  mcp_context?: Record<string, unknown>;
 }
 
 function getExecutionTimeout(ms?: number): number {
@@ -116,6 +121,48 @@ function validateMcpServers(raw: unknown): McpValidationResult {
   };
 }
 
+interface McpContextValidationResult {
+  context: Record<string, McpServerContext> | null;
+  warnings: string[];
+}
+
+function validateMcpContext(raw: unknown): McpContextValidationResult {
+  const warnings: string[] = [];
+
+  if (raw === undefined || raw === null) {
+    return { context: null, warnings };
+  }
+
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    warnings.push(
+      `mcp_context: expected an object, got ${Array.isArray(raw) ? 'array' : typeof raw}`,
+    );
+    return { context: null, warnings };
+  }
+
+  const result: Record<string, McpServerContext> = {};
+  for (const [name, entry] of Object.entries(raw as Record<string, unknown>)) {
+    if (RESERVED_MCP_NAMES.has(name)) {
+      warnings.push(
+        `mcp_context: '${name}' is a reserved server name and was ignored`,
+      );
+      continue;
+    }
+
+    const validation = validateSingleMcpContext(entry);
+    if (validation.valid) {
+      result[name] = validation.context;
+    } else {
+      warnings.push(`mcp_context: '${name}' skipped — ${validation.reason}`);
+    }
+  }
+
+  return {
+    context: Object.keys(result).length > 0 ? result : null,
+    warnings,
+  };
+}
+
 function containsSessionEndMarker(text: string | null | undefined): boolean {
   if (!SESSION_END_MARKER) {
     return false;
@@ -178,6 +225,9 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
     const { servers: mcpServers, warnings: mcpWarnings } = validateMcpServers(
       body.mcp_servers,
     );
+    const { context: mcpContext, warnings: mcpContextWarnings } =
+      validateMcpContext(body.mcp_context);
+    const allWarnings = [...mcpWarnings, ...mcpContextWarnings];
 
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -187,7 +237,7 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
       writeSseEvent(res, 'start', {
         conversation_id: conversationId,
         message_id: userMessageId,
-        ...(mcpWarnings.length > 0 && { warnings: mcpWarnings }),
+        ...(allWarnings.length > 0 && { warnings: allWarnings }),
       });
     }
 
@@ -249,6 +299,7 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
           showToolUse,
           model: body.model?.trim() || undefined,
           mcpServers: mcpServers ?? undefined,
+          mcpContext: mcpContext ?? undefined,
         },
         streamCallbacks,
       );
@@ -284,6 +335,9 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
           containsSessionEndMarker(message.text),
         );
       const durationMs = Date.now() - startedAt;
+      if (output.contextWarnings) {
+        allWarnings.push(...output.contextWarnings);
+      }
       const responseBody = {
         status: output.status,
         conversation_id: conversationId,
@@ -297,7 +351,7 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
         session_end_marker: SESSION_END_MARKER,
         session_end_marker_detected: hasSessionEndMarker,
         ...(output.usage && { usage: output.usage }),
-        ...(mcpWarnings.length > 0 && { warnings: mcpWarnings }),
+        ...(allWarnings.length > 0 && { warnings: allWarnings }),
       };
 
       // Expose usage to per-request middleware log (server.ts)
