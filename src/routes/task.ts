@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { Request, Response, Router } from 'express';
 
 import { AgentRunner } from '../agent-engine.js';
+import { MAX_PERSONA_LENGTH } from '../config.js';
 import {
   ConversationBusyError,
   acquireConversationLock,
@@ -232,9 +233,17 @@ export function taskRoutes(agentEngine: AgentRunner): Router {
 
   router.post('/task/trigger', async (req: Request, res: Response) => {
     const taskId = (req.body || {}).task_id as string | undefined;
+    const persona = (req.body || {}).persona as string | undefined;
 
     if (!taskId) {
       res.status(400).json({ error: 'task_id is required' });
+      return;
+    }
+
+    if (persona && persona.length > MAX_PERSONA_LENGTH) {
+      res.status(400).json({
+        error: `persona exceeds maximum length of ${MAX_PERSONA_LENGTH} characters`,
+      });
       return;
     }
 
@@ -251,7 +260,11 @@ export function taskRoutes(agentEngine: AgentRunner): Router {
           wait: false,
         });
       }
-      const result = await runTask(task, agentEngine);
+      const result = await runTask(
+        task,
+        agentEngine,
+        persona?.trim() || undefined,
+      );
       if (result.usage) {
         res.locals.usage = result.usage;
       }

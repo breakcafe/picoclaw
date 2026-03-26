@@ -165,6 +165,7 @@ All except `/health` require `Authorization: Bearer <API_TOKEN>`.
 | `show_tool_use` | boolean | `false` | Stream tool invocation events |
 | `model` | string | _(omit recommended)_ | Model override (full ID or short name). Omit to follow CLI default — avoids locking to a specific version |
 | `mcp_servers` | object | — | Per-request MCP servers (see §8) |
+| `persona` | string | — | Dynamic persona (system prompt) injected after org persona, before user persona |
 
 **Not yet exposed:** `max_turns` (turn limit), `max_budget_usd` (budget cap). These exist in the Claude Agent SDK but PicoClaw does not pass them through.
 
@@ -211,17 +212,20 @@ All except `/health` require `Authorization: Bearer <API_TOKEN>`.
 Assembly order (top = base, bottom = highest priority):
 
 ```
-┌─────────────────────────────────────┐
-│ Claude Code preset (built-in)       │  Always present
-├─────────────────────────────────────┤
-│ Org CLAUDE.md                       │  $ORG_DIR/CLAUDE.md (appended, optional)
-├─────────────────────────────────────┤
-│ User CLAUDE.md                      │  $MEMORY_DIR/CLAUDE.md (SDK auto-discovery)
-└─────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│ Claude Code preset (built-in)               │  Always present
+├─────────────────────────────────────────────┤
+│ Org CLAUDE.md                               │  $ORG_DIR/CLAUDE.md (appended, optional)
+├─────────────────────────────────────────────┤
+│ Dynamic persona                             │  `persona` field in API request (optional)
+├─────────────────────────────────────────────┤
+│ User CLAUDE.md                              │  $MEMORY_DIR/CLAUDE.md (SDK auto-discovery)
+└─────────────────────────────────────────────┘
 ```
 
-- `SYSTEM_PROMPT_OVERRIDE` replaces the first two layers; user CLAUDE.md still loads on top.
-- Both files are optional. Empty `/data/*` volumes work — agent runs with default prompt.
+- `SYSTEM_PROMPT_OVERRIDE` replaces the first two layers; dynamic persona and user CLAUDE.md still load on top.
+- All files/fields are optional. Empty `/data/*` volumes work — agent runs with default prompt.
+- Dynamic persona is passed per-request via `POST /chat` or `POST /task/trigger` and is not persisted.
 
 ---
 

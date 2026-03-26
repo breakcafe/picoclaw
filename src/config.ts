@@ -73,3 +73,6 @@ export const TIMEZONE =
  * 'debug' — SDK stderr is piped through pino at debug level.
  */
 export const SDK_LOG_LEVEL = process.env.SDK_LOG_LEVEL || 'off';
+
+/** Maximum allowed length for the dynamic persona field (characters). */
+export const MAX_PERSONA_LENGTH = 10_000;

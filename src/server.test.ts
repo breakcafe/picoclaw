@@ -612,6 +612,70 @@ describe('http server', () => {
     expect(capturedInput.mcpServers).toBeUndefined();
   });
 
+  it('passes dynamicPersona to engine when persona is provided', async () => {
+    let capturedInput: any;
+    const captureEngine: AgentRunner = {
+      async run(input) {
+        capturedInput = input;
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-persona',
+          lastAssistantUuid: 'uuid-persona',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        message: 'test persona',
+        persona: 'You are a helpful assistant.',
+      });
+
+    expect(capturedInput.dynamicPersona).toBe('You are a helpful assistant.');
+  });
+
+  it('rejects persona exceeding max length', async () => {
+    const response = await request(app)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        message: 'test',
+        persona: 'x'.repeat(10_001),
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/persona exceeds maximum length/);
+  });
+
+  it('rejects task trigger persona exceeding max length', async () => {
+    // Create a task first
+    const createRes = await request(app)
+      .post('/task')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        prompt: 'do work',
+        schedule_type: 'interval',
+        schedule_value: '60000',
+        context_mode: 'isolated',
+      });
+
+    const response = await request(app)
+      .post('/task/trigger')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        task_id: createRes.body.id,
+        persona: 'x'.repeat(10_001),
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/persona exceeds maximum length/);
+  });
+
   it('accepts stop request and invokes shutdown callback', async () => {
     const response = await request(app)
       .post('/control/stop')

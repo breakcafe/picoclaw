@@ -105,6 +105,7 @@ export interface TaskExecutionResult {
 export async function runTask(
   task: ScheduledTask,
   agentEngine: AgentRunner,
+  dynamicPersona?: string,
 ): Promise<TaskExecutionResult> {
   const startedAt = Date.now();
   const nowIso = new Date().toISOString();
@@ -135,6 +136,7 @@ export async function runTask(
       sessionId: baseConversation?.session_id,
       resumeAt: baseConversation?.last_assistant_uuid,
       isScheduledTask: true,
+      dynamicPersona,
     });
 
     resultText = agentOutput.result;

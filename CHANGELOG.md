@@ -2,6 +2,15 @@
 
 All notable changes to PicoClaw will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Dynamic persona injection**: `POST /chat` and `POST /task/trigger` accept an
+  optional `persona` string field that injects per-request context into the system
+  prompt (after org persona, before user persona). Useful for passing user ID,
+  environment, or temporal state without modifying static CLAUDE.md files.
+
 ## [1.2.20]
 
 ### Fixed

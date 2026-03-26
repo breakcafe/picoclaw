@@ -11,6 +11,7 @@ import { validateSingleMcpServer } from '../managed-mcp.js';
 import {
   ASSISTANT_NAME,
   MAX_EXECUTION_MS,
+  MAX_PERSONA_LENGTH,
   SESSION_END_MARKER,
   TIMEZONE,
 } from '../config.js';
@@ -46,6 +47,7 @@ interface ChatRequestBody {
   show_tool_use?: boolean;
   model?: string;
   mcp_servers?: Record<string, McpServerConfig>;
+  persona?: string;
 }
 
 function getExecutionTimeout(ms?: number): number {
@@ -133,6 +135,13 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
 
     if (!message) {
       res.status(400).json({ error: 'message is required' });
+      return;
+    }
+
+    if (body.persona && body.persona.length > MAX_PERSONA_LENGTH) {
+      res.status(400).json({
+        error: `persona exceeds maximum length of ${MAX_PERSONA_LENGTH} characters`,
+      });
       return;
     }
 
@@ -249,6 +258,7 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
           showToolUse,
           model: body.model?.trim() || undefined,
           mcpServers: mcpServers ?? undefined,
+          dynamicPersona: body.persona?.trim() || undefined,
         },
         streamCallbacks,
       );

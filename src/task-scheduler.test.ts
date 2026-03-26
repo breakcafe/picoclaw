@@ -152,4 +152,41 @@ describe('task scheduler', () => {
     expect(outbound).toHaveLength(1);
     expect(outbound[0]?.text).toBe('task ping');
   });
+
+  it('passes dynamicPersona to engine when provided', async () => {
+    setupDb();
+    createConversation('conv-persona');
+
+    createTask({
+      id: 'task-persona',
+      conversation_id: 'conv-persona',
+      prompt: 'do work',
+      schedule_type: 'once',
+      schedule_value: '2026-03-09T10:00:00',
+      context_mode: 'isolated',
+      next_run: '2026-03-09T02:00:00.000Z',
+      status: 'active',
+      created_at: '2026-03-08T00:00:00.000Z',
+    });
+
+    let capturedPersona: string | undefined;
+    const fakeEngine: AgentRunner = {
+      async run(input) {
+        capturedPersona = input.dynamicPersona;
+        return {
+          status: 'success',
+          result: null,
+        };
+      },
+    };
+
+    const task = getTaskById('task-persona');
+    if (!task) {
+      throw new Error('task not found');
+    }
+
+    const result = await runTask(task, fakeEngine, 'Custom Persona');
+    expect(result.status).toBe('success');
+    expect(capturedPersona).toBe('Custom Persona');
+  });
 });
