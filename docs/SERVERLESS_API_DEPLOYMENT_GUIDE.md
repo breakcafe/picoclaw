@@ -89,29 +89,36 @@ Derived / ephemeral paths (not mounted separately):
 
 ### 2.4 Persona & System Prompt
 
-PicoClaw assembles the agent's system prompt from a **two-tier CLAUDE.md** model. This determines the agent's identity, capabilities, and behavioral rules.
+PicoClaw assembles the agent's system prompt from a **three-tier persona** model. This determines the agent's identity, capabilities, and behavioral rules.
 
-**Tier 1 — User persona** (`/data/memory/CLAUDE.md`):
+**Tier 1 — Org persona** (`$ORG_DIR/CLAUDE.md`, optional):
+
+PicoClaw's `loadOrgClaudeMd()` function reads this file and passes it as `systemPrompt: { type: 'preset', preset: 'claude_code', append: orgClaudeMd }`. This appends organization-wide instructions to the Claude Code system prompt.
+
+Use this for shared policies (compliance, output format standards, tool usage rules) that should apply to all users in a multi-user deployment. If this file does not exist, no org overlay is applied and the SDK uses the default Claude Code preset.
+
+**Tier 2 — Dynamic persona** (`persona` API parameter, optional):
+
+`POST /chat` and `POST /task/trigger` accept a `persona` string field. This is appended to the system prompt after the org persona and before the user persona. Useful for injecting per-request context (user ID, environment, temporal state) without modifying static CLAUDE.md files.
+
+The dynamic persona is **not persisted** — callers must pass it on every request. In multi-turn conversations, omitting `persona` on a follow-up request means the dynamic context is absent for that turn.
+
+**Tier 3 — User persona** (`/data/memory/CLAUDE.md`):
 
 The Claude Agent SDK's `query()` is called with `cwd: MEMORY_DIR` and `settingSources: ['project', 'user']`. The `'project'` setting source tells the SDK to discover and load `CLAUDE.md` from the working directory (`/data/memory/`). This is standard Claude Code behavior — any `CLAUDE.md` in the project root is loaded as project-level context.
 
 This file defines the agent's identity (name, role), capabilities, communication style, and user-specific rules. It is the primary persona file — recommended but not required. If absent, the agent runs with the default Claude Code system prompt.
-
-**Tier 2 — Org persona** (`$ORG_DIR/CLAUDE.md`, optional):
-
-PicoClaw's `loadOrgClaudeMd()` function reads this file and passes it as `systemPrompt: { type: 'preset', preset: 'claude_code', append: orgClaudeMd }`. This appends organization-wide instructions to the Claude Code system prompt before the user persona takes effect.
-
-Use this for shared policies (compliance, output format standards, tool usage rules) that should apply to all users in a multi-user deployment. If this file does not exist, no org overlay is applied and the SDK uses the default Claude Code preset.
 
 **Assembly order (default):**
 
 ```
 1. Claude Code preset system prompt (built-in, always present)
 2. Org CLAUDE.md content (appended via systemPrompt.append, if file exists)
-3. User CLAUDE.md content (loaded by SDK/CLI from cwd, standard Claude Code discovery)
+3. Dynamic persona (appended via systemPrompt.append, if provided in request)
+4. User CLAUDE.md content (loaded by SDK/CLI from cwd, standard Claude Code discovery)
 ```
 
-**Full override mode:** Set `SYSTEM_PROMPT_OVERRIDE` to completely replace the Claude Code preset + org CLAUDE.md with a custom system prompt string. Step 3 (user CLAUDE.md) still loads on top. This is useful when you want full control over the system prompt without inheriting Claude Code's built-in instructions. Note: overriding removes the built-in tool usage guidelines, safety rules, and formatting instructions — ensure your custom prompt covers these if needed.
+**Full override mode:** Set `SYSTEM_PROMPT_OVERRIDE` to completely replace the Claude Code preset + org CLAUDE.md with a custom system prompt string. Dynamic persona and user CLAUDE.md still load on top. This is useful when you want full control over the system prompt without inheriting Claude Code's built-in instructions. Note: overriding removes the built-in tool usage guidelines, safety rules, and formatting instructions — ensure your custom prompt covers these if needed.
 
 **Example user persona** (`/data/memory/CLAUDE.md`):
 
@@ -160,14 +167,15 @@ User storage (per-user, read/write):
 
 #### Persona loading order
 
-PicoClaw uses a **two-tier persona** model. Both files are optional, but at least the user persona is recommended:
+PicoClaw uses a **three-tier persona** model. All tiers are optional, but at least the user persona is recommended:
 
-| Tier | Path | Mechanism | Purpose |
+| Tier | Source | Mechanism | Purpose |
 |---|---|---|---|
 | Org | `$ORG_DIR/CLAUDE.md` | `loadOrgClaudeMd()` → `systemPrompt.append` | Organization-wide policies, shared rules |
+| Dynamic | `persona` field in API request | Appended to `systemPrompt.append` at runtime | Per-request context (user ID, environment, preferences) |
 | User | `/data/memory/CLAUDE.md` | SDK auto-discovery via `cwd` + `settingSources: ['project', 'user']` | Agent identity, user-specific instructions |
 
-The effective system prompt is assembled as: **Claude Code preset** → **org CLAUDE.md** (appended) → **user CLAUDE.md** (loaded by CLI). This mirrors NanoClaw's global + per-group persona stacking, adapted for PicoClaw's single-user model.
+The effective system prompt is assembled as: **Claude Code preset** → **org CLAUDE.md** (appended) → **dynamic persona** (appended, per-request) → **user CLAUDE.md** (loaded by CLI). This mirrors NanoClaw's global + per-group persona stacking, adapted for PicoClaw's single-user model with per-request dynamic injection.
 
 For multi-user deployments, mount the org directory from shared storage as read-only. The user persona at `/data/memory/CLAUDE.md` can be customized per user.
 
@@ -416,6 +424,7 @@ Request body:
 | `max_thinking_tokens` | number | No | Max thinking tokens when thinking is enabled (default: `10000`) |
 | `show_tool_use` | boolean | No | Stream tool invocation events (default: `false`) |
 | `mcp_servers` | object | No | Per-request MCP servers (see Dynamic MCP Servers below) |
+| `persona` | string | No | Dynamic persona (system prompt) injected after org persona, before user persona |
 
 Non-streaming response:
 

@@ -141,22 +141,28 @@ The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
 
 ### Persona and system prompt
 
-PicoClaw uses a **two-tier CLAUDE.md** model for the agent's persona and system prompt,
+PicoClaw uses a **three-tier persona** model for the agent's system prompt,
 implemented in `src/agent-engine.ts`:
 
-| Tier | File | Code mechanism | Purpose |
+| Tier | Source | Code mechanism | Purpose |
 |---|---|---|---|
 | Org | `$ORG_DIR/CLAUDE.md` | `loadOrgClaudeMd()` → `systemPrompt: { preset: 'claude_code', append }` | Organization-wide policies, shared rules |
+| Dynamic | `persona` field in API request | Appended to `systemPrompt.append` at runtime | Per-request context (user ID, environment, preferences) |
 | User | `/data/memory/CLAUDE.md` | `cwd: MEMORY_DIR` + `settingSources: ['project', 'user']` → SDK auto-discovers | Agent identity, capabilities, user-specific rules |
 
 Assembly order (default): **Claude Code preset** → **org CLAUDE.md** (appended, if `ORG_DIR` is set) →
-**user CLAUDE.md** (loaded by CLI from `cwd`). Both files are optional. All `/data/*` volumes
+**dynamic persona** (appended, if `persona` field provided in request) →
+**user CLAUDE.md** (loaded by CLI from `cwd`). All files/fields are optional. All `/data/*` volumes
 can be mounted as empty directories — the container starts and functions without a persona file.
 
+The dynamic persona is passed via `POST /chat` or `POST /task/trigger` request bodies. It is
+not persisted — callers must pass it on every request. See `docs/API_INTEGRATION_GUIDE.md`
+for usage examples.
+
 **System prompt override:** Set `SYSTEM_PROMPT_OVERRIDE` env var to completely replace the
-Claude Code preset + org CLAUDE.md with a custom system prompt. The user CLAUDE.md
-(from `cwd`) is still loaded on top. When unset (default), the standard two-tier append
-model is used.
+Claude Code preset + org CLAUDE.md with a custom system prompt. Dynamic persona and user
+CLAUDE.md (from `cwd`) are still loaded on top. When unset (default), the standard
+three-tier append model is used.
 
 Key implementation details:
 
