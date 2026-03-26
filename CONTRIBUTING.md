@@ -40,13 +40,14 @@ User skills can be hot-reloaded via `POST /admin/reload-skills` without restarti
 
 ## Persona (CLAUDE.md)
 
-PicoClaw uses a **two-tier persona** model:
+PicoClaw uses a **three-tier persona** model:
 
-| Tier | File | Purpose |
-|------|------|---------|
+| Tier | Source | Purpose |
+|------|--------|---------|
 | Org | `$ORG_DIR/CLAUDE.md` | Organization-wide policies (optional, read-only) |
+| Dynamic | `persona` field in API request | Per-request context (user ID, environment, preferences) |
 | User | `/data/memory/CLAUDE.md` | Agent identity and user-specific rules (recommended) |
 
-Both files are optional. Persona changes are not source code changes — they are mounted at runtime.
+All tiers are optional. Persona changes are not source code changes — they are mounted or passed at runtime.
 
 See `docs/SKILLS_AND_PERSONA_GUIDE.md` for authoring instructions.

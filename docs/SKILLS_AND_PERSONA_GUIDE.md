@@ -35,7 +35,7 @@ The effective system prompt is assembled in this order:
 
 Both files are optional. If `ORG_DIR` is not set or the file does not exist, no org overlay is applied. If neither persona exists, the agent runs with the default Claude Code system prompt.
 
-This two-tier design mirrors NanoClaw's global + per-group CLAUDE.md pattern, adapted for PicoClaw's single-user model.
+This three-tier design mirrors NanoClaw's global + per-group CLAUDE.md pattern, adapted for PicoClaw's single-user model with per-request dynamic injection.
 
 > **Deprecation note:** The previous convention of placing the org persona at `/data/memory/global/CLAUDE.md` is deprecated and no longer loaded. Use `$ORG_DIR/CLAUDE.md` with the `ORG_DIR` environment variable instead.
 

@@ -184,7 +184,7 @@ On every HTTP response, the local database (`/tmp/messages.db`) is synced to the
 
 ## Persona & System Prompt
 
-PicoClaw assembles the agent's system prompt from a **two-tier CLAUDE.md** model:
+PicoClaw assembles the agent's system prompt from a **three-tier persona** model:
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -193,7 +193,10 @@ PicoClaw assembles the agent's system prompt from a **two-tier CLAUDE.md** model
 │ Layer 2: Org Persona (appended)             │  $ORG_DIR/CLAUDE.md
 │   Organization-wide policies, shared rules  │  (read-only, optional)
 ├─────────────────────────────────────────────┤
-│ Layer 3: User Persona (SDK auto-discovery)  │  /data/memory/CLAUDE.md
+│ Layer 3: Dynamic Persona (appended)         │  `persona` field in API request
+│   Per-request context, user ID, environment │  (optional, not persisted)
+├─────────────────────────────────────────────┤
+│ Layer 4: User Persona (SDK auto-discovery)  │  /data/memory/CLAUDE.md
 │   Agent identity, user-specific rules       │  (read/write)
 └─────────────────────────────────────────────┘
 ```
@@ -201,9 +204,10 @@ PicoClaw assembles the agent's system prompt from a **two-tier CLAUDE.md** model
 | Tier | Source | Mechanism |
 |---|---|---|
 | Org | `$ORG_DIR/CLAUDE.md` | `loadOrgClaudeMd()` → `systemPrompt.append` |
+| Dynamic | `persona` field in API request | Appended to `systemPrompt.append` at runtime |
 | User | `/data/memory/CLAUDE.md` | SDK auto-discovery via `cwd` + `settingSources` |
 
-Both tiers are optional. Set `SYSTEM_PROMPT_OVERRIDE` to fully replace layers 1 + 2 with a custom string (layer 3 still loads).
+All tiers are optional. Set `SYSTEM_PROMPT_OVERRIDE` to fully replace layers 1 + 2 with a custom string (layers 3 + 4 still load).
 
 ## Skills
 
