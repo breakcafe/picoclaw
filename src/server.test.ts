@@ -612,6 +612,165 @@ describe('http server', () => {
     expect(capturedInput.mcpServers).toBeUndefined();
   });
 
+  it('passes mcp_context to engine when provided', async () => {
+    let capturedInput: any;
+    const captureEngine: AgentRunner = {
+      async run(input) {
+        capturedInput = input;
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-ctx',
+          lastAssistantUuid: 'uuid-ctx',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        message: 'test context',
+        mcp_context: {
+          finance: {
+            headers: { Authorization: 'Bearer user-tok', 'X-Tenant': 'abc' },
+          },
+          data: {
+            env: { USER_TOKEN: 'secret' },
+            args: ['--user=u1'],
+          },
+        },
+      });
+
+    expect(capturedInput.mcpContext).toEqual({
+      finance: {
+        headers: { Authorization: 'Bearer user-tok', 'X-Tenant': 'abc' },
+      },
+      data: {
+        env: { USER_TOKEN: 'secret' },
+        args: ['--user=u1'],
+      },
+    });
+  });
+
+  it('does not pass mcpContext when mcp_context is omitted', async () => {
+    let capturedInput: any;
+    const captureEngine: AgentRunner = {
+      async run(input) {
+        capturedInput = input;
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-noctx',
+          lastAssistantUuid: 'uuid-noctx',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'no context' });
+
+    expect(capturedInput.mcpContext).toBeUndefined();
+  });
+
+  it('returns warnings for invalid mcp_context entries', async () => {
+    const captureEngine: AgentRunner = {
+      async run() {
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-ctxwarn',
+          lastAssistantUuid: 'uuid-ctxwarn',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    const response = await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        message: 'test ctx warnings',
+        mcp_context: {
+          bad: {},
+          picoclaw: { headers: { 'X-Bad': 'val' } },
+        },
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.warnings).toBeDefined();
+    expect(response.body.warnings).toContainEqual(
+      expect.stringContaining('picoclaw'),
+    );
+    expect(response.body.warnings).toContainEqual(
+      expect.stringContaining('bad'),
+    );
+  });
+
+  it('surfaces contextWarnings from engine in response', async () => {
+    const warnEngine: AgentRunner = {
+      async run() {
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-engwarn',
+          lastAssistantUuid: 'uuid-engwarn',
+          contextWarnings: [
+            "mcp_context: 'missing' does not match any configured MCP server and was ignored",
+          ],
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const warnApp = serverModule.createServer(warnEngine);
+
+    const response = await request(warnApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({ message: 'test engine warnings' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.warnings).toBeDefined();
+    expect(response.body.warnings).toContainEqual(
+      expect.stringContaining('missing'),
+    );
+  });
+
+  it('omits warnings when mcp_context is valid and no engine warnings', async () => {
+    const captureEngine: AgentRunner = {
+      async run() {
+        return {
+          status: 'success',
+          result: 'ok',
+          newSessionId: 'session-ctxok',
+          lastAssistantUuid: 'uuid-ctxok',
+        };
+      },
+    };
+    const serverModule = await import('./server.js');
+    const captureApp = serverModule.createServer(captureEngine);
+
+    const response = await request(captureApp)
+      .post('/chat')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        message: 'test valid ctx',
+        mcp_context: {
+          finance: { headers: { Authorization: 'Bearer tok' } },
+        },
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).not.toHaveProperty('warnings');
+  });
+
   it('accepts stop request and invokes shutdown callback', async () => {
     const response = await request(app)
       .post('/control/stop')

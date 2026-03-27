@@ -165,6 +165,7 @@ All except `/health` require `Authorization: Bearer <API_TOKEN>`.
 | `show_tool_use` | boolean | `false` | Stream tool invocation events |
 | `model` | string | _(omit recommended)_ | Model override (full ID or short name). Omit to follow CLI default — avoids locking to a specific version |
 | `mcp_servers` | object | — | Per-request MCP servers (see §8) |
+| `mcp_context` | object | — | Per-request auth context for MCP servers (see §8) |
 
 **Not yet exposed:** `max_turns` (turn limit), `max_budget_usd` (budget cap). These exist in the Claude Agent SDK but PicoClaw does not pass them through.
 
@@ -264,6 +265,20 @@ Merge priority (later overrides earlier same-name server): org-managed → built
 | `http` (default) | `url` | `headers` |
 | `sse` | `url` | `headers` |
 | `stdio` | `command` | `args`, `env` |
+
+### Per-request MCP context (`mcp_context`)
+
+`mcp_context` injects per-request auth headers or env vars into existing MCP servers
+without re-defining their full config. Applied after the three-way server merge.
+
+| Field | Applies to | Behavior |
+|---|---|---|
+| `headers` | http/sse | Merged with static headers (context overrides same-key) |
+| `env` | stdio | Merged with static env (context overrides same-key) |
+| `args` | stdio | Appended to existing args |
+
+Warnings are returned for: reserved names (`picoclaw`), non-existent server names,
+type mismatches (e.g., `headers` on stdio). Auth-related headers are scrubbed from logs.
 
 ### Built-in MCP tools
 
@@ -416,6 +431,7 @@ How each setting can be configured:
 | Thinking token cap | — | `max_thinking_tokens` | — |
 | Tool use display | — | `show_tool_use` | — |
 | Dynamic MCP servers | — | `mcp_servers` | — |
+| Dynamic MCP context | — | `mcp_context` | — |
 | Org MCP servers | — | — | `$ORG_DIR/managed-mcp.json` |
 | System prompt override | `SYSTEM_PROMPT_OVERRIDE` | — | — |
 | Org persona | — | — | `$ORG_DIR/CLAUDE.md` |

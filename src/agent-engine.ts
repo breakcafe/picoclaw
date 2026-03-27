@@ -38,6 +38,19 @@ export type McpServerConfig =
   | { type: 'sse'; url: string; headers?: Record<string, string> }
   | { type: 'http'; url: string; headers?: Record<string, string> };
 
+/**
+ * Per-request context overlay for an MCP server.
+ * Applied after the three-way merge to inject dynamic auth headers or env vars.
+ */
+export interface McpServerContext {
+  /** HTTP/SSE headers — merged into server config (context overrides static). */
+  headers?: Record<string, string>;
+  /** stdio env vars — merged into server config (context overrides static). */
+  env?: Record<string, string>;
+  /** stdio args — appended to existing args array. */
+  args?: string[];
+}
+
 export interface AgentRunInput {
   prompt: string;
   conversationId: string;
@@ -52,6 +65,8 @@ export interface AgentRunInput {
   model?: string;
   /** Per-request MCP servers merged with the built-in picoclaw server. */
   mcpServers?: Record<string, McpServerConfig>;
+  /** Per-request auth/env context overlaid onto MCP server configs. */
+  mcpContext?: Record<string, McpServerContext>;
 }
 
 export interface AgentRunOutput {
@@ -62,6 +77,8 @@ export interface AgentRunOutput {
   model?: string;
   error?: string;
   usage?: AgentUsage;
+  /** Warnings from MCP context merge (server not found, type mismatches). */
+  contextWarnings?: string[];
 }
 
 export interface StreamCallbacks {
@@ -151,6 +168,120 @@ const SECRET_ENV_VARS = [
   'CLAUDE_CODE_OAUTH_TOKEN',
   'API_TOKEN',
 ];
+
+const SENSITIVE_HEADER_PATTERNS = [
+  /^authorization$/i,
+  /^x-api-key$/i,
+  /^x-auth-token$/i,
+  /^cookie$/i,
+  /^proxy-authorization$/i,
+];
+
+function isSensitiveHeader(name: string): boolean {
+  return SENSITIVE_HEADER_PATTERNS.some((pattern) => pattern.test(name));
+}
+
+function scrubHeaders(headers: Record<string, string>): Record<string, string> {
+  const scrubbed: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    scrubbed[key] = isSensitiveHeader(key) ? '[REDACTED]' : value;
+  }
+  return scrubbed;
+}
+
+/**
+ * Apply per-request MCP context overlays onto merged server configs.
+ * Returns the updated configs and any warnings produced during the merge.
+ */
+function applyMcpContext(
+  servers: Record<string, McpServerConfig>,
+  context: Record<string, McpServerContext>,
+): { merged: Record<string, McpServerConfig>; warnings: string[] } {
+  const warnings: string[] = [];
+  const merged: Record<string, McpServerConfig> = {};
+  for (const [name, cfg] of Object.entries(servers)) {
+    merged[name] = { ...cfg };
+  }
+
+  for (const [name, ctx] of Object.entries(context)) {
+    if (name === 'picoclaw') {
+      warnings.push(
+        `mcp_context: '${name}' targets the built-in picoclaw server and was ignored`,
+      );
+      continue;
+    }
+
+    const server = merged[name];
+    if (!server) {
+      warnings.push(
+        `mcp_context: '${name}' does not match any configured MCP server and was ignored`,
+      );
+      continue;
+    }
+
+    const isStdio = 'command' in server;
+
+    if (ctx.headers) {
+      if (!isStdio) {
+        const httpServer = server as {
+          type: 'http' | 'sse';
+          url: string;
+          headers?: Record<string, string>;
+        };
+        merged[name] = {
+          ...httpServer,
+          headers: { ...httpServer.headers, ...ctx.headers },
+        };
+      } else {
+        warnings.push(
+          `mcp_context: '${name}' has headers but server is stdio — headers ignored`,
+        );
+      }
+    }
+
+    if (ctx.env) {
+      if (isStdio) {
+        const stdioServer = merged[name] as {
+          type?: 'stdio';
+          command: string;
+          args?: string[];
+          env?: Record<string, string>;
+        };
+        merged[name] = {
+          ...stdioServer,
+          env: { ...stdioServer.env, ...ctx.env },
+        };
+      } else {
+        const serverType = (server as { type?: string }).type || 'http';
+        warnings.push(
+          `mcp_context: '${name}' has env but server is ${serverType} — env ignored`,
+        );
+      }
+    }
+
+    if (ctx.args && ctx.args.length > 0) {
+      if (isStdio) {
+        const stdioServer = merged[name] as {
+          type?: 'stdio';
+          command: string;
+          args?: string[];
+          env?: Record<string, string>;
+        };
+        merged[name] = {
+          ...stdioServer,
+          args: [...(stdioServer.args || []), ...ctx.args],
+        };
+      } else {
+        const serverType = (server as { type?: string }).type || 'http';
+        warnings.push(
+          `mcp_context: '${name}' has args but server is ${serverType} — args ignored`,
+        );
+      }
+    }
+  }
+
+  return { merged, warnings };
+}
 
 function resolveMcpServerPath(): string {
   const overridePath =
@@ -391,6 +522,7 @@ export class AgentEngine implements AgentRunner {
     let lastResult: string | null = null;
     let lastStreamedLength = 0;
     let usage: AgentUsage | undefined;
+    let contextWarnings: string[] = [];
 
     try {
       const sdkEnv: Record<string, string | undefined> = {
@@ -431,7 +563,7 @@ export class AgentEngine implements AgentRunner {
           )
         : {};
 
-      const mergedMcpServers: Record<string, McpServerConfig> = {
+      let mergedMcpServers: Record<string, McpServerConfig> = {
         ...managedServers,
         picoclaw: {
           command: 'node',
@@ -445,6 +577,22 @@ export class AgentEngine implements AgentRunner {
         ...perRequestServers,
       };
 
+      // Apply per-request mcp_context overlays (after three-way merge).
+      if (input.mcpContext) {
+        const applied = applyMcpContext(mergedMcpServers, input.mcpContext);
+        mergedMcpServers = applied.merged;
+        contextWarnings = applied.warnings;
+        if (applied.warnings.length > 0) {
+          logger.warn(
+            {
+              conversationId: input.conversationId,
+              warnings: applied.warnings,
+            },
+            'MCP context merge produced warnings',
+          );
+        }
+      }
+
       logger.debug(
         {
           conversationId: input.conversationId,
@@ -457,6 +605,12 @@ export class AgentEngine implements AgentRunner {
                 : name in perRequestServers
                   ? 'per-request'
                   : 'org-managed',
+            ...('headers' in cfg && cfg.headers
+              ? { headers: scrubHeaders(cfg.headers) }
+              : {}),
+            hasContextOverlay: input.mcpContext
+              ? name in input.mcpContext
+              : false,
           })),
         },
         'MCP servers configured for request',
@@ -641,6 +795,7 @@ export class AgentEngine implements AgentRunner {
         lastAssistantUuid,
         model: actualModel,
         usage,
+        ...(contextWarnings.length > 0 && { contextWarnings }),
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -662,6 +817,7 @@ export class AgentEngine implements AgentRunner {
           model: actualModel,
           error: `Execution aborted after ${timeoutMs}ms. Use conversation_id to continue.`,
           usage,
+          ...(contextWarnings.length > 0 && { contextWarnings }),
         };
       }
 
@@ -677,6 +833,7 @@ export class AgentEngine implements AgentRunner {
         model: actualModel,
         error: errorMessage,
         usage,
+        ...(contextWarnings.length > 0 && { contextWarnings }),
       };
     } finally {
       clearTimeout(timeoutHandle);
