@@ -7,12 +7,12 @@ import {
   PreToolUseHookInput,
   query,
 } from '@anthropic-ai/claude-agent-sdk';
+import type { McpServerConfig as SdkMcpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 
 import {
   ASSISTANT_NAME,
   CLAUDE_FALLBACK_MODEL,
   CLAUDE_MODEL,
-  LOCAL_DB_PATH,
   MAX_EXECUTION_MS,
   MEMORY_DIR,
   ORG_DIR,
@@ -22,12 +22,15 @@ import {
 } from './config.js';
 import { logger } from './logger.js';
 import { getManagedMcpServers } from './managed-mcp.js';
+import { createPicoClawMcpServer } from './mcp-inprocess.js';
 import { createPerfTrace } from './perf.js';
 import { AgentUsage } from './types.js';
 
 /**
  * MCP server configuration for stdio, SSE, or HTTP transports.
- * Maps directly to the Claude Agent SDK McpServerConfig type.
+ * This type covers configs accepted via the public HTTP API (POST /chat mcp_servers).
+ * Internally, PicoClaw also uses `type: 'sdk'` for the built-in picoclaw server
+ * (via SdkMcpServerConfig from the SDK), but that is not exposed to callers.
  */
 export type McpServerConfig =
   | {
@@ -284,17 +287,6 @@ function applyMcpContext(
   return { merged, warnings };
 }
 
-function resolveMcpServerPath(): string {
-  const overridePath =
-    process.env.PICOCLAW_MCP_SERVER_PATH ||
-    process.env.NANOCLAW_MCP_SERVER_PATH;
-  if (overridePath) {
-    return overridePath;
-  }
-
-  return path.resolve(process.cwd(), 'dist/mcp-server.js');
-}
-
 function getSessionSummary(
   sessionId: string,
   transcriptPath: string,
@@ -470,9 +462,19 @@ function createSanitizeBashHook(): HookCallback {
   };
 }
 
+// --- Cached filesystem reads (invalidated on skill reload) ---
+
+let cachedOrgClaudeMd: string | undefined | null = null; // null = not loaded
+let cachedAdditionalDirs: string[] | null = null;
+
 function discoverAdditionalDirectories(): string[] {
+  if (cachedAdditionalDirs !== null) {
+    return cachedAdditionalDirs;
+  }
+
   if (!fs.existsSync(SKILLS_DIR)) {
-    return [];
+    cachedAdditionalDirs = [];
+    return cachedAdditionalDirs;
   }
 
   const discovered: string[] = [];
@@ -482,20 +484,37 @@ function discoverAdditionalDirectories(): string[] {
       discovered.push(fullPath);
     }
   }
+  cachedAdditionalDirs = discovered;
   return discovered;
 }
 
 function loadOrgClaudeMd(): string | undefined {
+  if (cachedOrgClaudeMd !== null) {
+    return cachedOrgClaudeMd || undefined;
+  }
+
   if (!ORG_DIR) {
+    cachedOrgClaudeMd = '';
     return undefined;
   }
 
   const orgClaudeMdPath = path.join(ORG_DIR, 'CLAUDE.md');
   if (!fs.existsSync(orgClaudeMdPath)) {
+    cachedOrgClaudeMd = '';
     return undefined;
   }
 
-  return fs.readFileSync(orgClaudeMdPath, 'utf-8');
+  cachedOrgClaudeMd = fs.readFileSync(orgClaudeMdPath, 'utf-8');
+  return cachedOrgClaudeMd;
+}
+
+/**
+ * Invalidate cached filesystem reads. Call after skill reload or
+ * config changes that affect org CLAUDE.md or skill directories.
+ */
+export function invalidateAgentCache(): void {
+  cachedOrgClaudeMd = null;
+  cachedAdditionalDirs = null;
 }
 
 export class AgentEngine implements AgentRunner {
@@ -552,15 +571,6 @@ export class AgentEngine implements AgentRunner {
         count: additionalDirectories.length,
       });
 
-      const mcpServerPath = resolveMcpServerPath();
-      perf.mark('resolveMcpServerPath');
-
-      if (!fs.existsSync(mcpServerPath)) {
-        throw new Error(
-          `MCP server not found at ${mcpServerPath}. Run npm run build first.`,
-        );
-      }
-
       const prompt = input.isScheduledTask
         ? `[SCHEDULED TASK]\n${input.prompt}`
         : input.prompt;
@@ -573,6 +583,9 @@ export class AgentEngine implements AgentRunner {
       // Managed servers are loaded programmatically (not via CLI auto-discovery)
       // to avoid the enterprise MCP config exclusion that prevents --mcp-config
       // usage when /etc/claude-code/managed-mcp.json exists.
+      //
+      // The built-in picoclaw server uses `type: 'sdk'` (in-process) to eliminate
+      // the stdio subprocess spawn overhead (~100ms per request).
       const managedServers = getManagedMcpServers();
       const perRequestServers = input.mcpServers
         ? Object.fromEntries(
@@ -582,17 +595,12 @@ export class AgentEngine implements AgentRunner {
           )
         : {};
 
-      let mergedMcpServers: Record<string, McpServerConfig> = {
+      const picoClawMcp = createPicoClawMcpServer(input.conversationId, true);
+      perf.mark('createInprocessMcp');
+
+      let mergedMcpServers: Record<string, SdkMcpServerConfig> = {
         ...managedServers,
-        picoclaw: {
-          command: 'node',
-          args: [mcpServerPath],
-          env: {
-            PICOCLAW_CONVERSATION_ID: input.conversationId,
-            PICOCLAW_DB_PATH: LOCAL_DB_PATH,
-            PICOCLAW_IS_MAIN: '1',
-          },
-        },
+        picoclaw: picoClawMcp,
         ...perRequestServers,
       };
       perf.mark('mergeMcpServers', {
@@ -602,9 +610,17 @@ export class AgentEngine implements AgentRunner {
       });
 
       // Apply per-request mcp_context overlays (after three-way merge).
+      // Context overlays only apply to serializable servers (stdio/http/sse),
+      // not to the in-process picoclaw server.
       if (input.mcpContext) {
-        const applied = applyMcpContext(mergedMcpServers, input.mcpContext);
-        mergedMcpServers = applied.merged;
+        const applied = applyMcpContext(
+          mergedMcpServers as Record<string, McpServerConfig>,
+          input.mcpContext,
+        );
+        mergedMcpServers = {
+          ...mergedMcpServers,
+          ...applied.merged,
+        };
         contextWarnings = applied.warnings;
         perf.mark('applyMcpContext', {
           overlayCount: Object.keys(input.mcpContext).length,
@@ -623,22 +639,36 @@ export class AgentEngine implements AgentRunner {
       logger.debug(
         {
           conversationId: input.conversationId,
-          mcpServers: Object.entries(mergedMcpServers).map(([name, cfg]) => ({
-            name,
-            type: ('command' in cfg ? 'stdio' : cfg.type) || 'http',
-            source:
-              name === 'picoclaw'
-                ? 'built-in'
-                : name in perRequestServers
-                  ? 'per-request'
-                  : 'org-managed',
-            ...('headers' in cfg && cfg.headers
-              ? { headers: scrubHeaders(cfg.headers) }
-              : {}),
-            hasContextOverlay: input.mcpContext
-              ? name in input.mcpContext
-              : false,
-          })),
+          mcpServers: Object.entries(mergedMcpServers).map(([name, cfg]) => {
+            const typeName =
+              'type' in cfg && cfg.type === 'sdk'
+                ? 'sdk'
+                : 'command' in cfg
+                  ? 'stdio'
+                  : ('type' in cfg && cfg.type) || 'http';
+            return {
+              name,
+              type: typeName,
+              source:
+                name === 'picoclaw'
+                  ? 'built-in (in-process)'
+                  : name in perRequestServers
+                    ? 'per-request'
+                    : 'org-managed',
+              ...('headers' in cfg &&
+              cfg.headers &&
+              typeof cfg.headers === 'object'
+                ? {
+                    headers: scrubHeaders(
+                      cfg.headers as Record<string, string>,
+                    ),
+                  }
+                : {}),
+              hasContextOverlay: input.mcpContext
+                ? name in input.mcpContext
+                : false,
+            };
+          }),
         },
         'MCP servers configured for request',
       );
