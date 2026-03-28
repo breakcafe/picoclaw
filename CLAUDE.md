@@ -70,7 +70,9 @@ src/routes/control.ts → POST /control/stop (graceful shutdown)
 src/conversation-lock.ts → per-conversation mutex (prevents concurrent agent execution)
 src/perf.ts           → PerfTrace class for structured debug-level performance logging
 src/agent-engine.ts   → Claude Agent SDK query() wrapper, hooks, timeout via AbortController
-src/mcp-server.ts     → MCP tools (send_message, schedule_task, etc.) backed by SQLite
+src/mcp-inprocess.ts  → In-process MCP server (type: 'sdk') — built-in picoclaw tools, no subprocess
+src/mcp-server.ts     → Stdio MCP server (legacy) — same tools, runs as standalone subprocess
+src/task-utils.ts     → Shared task scheduling utilities (computeNextRun, validateTaskOwnership)
 src/db.ts             → SQLite schema, CRUD operations, dual-path sync
 src/skills.ts         → skill directory sync + .claude/settings.json bootstrap
 src/config.ts         → all env var defaults
@@ -120,9 +122,10 @@ The two-pass skill sync (entrypoint.sh + index.ts) is intentionally redundant: e
 - `scheduled_tasks` — id, conversation_id (FK), prompt, schedule_type/value, context_mode, next_run, status
 - `task_run_logs` — task_id (FK), run_at, duration_ms, status, result, error
 
-### MCP tools (defined in `src/mcp-server.ts`)
+### MCP tools (defined in `src/mcp-inprocess.ts`)
 
-The MCP server runs as a stdio subprocess. Tools share the SQLite DB:
+The built-in picoclaw MCP server runs in-process (`type: 'sdk'`), sharing the
+main PicoClaw database connection via `db.ts` imports. Tools:
 
 - `send_message` — queue message for HTTP caller during agent execution
 - `schedule_task` — create cron/interval/once task
@@ -333,9 +336,10 @@ Health probe (`GET /health`) logs are also at debug level to avoid log noise.
   it to `/etc/claude-code/`. Never place files in `/etc/claude-code/`.
 - **ESM `.js` in imports**: TypeScript compiles `.ts` → `.js` but import paths must already
   say `.js`. Forgetting this causes runtime `ERR_MODULE_NOT_FOUND`.
-- **MCP server is a subprocess**: `src/mcp-server.ts` runs as a stdio child process spawned
-  by the SDK, not as part of the main Express server. It shares the SQLite DB via
-  `PICOCLAW_DB_PATH` env var. You cannot import it directly.
+- **Built-in MCP is in-process**: `src/mcp-inprocess.ts` runs in the PicoClaw process
+  (not as a subprocess) using `createSdkMcpServer()` with `type: 'sdk'`. It directly
+  imports `db.ts` functions — no separate SQLite connection. Set
+  `PICOCLAW_MCP_SERVER_PATH=dist/mcp-server.js` to fall back to stdio subprocess mode.
 - **Dual-DB sync**: Runtime operates on `/tmp/messages.db` (fast local). Every HTTP response
   triggers `syncDatabaseToVolume()` which does `wal_checkpoint(TRUNCATE)` + file copy to
   `STORE_DIR`. Never write directly to the volume path.

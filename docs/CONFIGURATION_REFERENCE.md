@@ -45,14 +45,23 @@ Quick-reference for all configuration surfaces. For detailed explanations, see t
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages |
 | `TASK_LOG_RETENTION` | `100` | Max run logs per task |
 
-### MCP Subprocess (set by agent-engine, not user-facing)
+### Performance
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PICOCLAW_DB_PATH` | `/tmp/messages.db` | Shared SQLite path for MCP tools |
-| `PICOCLAW_CONVERSATION_ID` | per-request | Current conversation scope |
-| `PICOCLAW_IS_MAIN` | `1` | Enables cross-conversation task management |
-| `PICOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable |
+| `NODE_COMPILE_CACHE` | `/tmp/node-compile-cache` | V8 bytecode cache directory. Reduces CLI subprocess parse time by ~140ms once warm (Node.js 22+). Set by `entrypoint.sh`; override to disable or relocate. |
+
+### MCP Subprocess (legacy stdio mode, not used by default)
+
+The built-in picoclaw MCP server now runs in-process (`type: 'sdk'`). These env vars
+are only relevant when using the legacy stdio mode via `PICOCLAW_MCP_SERVER_PATH`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PICOCLAW_DB_PATH` | `/tmp/messages.db` | Shared SQLite path for MCP tools (stdio mode) |
+| `PICOCLAW_CONVERSATION_ID` | per-request | Current conversation scope (stdio mode) |
+| `PICOCLAW_IS_MAIN` | `1` | Enables cross-conversation task management (stdio mode) |
+| `PICOCLAW_MCP_SERVER_PATH` | _(unset)_ | When set, forces stdio subprocess mode for the built-in MCP server |
 
 ### Removed
 
