@@ -22,6 +22,7 @@ import {
 } from './config.js';
 import { logger } from './logger.js';
 import { getManagedMcpServers } from './managed-mcp.js';
+import { createPerfTrace } from './perf.js';
 import { AgentUsage } from './types.js';
 
 /**
@@ -504,6 +505,11 @@ export class AgentEngine implements AgentRunner {
       | StreamCallbacks
       | ((text: string) => Promise<void> | void),
   ): Promise<AgentRunOutput> {
+    const perf = createPerfTrace('agentRun', {
+      conversationId: input.conversationId,
+      hasResume: Boolean(input.sessionId),
+      isScheduledTask: input.isScheduledTask === true,
+    });
     const callbacks: StreamCallbacks =
       typeof callbacksOrOnChunk === 'function'
         ? { onChunk: callbacksOrOnChunk }
@@ -523,6 +529,8 @@ export class AgentEngine implements AgentRunner {
     let lastStreamedLength = 0;
     let usage: AgentUsage | undefined;
     let contextWarnings: string[] = [];
+    let sawFirstTextDelta = false;
+    let sawFirstThinkingDelta = false;
 
     try {
       const sdkEnv: Record<string, string | undefined> = {
@@ -532,10 +540,20 @@ export class AgentEngine implements AgentRunner {
       // PicoClaw itself is launched inside a Claude Code session
       // (e.g. during local development with `npm run dev`).
       delete sdkEnv.CLAUDECODE;
+      perf.mark('prepareSdkEnv');
 
       const orgClaudeMd = loadOrgClaudeMd();
+      perf.mark('loadOrgClaudeMd', {
+        bytes: orgClaudeMd ? orgClaudeMd.length : 0,
+      });
+
       const additionalDirectories = discoverAdditionalDirectories();
+      perf.mark('discoverAdditionalDirs', {
+        count: additionalDirectories.length,
+      });
+
       const mcpServerPath = resolveMcpServerPath();
+      perf.mark('resolveMcpServerPath');
 
       if (!fs.existsSync(mcpServerPath)) {
         throw new Error(
@@ -549,6 +567,7 @@ export class AgentEngine implements AgentRunner {
       const promptStream = new MessageStream();
       promptStream.push(prompt);
       promptStream.end();
+      perf.mark('preparePromptStream', { promptChars: prompt.length });
 
       // Three-way MCP server merge: org-managed → built-in picoclaw → per-request.
       // Managed servers are loaded programmatically (not via CLI auto-discovery)
@@ -576,12 +595,20 @@ export class AgentEngine implements AgentRunner {
         },
         ...perRequestServers,
       };
+      perf.mark('mergeMcpServers', {
+        managedCount: Object.keys(managedServers).length,
+        perRequestCount: Object.keys(perRequestServers).length,
+        totalCount: Object.keys(mergedMcpServers).length,
+      });
 
       // Apply per-request mcp_context overlays (after three-way merge).
       if (input.mcpContext) {
         const applied = applyMcpContext(mergedMcpServers, input.mcpContext);
         mergedMcpServers = applied.merged;
         contextWarnings = applied.warnings;
+        perf.mark('applyMcpContext', {
+          overlayCount: Object.keys(input.mcpContext).length,
+        });
         if (applied.warnings.length > 0) {
           logger.warn(
             {
@@ -638,9 +665,16 @@ export class AgentEngine implements AgentRunner {
         'NotebookEdit',
         ...Object.keys(mergedMcpServers).map((name) => `mcp__${name}__*`),
       ];
+      perf.mark('buildAllowedTools', {
+        count: allowedTools.length,
+      });
 
       const model = input.model || CLAUDE_MODEL || undefined;
       const fallbackModel = CLAUDE_FALLBACK_MODEL || undefined;
+      perf.mark('startSdkQuery', {
+        model: model || '(default)',
+        fallbackModel: fallbackModel || '(none)',
+      });
 
       for await (const message of query({
         prompt: promptStream,
@@ -698,6 +732,15 @@ export class AgentEngine implements AgentRunner {
         if (message.type === 'system' && message.subtype === 'init') {
           newSessionId = message.session_id;
           actualModel = message.model;
+          perf.mark('sdkInit', {
+            model: message.model,
+            toolCount: Array.isArray(message.tools)
+              ? message.tools.length
+              : undefined,
+            mcpServerCount: Array.isArray(message.mcp_servers)
+              ? message.mcp_servers.length
+              : undefined,
+          });
           logger.debug(
             {
               conversationId: input.conversationId,
@@ -716,6 +759,10 @@ export class AgentEngine implements AgentRunner {
         ) {
           const delta = message.event.delta;
           if (delta?.type === 'text_delta' && delta.text && onChunk) {
+            if (!sawFirstTextDelta) {
+              sawFirstTextDelta = true;
+              perf.mark('firstTextDelta');
+            }
             lastStreamedLength += delta.text.length;
             await onChunk(delta.text);
           }
@@ -724,6 +771,10 @@ export class AgentEngine implements AgentRunner {
             delta.thinking &&
             onThinking
           ) {
+            if (!sawFirstThinkingDelta) {
+              sawFirstThinkingDelta = true;
+              perf.mark('firstThinkingDelta');
+            }
             await onThinking(delta.thinking);
           }
         }
@@ -748,6 +799,10 @@ export class AgentEngine implements AgentRunner {
         }
 
         if (message.type === 'result') {
+          perf.mark('sdkResult', {
+            numTurns: message.num_turns ?? undefined,
+            durationApiMs: message.duration_api_ms ?? undefined,
+          });
           const text =
             typeof message.result === 'string' ? message.result : null;
           if (text) {
@@ -787,6 +842,11 @@ export class AgentEngine implements AgentRunner {
         },
         'Agent execution completed',
       );
+      perf.flush('[PERF:AGENT] execution complete', {
+        status: 'success',
+        model: actualModel || '(unknown)',
+        mcpServerCount: Object.keys(mergedMcpServers).length,
+      });
 
       return {
         status: 'success',
@@ -809,6 +869,10 @@ export class AgentEngine implements AgentRunner {
           },
           'Agent execution timed out',
         );
+        perf.flush('[PERF:AGENT] execution timed out', {
+          status: 'timeout',
+          timeoutMs,
+        });
         return {
           status: 'timeout',
           result: lastResult,
@@ -825,6 +889,10 @@ export class AgentEngine implements AgentRunner {
         { conversationId: input.conversationId, err },
         'Agent execution failed',
       );
+      perf.flush('[PERF:AGENT] execution failed', {
+        status: 'error',
+        error: errorMessage,
+      });
       return {
         status: 'error',
         result: lastResult,

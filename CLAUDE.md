@@ -68,6 +68,7 @@ src/routes/task.ts    → task CRUD + POST /task/trigger + POST /task/check
 src/routes/admin.ts   → POST /admin/reload-skills, GET /admin/skills
 src/routes/control.ts → POST /control/stop (graceful shutdown)
 src/conversation-lock.ts → per-conversation mutex (prevents concurrent agent execution)
+src/perf.ts           → PerfTrace class for structured debug-level performance logging
 src/agent-engine.ts   → Claude Agent SDK query() wrapper, hooks, timeout via AbortController
 src/mcp-server.ts     → MCP tools (send_message, schedule_task, etc.) backed by SQLite
 src/db.ts             → SQLite schema, CRUD operations, dual-path sync
@@ -307,6 +308,19 @@ Warning cases:
 | `SDK_LOG_LEVEL` | `off` | `off` or `debug` — pipes SDK stderr through pino at debug level |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |
 | `TASK_LOG_RETENTION` | `100` | Max task run logs kept per task (oldest pruned on sync) |
+
+## Performance Debug Logging
+
+Set `LOG_LEVEL=debug` to enable structured performance traces. Three scopes:
+
+| Tag | Source file | What it measures |
+|---|---|---|
+| `[PERF:BOOT]` | `src/index.ts` | Startup sequence: dirs, DB init, skills sync, MCP load |
+| `[PERF:AGENT]` | `src/agent-engine.ts` | Per-request agent lifecycle: pre-query setup, sdkInit, firstTextDelta, sdkResult |
+| `[PERF:DB]` | `src/db.ts` | Database sync: cleanup, WAL checkpoint, file copy |
+
+Each trace is a single JSON log entry with `scope`, `totalMs`, and a `steps` array.
+Health probe (`GET /health`) logs are also at debug level to avoid log noise.
 
 ## Common Gotchas
 
