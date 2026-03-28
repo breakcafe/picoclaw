@@ -13,6 +13,7 @@ import {
   ASSISTANT_NAME,
   CLAUDE_FALLBACK_MODEL,
   CLAUDE_MODEL,
+  LOCAL_DB_PATH,
   MAX_EXECUTION_MS,
   MEMORY_DIR,
   ORG_DIR,
@@ -285,6 +286,21 @@ function applyMcpContext(
   }
 
   return { merged, warnings };
+}
+
+/**
+ * Resolve the path to the stdio MCP server executable.
+ * Used when PICOCLAW_MCP_SERVER_PATH is set (stdio fallback mode).
+ */
+function resolveMcpServerPath(): string {
+  const overridePath =
+    process.env.PICOCLAW_MCP_SERVER_PATH ||
+    process.env.NANOCLAW_MCP_SERVER_PATH;
+  if (overridePath) {
+    return overridePath;
+  }
+
+  return path.resolve(process.cwd(), 'dist/mcp-server.js');
 }
 
 function getSessionSummary(
@@ -595,12 +611,37 @@ export class AgentEngine implements AgentRunner {
           )
         : {};
 
-      const picoClawMcp = createPicoClawMcpServer(input.conversationId, true);
-      perf.mark('createInprocessMcp');
+      // Use in-process MCP by default. Fall back to stdio subprocess when
+      // PICOCLAW_MCP_SERVER_PATH is explicitly set (backward compatibility,
+      // Docker scenarios, or A/B performance testing).
+      const useStdioMcp = Boolean(process.env.PICOCLAW_MCP_SERVER_PATH);
+      let picoClawMcpConfig: SdkMcpServerConfig;
+
+      if (useStdioMcp) {
+        const mcpServerPath = resolveMcpServerPath();
+        if (!fs.existsSync(mcpServerPath)) {
+          throw new Error(
+            `MCP server not found at ${mcpServerPath}. Run npm run build first.`,
+          );
+        }
+        picoClawMcpConfig = {
+          command: 'node',
+          args: [mcpServerPath],
+          env: {
+            PICOCLAW_CONVERSATION_ID: input.conversationId,
+            PICOCLAW_DB_PATH: LOCAL_DB_PATH,
+            PICOCLAW_IS_MAIN: '1',
+          },
+        };
+        perf.mark('createStdioMcp');
+      } else {
+        picoClawMcpConfig = createPicoClawMcpServer(input.conversationId, true);
+        perf.mark('createInprocessMcp');
+      }
 
       let mergedMcpServers: Record<string, SdkMcpServerConfig> = {
         ...managedServers,
-        picoclaw: picoClawMcp,
+        picoclaw: picoClawMcpConfig,
         ...perRequestServers,
       };
       perf.mark('mergeMcpServers', {

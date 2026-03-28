@@ -338,8 +338,8 @@ Health probe (`GET /health`) logs are also at debug level to avoid log noise.
   say `.js`. Forgetting this causes runtime `ERR_MODULE_NOT_FOUND`.
 - **Built-in MCP is in-process**: `src/mcp-inprocess.ts` runs in the PicoClaw process
   (not as a subprocess) using `createSdkMcpServer()` with `type: 'sdk'`. It directly
-  imports `db.ts` functions — no separate SQLite connection. The legacy stdio variant
-  (`src/mcp-server.ts`) is kept for backward compatibility and standalone testing.
+  imports `db.ts` functions — no separate SQLite connection. Set
+  `PICOCLAW_MCP_SERVER_PATH=dist/mcp-server.js` to fall back to stdio subprocess mode.
 - **Dual-DB sync**: Runtime operates on `/tmp/messages.db` (fast local). Every HTTP response
   triggers `syncDatabaseToVolume()` which does `wal_checkpoint(TRUNCATE)` + file copy to
   `STORE_DIR`. Never write directly to the volume path.

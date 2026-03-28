@@ -67,10 +67,11 @@ The built-in `picoclaw` MCP server now runs in-process using the SDK's `createSd
 with `type: 'sdk'` transport. This replaces the previous stdio subprocess model where each
 `query()` call spawned a `node dist/mcp-server.js` child process.
 
-**Why the change:** Performance profiling (two independent teams, March 2026) identified that
-the stdio MCP subprocess adds ~100ms to every request — subprocess spawn, SQLite connection
-setup, tool registration, and stdio transport handshake. In PicoClaw's request-driven model
-where `query()` is called per HTTP request, this overhead accumulates across conversations.
+**Why the change:** Performance profiling (two independent teams, March 2026) identified
+per-request CLI subprocess spawn as the primary bottleneck (~2s on SDK 0.2.74). While the
+SDK 0.2.86 upgrade itself reduced this to ~530ms, A/B testing confirmed the in-process
+MCP provides an additional ~40ms improvement (stdio 529ms → in-process 490ms sdkInit)
+and eliminates the separate SQLite connection overhead.
 
 **How it works:** `src/mcp-inprocess.ts` uses the SDK's `createSdkMcpServer()` + `tool()`
 helper to define the same 7 picoclaw tools. Instead of opening an independent SQLite

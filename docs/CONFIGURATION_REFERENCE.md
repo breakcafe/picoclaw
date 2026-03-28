@@ -49,7 +49,7 @@ Quick-reference for all configuration surfaces. For detailed explanations, see t
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `NODE_COMPILE_CACHE` | `/tmp/node-compile-cache` | V8 bytecode cache directory. Reduces CLI subprocess parse time by ~200-400ms (Node.js 22+). Set by `entrypoint.sh`; override to disable or relocate. |
+| `NODE_COMPILE_CACHE` | `/tmp/node-compile-cache` | V8 bytecode cache directory. Reduces CLI subprocess parse time by ~140ms once warm (Node.js 22+). Set by `entrypoint.sh`; override to disable or relocate. |
 
 ### MCP Subprocess (legacy stdio mode, not used by default)
 

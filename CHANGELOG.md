@@ -8,15 +8,16 @@ All notable changes to PicoClaw will be documented in this file.
 
 - **In-process MCP server**: The built-in `picoclaw` MCP server now runs in-process
   using the SDK's `createSdkMcpServer()` (`type: 'sdk'`) instead of spawning a stdio
-  subprocess on every request. Eliminates ~100ms of subprocess startup overhead per
-  `POST /chat` request. The stdio variant (`src/mcp-server.ts`) is retained for backward
-  compatibility and can be re-enabled via `PICOCLAW_MCP_SERVER_PATH`.
+  subprocess on every request. A/B testing on SDK 0.2.86 shows ~40ms improvement
+  per request (stdio 529ms → in-process 490ms sdkInit). The stdio variant
+  (`src/mcp-server.ts`) is retained for backward compatibility and can be re-enabled
+  via `PICOCLAW_MCP_SERVER_PATH`.
 
 ### Added
 
 - **V8 compile cache**: `NODE_COMPILE_CACHE` is set in `entrypoint.sh` and `Dockerfile`
   to cache bytecode for the 11.5 MB `cli.js` file, reducing per-request CLI subprocess
-  parse time by ~200-400ms (Node.js 22+).
+  parse time by ~140ms once warm (Node.js 22+).
 - **Host-side filesystem caching**: `loadOrgClaudeMd()` and `discoverAdditionalDirectories()`
   results are cached across requests and invalidated on `POST /admin/reload-skills`.
 - **Shared task utilities**: `src/task-utils.ts` extracts `computeNextRun()` and
