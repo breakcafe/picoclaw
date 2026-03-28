@@ -4,6 +4,15 @@ All notable changes to PicoClaw will be documented in this file.
 
 ## [1.2.20]
 
+### Changed
+
+- **SDK upgrade**: `@anthropic-ai/claude-agent-sdk` 0.2.74 → 0.2.86, `@modelcontextprotocol/sdk`
+  1.27.1 → 1.28.0. Agent SDK adds new hook events (`StopFailure`, `PostCompact`, `TaskCreated`,
+  `CwdChanged`, `FileChanged`), new query options (`taskBudget`), new message types
+  (`SDKAPIRetryMessage`), and new query methods (`getContextUsage()`, `seedReadState()`).
+  MCP SDK adds stricter input schema validation and OAuth fixes. No breaking changes for
+  PicoClaw — all existing code is backward compatible.
+
 ### Fixed
 
 - **MCP server loading conflict**: Claude Code CLI rejects `--mcp-config` when

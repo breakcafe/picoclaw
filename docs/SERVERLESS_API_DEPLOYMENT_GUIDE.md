@@ -264,8 +264,8 @@ These settings only affect automatic cleanup. Undelivered outbound messages are 
 
 | Package | Version | Notes |
 |---|---|---|
-| `@anthropic-ai/claude-agent-sdk` | `0.2.74` | Core agent runtime |
-| `@modelcontextprotocol/sdk` | `1.27.1` | MCP server framework |
+| `@anthropic-ai/claude-agent-sdk` | `0.2.86` | Core agent runtime |
+| `@modelcontextprotocol/sdk` | `1.28.0` | MCP server framework |
 
 Do not downgrade these packages. Upgrades should include compatibility regression testing.
 
