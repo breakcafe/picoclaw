@@ -44,14 +44,14 @@ Quick-reference for all configuration surfaces. For detailed explanations, see t
 |---|---|---|
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages |
 | `TASK_LOG_RETENTION` | `100` | Max run logs per task |
-| `CLEANUP_INTERVAL_S` | `60` | Min seconds between cleanup runs during DB sync. Set to `0` to run cleanup on every sync (pre-1.2.23 behavior). |
+| `CLEANUP_INTERVAL_SEC` | `60` | Min seconds between cleanup runs during DB sync. Set to `0` to run cleanup on every sync (pre-1.2.23 behavior). |
 
 ### Performance
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `NODE_COMPILE_CACHE` | `/tmp/node-compile-cache` | V8 bytecode cache directory. Reduces CLI subprocess parse time by ~140ms once warm (Node.js 22+). Set by `entrypoint.sh`; override to disable or relocate. |
-| `CLEANUP_INTERVAL_S` | `60` | Cleanup throttle interval. Cleanup deletes expired outbound messages and excess task run logs. Runs at most once per this interval during DB sync. `0` = every sync. |
+| `CLEANUP_INTERVAL_SEC` | `60` | Cleanup throttle interval. Cleanup deletes expired outbound messages and excess task run logs. Runs at most once per this interval during DB sync. `0` = every sync. |
 
 ### MCP Subprocess (legacy stdio mode, not used by default)
 
@@ -450,6 +450,6 @@ How each setting can be configured:
 | Storage paths | `MEMORY_DIR` / `STORE_DIR` | — | — |
 | Org directory | `ORG_DIR` | — | — |
 | Data cleanup | `OUTBOUND_TTL_DAYS` / `TASK_LOG_RETENTION` | — | — |
-| Cleanup throttle | `CLEANUP_INTERVAL_S` | — | — |
+| Cleanup throttle | `CLEANUP_INTERVAL_SEC` | — | — |
 | Model selection | **not exposed** | **not exposed** | — |
 | Agent teams | — | — | `.claude/settings.json` (auto) |

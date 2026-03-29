@@ -55,7 +55,7 @@ PicoClaw uses a **dual-path strategy**:
 3. After each HTTP response: `syncDatabaseToVolume()` checks a dirty flag — if no writes
    occurred since the last sync, the entire operation (WAL checkpoint + file copy) is skipped.
    When dirty, it runs `PRAGMA wal_checkpoint(TRUNCATE)` + file copy back to `/data/store/messages.db`.
-   Cleanup queries (`cleanupStaleData`) are throttled to run at most once per `CLEANUP_INTERVAL_S`
+   Cleanup queries (`cleanupStaleData`) are throttled to run at most once per `CLEANUP_INTERVAL_SEC`
    (default 60s) to avoid running DELETE queries on every request.
 4. On shutdown: forced final sync (`force=true`) regardless of dirty state.
 

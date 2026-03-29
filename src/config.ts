@@ -64,8 +64,8 @@ export const TASK_LOG_RETENTION = parseIntWithDefault(
  * Set to 0 to run cleanup on every sync (pre-optimization behavior).
  * Default: 60 seconds.
  */
-export const CLEANUP_INTERVAL_S = parseIntWithDefault(
-  process.env.CLEANUP_INTERVAL_S,
+export const CLEANUP_INTERVAL_SEC = parseIntWithDefault(
+  process.env.CLEANUP_INTERVAL_SEC,
   60,
 );
 

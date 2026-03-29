@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import {
-  CLEANUP_INTERVAL_S,
+  CLEANUP_INTERVAL_SEC,
   LOCAL_DB_PATH,
   OUTBOUND_TTL_DAYS,
   STORE_DIR,
@@ -43,7 +43,7 @@ function markDirty(): void {
   dbDirty = true;
 }
 
-// --- Throttled cleanup: run at most once per CLEANUP_INTERVAL_S ---
+// --- Throttled cleanup: run at most once per CLEANUP_INTERVAL_SEC ---
 let lastCleanupAt = 0;
 
 function createSchema(database: Database.Database): void {
@@ -225,7 +225,7 @@ export function syncDatabaseToVolume(force = false): void {
   const perf = createPerfTrace('dbSync');
 
   const now = Date.now();
-  const cleanupIntervalMs = CLEANUP_INTERVAL_S * 1000;
+  const cleanupIntervalMs = CLEANUP_INTERVAL_SEC * 1000;
   if (cleanupIntervalMs <= 0 || now - lastCleanupAt >= cleanupIntervalMs) {
     cleanupStaleData();
     lastCleanupAt = now;

@@ -309,7 +309,7 @@ Warning cases:
 | `SDK_LOG_LEVEL` | `off` | `off` or `debug` — pipes SDK stderr through pino at debug level |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |
 | `TASK_LOG_RETENTION` | `100` | Max task run logs kept per task (oldest pruned on sync) |
-| `CLEANUP_INTERVAL_S` | `60` | Min seconds between cleanup runs during DB sync. `0` = every sync. |
+| `CLEANUP_INTERVAL_SEC` | `60` | Min seconds between cleanup runs during DB sync. `0` = every sync. |
 
 ## Performance Debug Logging
 
@@ -342,7 +342,7 @@ Health probe (`GET /health`) logs are also at debug level to avoid log noise.
 - **Dual-DB sync with dirty tracking**: Runtime operates on `/tmp/messages.db` (fast local).
   `syncDatabaseToVolume()` is called after every HTTP response but **skips** WAL checkpoint
   and file copy when no writes occurred since the last sync (dirty flag). Cleanup queries
-  (`cleanupStaleData`) are throttled to run at most once per `CLEANUP_INTERVAL_S` (default
+  (`cleanupStaleData`) are throttled to run at most once per `CLEANUP_INTERVAL_SEC` (default
   60s). Shutdown path uses `force=true` to guarantee a final sync regardless of dirty state.
   Never write directly to the volume path.
 - **Pre-compact hook**: `agent-engine.ts` archives transcripts to

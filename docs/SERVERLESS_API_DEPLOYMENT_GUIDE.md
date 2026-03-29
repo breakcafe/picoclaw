@@ -238,7 +238,7 @@ SQLite is initialized with performance-tuned pragmas: `synchronous=NORMAL` (safe
 
 ### 3.4 Data Lifecycle & Automatic Cleanup
 
-PicoClaw automatically prunes stale data during database sync. Cleanup is throttled to run at most once per `CLEANUP_INTERVAL_S` (default 60 seconds) to avoid running expensive DELETE queries on every request. Two cleanup policies run inside `cleanupStaleData()`:
+PicoClaw automatically prunes stale data during database sync. Cleanup is throttled to run at most once per `CLEANUP_INTERVAL_SEC` (default 60 seconds) to avoid running expensive DELETE queries on every request. Two cleanup policies run inside `cleanupStaleData()`:
 
 | Policy | Env Var | Default | Behavior |
 |---|---|---|---|
@@ -306,7 +306,7 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | `PICOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable path (legacy `NANOCLAW_MCP_SERVER_PATH` accepted as fallback) |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before automatic cleanup |
 | `TASK_LOG_RETENTION` | `100` | Maximum task run log entries retained per task (oldest pruned) |
-| `CLEANUP_INTERVAL_S` | `60` | Min seconds between cleanup runs during DB sync. Set to `0` to run cleanup on every sync (pre-1.2.23 behavior). |
+| `CLEANUP_INTERVAL_SEC` | `60` | Min seconds between cleanup runs during DB sync. Set to `0` to run cleanup on every sync (pre-1.2.23 behavior). |
 
 ## 5. Authentication & Request Tracking
 

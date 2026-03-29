@@ -13,7 +13,7 @@ All notable changes to PicoClaw will be documented in this file.
   for typical serverless workloads. Shutdown path uses `force=true` to guarantee a final
   sync regardless of dirty state.
 - **Throttled cleanup**: `cleanupStaleData()` (expired outbound message deletion, task
-  run log pruning) is throttled to run at most once per `CLEANUP_INTERVAL_S` (default 60s)
+  run log pruning) is throttled to run at most once per `CLEANUP_INTERVAL_SEC` (default 60s)
   instead of on every sync. Set to `0` to restore per-sync behavior.
 - **SQLite pragma tuning**: `synchronous=NORMAL` (safe with WAL mode and dual-DB sync
   strategy), 8 MB page cache (`cache_size=-8000`), `temp_store=MEMORY`. Reduces fsync
@@ -24,7 +24,7 @@ All notable changes to PicoClaw will be documented in this file.
 
 ### Added
 
-- `CLEANUP_INTERVAL_S` environment variable (default `60`). Controls minimum interval
+- `CLEANUP_INTERVAL_SEC` environment variable (default `60`). Controls minimum interval
   between cleanup runs during database sync.
 
 ## [1.2.22]
