@@ -223,7 +223,7 @@ When the agent creates a skill during a chat session (writing to `.claude/skills
 | Same request | Not effective — CLI loaded skills at subprocess startup |
 | Next request (no reload) | Effective — CLI re-reads `.claude/skills/` |
 | After `POST /admin/reload-skills` | **Preserved** — the persist step copies non-managed skills to `/data/memory/skills/` before clearing |
-| After container restart | **Preserved** — entrypoint.sh runs the same persist-before-clear logic |
+| After container restart | **Preserved** — `syncSkills()` runs persist-before-clear at Node.js startup |
 
 If the agent writes a skill to `/data/memory/skills/` instead (the user skills source directory), it survives reloads naturally but requires a reload call before the next chat request can use it.
 

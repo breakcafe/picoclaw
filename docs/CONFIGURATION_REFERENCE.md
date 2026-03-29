@@ -106,8 +106,8 @@ Written to `.claude/settings.json` by `entrypoint.sh` at startup. Not user-confi
 |---|---|---|
 | `.claude/` | entrypoint.sh | SDK session state, symlinked to `~/.claude` |
 | `.claude/settings.json` | entrypoint.sh | SDK config (agent teams, CLAUDE.md discovery) |
-| `.claude/skills/` | entrypoint.sh | Effective skill set (three-tier sync destination) |
-| `skills/` | entrypoint.sh | User skills (persistent source, hot-reloadable) |
+| `.claude/skills/` | syncSkills() | Effective skill set (three-tier sync destination) |
+| `skills/` | syncSkills() | User skills (persistent source, hot-reloadable) |
 | `conversations/` | agent-engine.ts | Archived transcripts (on-demand, rare) |
 
 ### Ephemeral

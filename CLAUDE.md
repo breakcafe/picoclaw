@@ -83,23 +83,21 @@ src/types.ts          → shared interfaces (Conversation, ScheduledTask, etc.)
 
 ```
 entrypoint.sh
-  ├── mkdir MEMORY_DIR, /data/store
+  ├── mkdir MEMORY_DIR, /data/store, skill directories
   ├── symlink ~/.claude → $MEMORY_DIR/.claude
-  ├── write settings.json (if absent)
-  ├── persist runtime-created skills → $MEMORY_DIR/skills/
-  └── three-tier skill sync (bash level)
+  └── write settings.json (if absent)
 
 src/index.ts main()
   ├── ensureDataDirectories()
   ├── initDatabase()
   ├── ensureClaudeSettings()       ← write settings.json (if absent, redundant with entrypoint)
-  ├── syncSkills()                 ← three-tier skill sync (TS level, redundant but safe)
+  ├── syncSkills()                 ← three-tier skill sync (persist runtime skills, then merge)
   ├── loadManagedMcpServers()      ← read $ORG_DIR/managed-mcp.json into memory cache
   ├── Startup diagnostics log      ← paths, persona, MCP servers, model, SDK log level
   └── Express listen on PORT
 ```
 
-The two-pass skill sync (entrypoint.sh + index.ts) is intentionally redundant: entrypoint.sh handles the Docker path, index.ts handles the local Node.js path (`npm start`).
+Skill sync runs once at Node.js startup via `syncSkills()`. `entrypoint.sh` only creates directories; the Docker and local (`npm start`) paths both converge on the same TypeScript sync.
 
 ### Request lifecycle
 
