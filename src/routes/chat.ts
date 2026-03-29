@@ -27,13 +27,13 @@ import {
   createConversation,
   deleteConversation,
   ensureConversation,
+  finalizeConversation,
   getAllConversations,
   getConversation,
   getConversationMessages,
   getPromptMessages,
   setConversationStatus,
   storeConversationMessage,
-  updateConversationSession,
 } from '../db.js';
 import { logger } from '../logger.js';
 import { formatMessages, formatOutbound } from '../router.js';
@@ -309,24 +309,23 @@ export function chatRoutes(agentEngine: AgentRunner): Router {
       );
 
       let assistantMessageId: string | null = null;
-      if (finalResult) {
-        assistantMessageId = `msg-${randomUUID()}`;
-        storeConversationMessage({
-          id: assistantMessageId,
-          conversationId,
-          role: 'assistant',
-          sender: 'assistant',
-          senderName: ASSISTANT_NAME,
-          content: finalResult,
-        });
-      }
+      const assistantMsg = finalResult
+        ? {
+            id: (assistantMessageId = `msg-${randomUUID()}`),
+            conversationId,
+            role: 'assistant' as const,
+            sender: 'assistant',
+            senderName: ASSISTANT_NAME,
+            content: finalResult,
+          }
+        : null;
 
-      updateConversationSession(
+      finalizeConversation(
         conversationId,
+        assistantMsg,
         output.newSessionId,
         output.lastAssistantUuid,
       );
-      setConversationStatus(conversationId, 'idle');
 
       const outboundMessages = consumeOutboundMessages(conversationId);
       const hasSessionEndMarker =
