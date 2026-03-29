@@ -44,12 +44,14 @@ Quick-reference for all configuration surfaces. For detailed explanations, see t
 |---|---|---|
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages |
 | `TASK_LOG_RETENTION` | `100` | Max run logs per task |
+| `CLEANUP_INTERVAL_S` | `60` | Min seconds between cleanup runs during DB sync. Set to `0` to run cleanup on every sync (pre-1.2.23 behavior). |
 
 ### Performance
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `NODE_COMPILE_CACHE` | `/tmp/node-compile-cache` | V8 bytecode cache directory. Reduces CLI subprocess parse time by ~140ms once warm (Node.js 22+). Set by `entrypoint.sh`; override to disable or relocate. |
+| `CLEANUP_INTERVAL_S` | `60` | Cleanup throttle interval. Cleanup deletes expired outbound messages and excess task run logs. Runs at most once per this interval during DB sync. `0` = every sync. |
 
 ### MCP Subprocess (legacy stdio mode, not used by default)
 
@@ -97,7 +99,7 @@ Written to `.claude/settings.json` by `entrypoint.sh` at startup. Not user-confi
 | Mount Point | Env Var | R/W | Purpose |
 |---|---|---|---|
 | `/data/memory` | `MEMORY_DIR` | RW | Agent workspace, persona, `.claude/` SDK state, user skills |
-| `/data/store` | `STORE_DIR` | RW | Persistent SQLite database — stores conversations, messages, scheduled tasks, and task run logs. Runtime operates on `/tmp/messages.db` for fast local I/O; `wal_checkpoint(TRUNCATE)` + file copy syncs to this volume after every HTTP response and on shutdown. |
+| `/data/store` | `STORE_DIR` | RW | Persistent SQLite database — stores conversations, messages, scheduled tasks, and task run logs. Runtime operates on `/tmp/messages.db` for fast local I/O; `wal_checkpoint(TRUNCATE)` + file copy syncs to this volume after mutating HTTP responses (dirty-flag tracking skips read-only requests). Shutdown always forces a final sync. |
 | `/data/org` | `ORG_DIR` | RO | Org persona, skills, managed-mcp.json (optional) |
 
 ### Auto-created inside MEMORY_DIR
@@ -448,5 +450,6 @@ How each setting can be configured:
 | Storage paths | `MEMORY_DIR` / `STORE_DIR` | — | — |
 | Org directory | `ORG_DIR` | — | — |
 | Data cleanup | `OUTBOUND_TTL_DAYS` / `TASK_LOG_RETENTION` | — | — |
+| Cleanup throttle | `CLEANUP_INTERVAL_S` | — | — |
 | Model selection | **not exposed** | **not exposed** | — |
 | Agent teams | — | — | `.claude/settings.json` (auto) |

@@ -73,7 +73,7 @@ src/agent-engine.ts   → Claude Agent SDK query() wrapper, hooks, timeout via A
 src/mcp-inprocess.ts  → In-process MCP server (type: 'sdk') — built-in picoclaw tools, no subprocess
 src/mcp-server.ts     → Stdio MCP server (legacy) — same tools, runs as standalone subprocess
 src/task-utils.ts     → Shared task scheduling utilities (computeNextRun, validateTaskOwnership)
-src/db.ts             → SQLite schema, CRUD operations, dual-path sync
+src/db.ts             → SQLite schema, CRUD operations, dual-path sync with dirty tracking
 src/skills.ts         → skill directory sync + .claude/settings.json bootstrap
 src/config.ts         → all env var defaults
 src/types.ts          → shared interfaces (Conversation, ScheduledTask, etc.)
@@ -110,7 +110,7 @@ Skill sync runs once at Node.js startup via `syncSkills()`. `entrypoint.sh` only
 7. `query()` yields `system/init` (session_id, tools, mcp_servers), `assistant` (uuid), `result` messages
 8. Route stores `session_id` + `last_assistant_uuid` for next resume
 9. Conversation lock released in `finally` block
-10. `syncDatabaseToVolume()` runs after response completes
+10. `syncDatabaseToVolume()` runs after response completes (skipped when no writes occurred)
 
 ### Database schema (5 tables in `src/db.ts`)
 
@@ -309,6 +309,7 @@ Warning cases:
 | `SDK_LOG_LEVEL` | `off` | `off` or `debug` — pipes SDK stderr through pino at debug level |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before cleanup |
 | `TASK_LOG_RETENTION` | `100` | Max task run logs kept per task (oldest pruned on sync) |
+| `CLEANUP_INTERVAL_S` | `60` | Min seconds between cleanup runs during DB sync. `0` = every sync. |
 
 ## Performance Debug Logging
 
@@ -338,9 +339,12 @@ Health probe (`GET /health`) logs are also at debug level to avoid log noise.
   (not as a subprocess) using `createSdkMcpServer()` with `type: 'sdk'`. It directly
   imports `db.ts` functions — no separate SQLite connection. Set
   `PICOCLAW_MCP_SERVER_PATH=dist/mcp-server.js` to fall back to stdio subprocess mode.
-- **Dual-DB sync**: Runtime operates on `/tmp/messages.db` (fast local). Every HTTP response
-  triggers `syncDatabaseToVolume()` which does `wal_checkpoint(TRUNCATE)` + file copy to
-  `STORE_DIR`. Never write directly to the volume path.
+- **Dual-DB sync with dirty tracking**: Runtime operates on `/tmp/messages.db` (fast local).
+  `syncDatabaseToVolume()` is called after every HTTP response but **skips** WAL checkpoint
+  and file copy when no writes occurred since the last sync (dirty flag). Cleanup queries
+  (`cleanupStaleData`) are throttled to run at most once per `CLEANUP_INTERVAL_S` (default
+  60s). Shutdown path uses `force=true` to guarantee a final sync regardless of dirty state.
+  Never write directly to the volume path.
 - **Pre-compact hook**: `agent-engine.ts` archives transcripts to
   `/data/memory/conversations/` when Claude compacts context. This rarely triggers in
   PicoClaw's request-driven model — only when a single `query()` execution approaches the
