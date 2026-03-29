@@ -4,7 +4,7 @@
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org/)
 [![sdk](https://img.shields.io/badge/claude--agent--sdk-0.2.86-purple)](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk)
-<a href="repo-tokens"><img src="repo-tokens/badge.svg" alt="43.8k tokens · 22% of context window" valign="middle"></a>
+[![tokens](repo-tokens/badge.svg)](repo-tokens)
 
 Serverless-first Claude Agent runtime. Request-driven HTTP API with persistent memory, multi-turn conversations, and scheduled tasks.
 
