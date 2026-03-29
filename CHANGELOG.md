@@ -2,6 +2,14 @@
 
 All notable changes to PicoClaw will be documented in this file.
 
+## [1.2.22]
+
+### Changed
+
+- **Single-layer skill sync**: Removed duplicate skill sync from `entrypoint.sh` (~45 lines).
+  Skill sync (three-tier merge + runtime skill persist) now runs once at Node.js startup
+  via `syncSkills()`. Halves startup I/O operations; saves 1–5s on NAS/OSS mounts.
+
 ## [1.2.21]
 
 ### Changed
@@ -238,7 +246,7 @@ All notable changes to PicoClaw will be documented in this file.
 - `picoclaw.sh` one-click launcher: env setup, build, Docker run, smoke test
 - `POST /control/stop` graceful shutdown API with data sync
 - Configurable `LOCAL_DB_PATH` for flexible deployment
-- `entrypoint.sh` for Docker: session symlink, settings bootstrap, skill sync
+- `entrypoint.sh` for Docker: session symlink, settings bootstrap, directory setup
 
 ## [1.2.8] — 2026-03-07
 
