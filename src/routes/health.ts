@@ -42,6 +42,7 @@ export function healthRoutes(): Router {
 
     res.json({
       status: allHealthy ? 'ok' : 'degraded',
+      engine: 'picoclaw',
       version: APP_VERSION,
       commit: BUILD_COMMIT,
       build_time: BUILD_TIME,
