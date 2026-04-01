@@ -2,6 +2,31 @@
 
 All notable changes to PicoClaw will be documented in this file.
 
+## [1.2.23]
+
+### Changed
+
+- **Dirty-flag DB sync**: `syncDatabaseToVolume()` now tracks a dirty flag and skips
+  WAL checkpoint + file copy when no writes occurred since the last sync. Read-only
+  requests (health probes, `GET /chat`, `GET /tasks`, `POST /task/check` with no due
+  tasks) no longer trigger sync I/O. Benchmarked at 95-99% reduction in sync operations
+  for typical serverless workloads. Shutdown path uses `force=true` to guarantee a final
+  sync regardless of dirty state.
+- **Throttled cleanup**: `cleanupStaleData()` (expired outbound message deletion, task
+  run log pruning) is throttled to run at most once per `CLEANUP_INTERVAL_SEC` (default 60s)
+  instead of on every sync. Set to `0` to restore per-sync behavior.
+- **SQLite pragma tuning**: `synchronous=NORMAL` (safe with WAL mode and dual-DB sync
+  strategy), 8 MB page cache (`cache_size=-8000`), `temp_store=MEMORY`. Reduces fsync
+  overhead and keeps more pages in memory.
+- **Batched post-agent writes**: New `finalizeConversation()` in `db.ts` combines
+  assistant message INSERT + session metadata UPDATE + conversation status reset into a
+  single transaction (was 3 separate DB calls per chat response).
+
+### Added
+
+- `CLEANUP_INTERVAL_SEC` environment variable (default `60`). Controls minimum interval
+  between cleanup runs during database sync.
+
 ## [1.2.22]
 
 ### Changed

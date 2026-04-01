@@ -251,9 +251,10 @@ describe('http server', () => {
     expect(response.headers['x-build-commit']).toBeDefined();
   });
 
-  it('includes commit and build_time in health response', async () => {
+  it('includes engine, commit and build_time in health response', async () => {
     const response = await request(app).get('/health');
     expect(response.status).toBe(200);
+    expect(response.body.engine).toBe('picoclaw');
     expect(response.body).toHaveProperty('commit');
     expect(response.body).toHaveProperty('build_time');
   });

@@ -11,7 +11,9 @@ import {
   consumeOutboundMessages,
   createConversation,
   deleteConversation,
+  finalizeConversation,
   getConversation,
+  getConversationMessages,
   getDatabase,
   initDatabase,
   logTaskRun,
@@ -203,6 +205,75 @@ describe('db', () => {
       )
       .get('task-logs') as { result: string };
     expect(oldest.result).toBe('log-10');
+  });
+
+  it('finalizeConversation batches message + session + status in one transaction', () => {
+    const paths = createTempPaths();
+    initDatabase({
+      persistentDbPath: paths.persistentPath,
+      localDbPath: paths.localPath,
+      forceReinitialize: true,
+    });
+
+    createConversation('conv-fin');
+
+    finalizeConversation(
+      'conv-fin',
+      {
+        id: 'msg-fin-1',
+        conversationId: 'conv-fin',
+        role: 'assistant',
+        sender: 'assistant',
+        senderName: 'Pico',
+        content: 'Hello from finalize',
+      },
+      'sess-123',
+      'uuid-456',
+    );
+
+    const conv = getConversation('conv-fin');
+    expect(conv).toBeDefined();
+    expect(conv!.status).toBe('idle');
+    expect(conv!.session_id).toBe('sess-123');
+    expect(conv!.last_assistant_uuid).toBe('uuid-456');
+    expect(conv!.message_count).toBe(1);
+
+    const msgs = getConversationMessages('conv-fin');
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].content).toBe('Hello from finalize');
+  });
+
+  it('skips sync when no writes occurred (dirty flag)', () => {
+    const paths = createTempPaths();
+    initDatabase({
+      persistentDbPath: paths.persistentPath,
+      localDbPath: paths.localPath,
+      forceReinitialize: true,
+    });
+
+    // Force an initial sync to create the persistent file
+    createConversation('conv-dirty');
+    syncDatabaseToVolume();
+    expect(fs.existsSync(paths.persistentPath)).toBe(true);
+
+    // Record mtime after first sync
+    const stat1 = fs.statSync(paths.persistentPath);
+
+    // Call sync again without any writes — should be skipped (dirty=false)
+    syncDatabaseToVolume();
+    const stat2 = fs.statSync(paths.persistentPath);
+    expect(stat2.mtimeMs).toBe(stat1.mtimeMs);
+
+    // Now do a write and sync — file should be updated
+    storeConversationMessage({
+      id: 'msg-dirty',
+      conversationId: 'conv-dirty',
+      role: 'user',
+      content: 'trigger dirty',
+    });
+    syncDatabaseToVolume();
+    const stat3 = fs.statSync(paths.persistentPath);
+    expect(stat3.mtimeMs).toBeGreaterThanOrEqual(stat2.mtimeMs);
   });
 
   it('deletes a conversation and cascades to related data', () => {

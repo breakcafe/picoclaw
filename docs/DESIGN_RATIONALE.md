@@ -52,10 +52,19 @@ PicoClaw uses a **dual-path strategy**:
 
 1. On startup, copy `/data/store/messages.db` → `/tmp/messages.db`.
 2. All runtime reads/writes operate on `/tmp/messages.db` (fast local I/O).
-3. After each HTTP response: `PRAGMA wal_checkpoint(TRUNCATE)` + file copy back to `/data/store/messages.db`.
-4. On shutdown: final sync before process exit.
+3. After each HTTP response: `syncDatabaseToVolume()` checks a dirty flag — if no writes
+   occurred since the last sync, the entire operation (WAL checkpoint + file copy) is skipped.
+   When dirty, it runs `PRAGMA wal_checkpoint(TRUNCATE)` + file copy back to `/data/store/messages.db`.
+   Cleanup queries (`cleanupStaleData`) are throttled to run at most once per `CLEANUP_INTERVAL_SEC`
+   (default 60s) to avoid running DELETE queries on every request.
+4. On shutdown: forced final sync (`force=true`) regardless of dirty state.
 
-This gives SQLite its preferred environment (local filesystem with proper locking) while ensuring durability through explicit sync points. The worst-case data loss window is a single in-flight request if the container is forcefully killed.
+This gives SQLite its preferred environment (local filesystem with proper locking) while
+ensuring durability through explicit sync points. The dirty-flag optimization eliminates
+sync overhead for read-only requests (health probes, GET endpoints, `/task/check` with
+no due tasks) — which typically represent 90%+ of requests in serverless deployments.
+The worst-case data loss window is a single in-flight request if the container is
+forcefully killed (SIGKILL).
 
 ### Why `wal_checkpoint(TRUNCATE)`
 

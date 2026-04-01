@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import {
+  CLEANUP_INTERVAL_SEC,
   LOCAL_DB_PATH,
   OUTBOUND_TTL_DAYS,
   STORE_DIR,
@@ -34,6 +35,16 @@ let dbPaths: DatabasePaths = {
   persistentDbPath: path.join(STORE_DIR, 'messages.db'),
   localDbPath: LOCAL_DB_PATH,
 };
+
+// --- Dirty tracking: skip sync when no writes occurred ---
+let dbDirty = false;
+
+function markDirty(): void {
+  dbDirty = true;
+}
+
+// --- Throttled cleanup: run at most once per CLEANUP_INTERVAL_SEC ---
+let lastCleanupAt = 0;
 
 function createSchema(database: Database.Database): void {
   database.exec(`
@@ -164,7 +175,13 @@ export function initDatabase(options: DatabaseInitOptions = {}): void {
   db.pragma('foreign_keys = ON');
   db.pragma('journal_mode = WAL');
   db.pragma('busy_timeout = 5000');
+  // Performance pragmas — safe with WAL mode + dual-DB sync strategy
+  db.pragma('synchronous = NORMAL');
+  db.pragma('cache_size = -8000'); // 8 MB page cache
+  db.pragma('temp_store = MEMORY');
   createSchema(db);
+  dbDirty = false;
+  lastCleanupAt = 0;
 }
 
 export function cleanupStaleData(): void {
@@ -201,12 +218,21 @@ export function cleanupStaleData(): void {
   }
 }
 
-export function syncDatabaseToVolume(): void {
+export function syncDatabaseToVolume(force = false): void {
   if (!db) return;
+  if (!force && !dbDirty) return;
+
   const perf = createPerfTrace('dbSync');
 
-  cleanupStaleData();
-  perf.mark('cleanupStaleData');
+  const now = Date.now();
+  const cleanupIntervalMs = CLEANUP_INTERVAL_SEC * 1000;
+  if (cleanupIntervalMs <= 0 || now - lastCleanupAt >= cleanupIntervalMs) {
+    cleanupStaleData();
+    lastCleanupAt = now;
+    perf.mark('cleanupStaleData');
+  } else {
+    perf.mark('cleanupSkipped');
+  }
 
   db.pragma('wal_checkpoint(TRUNCATE)');
   perf.mark('walCheckpoint');
@@ -215,6 +241,7 @@ export function syncDatabaseToVolume(): void {
   fs.copyFileSync(dbPaths.localDbPath, dbPaths.persistentDbPath);
   perf.mark('fileCopy');
 
+  dbDirty = false;
   perf.flush('[PERF:DB] sync to volume complete');
 }
 
@@ -251,6 +278,8 @@ export function _resetDatabaseForTests(): void {
     persistentDbPath: path.join(STORE_DIR, 'messages.db'),
     localDbPath: LOCAL_DB_PATH,
   };
+  dbDirty = false;
+  lastCleanupAt = 0;
 }
 
 function mapConversation(row: {
@@ -276,6 +305,7 @@ function mapConversation(row: {
 export function createConversation(conversationId: string): Conversation {
   const now = getNowIso();
   const database = getDbOrThrow();
+  markDirty();
   database
     .prepare(
       `
@@ -370,6 +400,7 @@ export function deleteConversation(conversationId: string): boolean {
   if (!conversation) {
     return false;
   }
+  markDirty();
   // CASCADE deletes messages, outbound_messages, and scheduled_tasks (+ task_run_logs)
   getDbOrThrow()
     .prepare('DELETE FROM conversations WHERE id = ?')
@@ -381,6 +412,7 @@ export function setConversationStatus(
   conversationId: string,
   status: 'idle' | 'running',
 ): void {
+  markDirty();
   const now = getNowIso();
   getDbOrThrow()
     .prepare(
@@ -398,6 +430,7 @@ export function updateConversationSession(
   sessionId?: string,
   lastAssistantUuid?: string,
 ): void {
+  markDirty();
   const now = getNowIso();
   getDbOrThrow()
     .prepare(
@@ -426,6 +459,7 @@ interface StoreMessageInput {
 export function storeConversationMessage(
   input: StoreMessageInput,
 ): ConversationMessage {
+  markDirty();
   const createdAt = input.createdAt || getNowIso();
 
   withTransaction((database) => {
@@ -508,6 +542,7 @@ export function queueOutboundMessage(
   text: string,
   sender?: string,
 ): void {
+  markDirty();
   getDbOrThrow()
     .prepare(
       `
@@ -521,6 +556,7 @@ export function queueOutboundMessage(
 export function consumeOutboundMessages(
   conversationId: string,
 ): OutboundMessage[] {
+  markDirty();
   return withTransaction((database) => {
     const rows = database
       .prepare(
@@ -549,9 +585,63 @@ export function consumeOutboundMessages(
   });
 }
 
+/**
+ * Batched post-agent DB update: stores the assistant message, updates session
+ * metadata, and sets the conversation back to idle — all in a single transaction.
+ */
+export function finalizeConversation(
+  conversationId: string,
+  assistantMessage: StoreMessageInput | null,
+  sessionId?: string,
+  lastAssistantUuid?: string,
+): void {
+  markDirty();
+  const now = getNowIso();
+
+  withTransaction((database) => {
+    if (assistantMessage) {
+      const createdAt = assistantMessage.createdAt || now;
+      database
+        .prepare(
+          `INSERT INTO messages (id, conversation_id, role, sender, sender_name, content, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          assistantMessage.id,
+          assistantMessage.conversationId,
+          assistantMessage.role,
+          assistantMessage.sender || null,
+          assistantMessage.senderName || null,
+          assistantMessage.content,
+          createdAt,
+        );
+
+      database
+        .prepare(
+          `UPDATE conversations
+           SET message_count = message_count + 1, last_activity = ?, status = 'idle'
+           WHERE id = ?`,
+        )
+        .run(createdAt, conversationId);
+    }
+
+    database
+      .prepare(
+        `UPDATE conversations
+         SET session_id = COALESCE(?, session_id),
+             last_assistant_uuid = COALESCE(?, last_assistant_uuid),
+             last_activity = ?,
+             status = 'idle'
+         WHERE id = ?`,
+      )
+      .run(sessionId ?? null, lastAssistantUuid ?? null, now, conversationId);
+  });
+}
+
 export function createTask(
   task: Omit<ScheduledTask, 'last_run' | 'last_result'>,
 ): void {
+  markDirty();
   getDbOrThrow()
     .prepare(
       `
@@ -659,6 +749,7 @@ export function updateTask(
     return;
   }
 
+  markDirty();
   values.push(taskId);
   getDbOrThrow()
     .prepare(`UPDATE scheduled_tasks SET ${fields.join(', ')} WHERE id = ?`)
@@ -671,6 +762,7 @@ export function updateTaskAfterRun(
   lastResult: string,
   status: 'active' | 'completed' = 'active',
 ): void {
+  markDirty();
   const nextStatus = nextRun === null ? 'completed' : status;
   getDbOrThrow()
     .prepare(
@@ -688,6 +780,7 @@ export function updateTaskAfterRun(
 }
 
 export function deleteTask(taskId: string): void {
+  markDirty();
   withTransaction((database) => {
     database.prepare('DELETE FROM task_run_logs WHERE task_id = ?').run(taskId);
     database.prepare('DELETE FROM scheduled_tasks WHERE id = ?').run(taskId);
@@ -695,6 +788,7 @@ export function deleteTask(taskId: string): void {
 }
 
 export function logTaskRun(log: TaskRunLog): void {
+  markDirty();
   getDbOrThrow()
     .prepare(
       `

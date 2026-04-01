@@ -58,6 +58,17 @@ export const TASK_LOG_RETENTION = parseIntWithDefault(
   100,
 );
 
+/**
+ * Minimum interval (seconds) between cleanup runs during DB sync.
+ * Cleanup removes expired outbound messages and excess task run logs.
+ * Set to 0 to run cleanup on every sync (pre-optimization behavior).
+ * Default: 60 seconds.
+ */
+export const CLEANUP_INTERVAL_SEC = parseIntWithDefault(
+  process.env.CLEANUP_INTERVAL_SEC,
+  60,
+);
+
 export const CLAUDE_MODEL = process.env.CLAUDE_MODEL || undefined;
 export const CLAUDE_FALLBACK_MODEL =
   process.env.CLAUDE_FALLBACK_MODEL || undefined;

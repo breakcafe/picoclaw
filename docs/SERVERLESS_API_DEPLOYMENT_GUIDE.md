@@ -74,7 +74,7 @@ Persistent volumes (must be mounted on durable storage for cross-request state):
 |---|---|---|
 | `/data/memory` | `MEMORY_DIR` | CLAUDE.md persona, conversation archives, working directory, `.claude/` SDK session state |
 | `/data/org` | `ORG_DIR` | Org CLAUDE.md, managed-mcp.json, org skills (optional, read-only) |
-| `/data/store` | `STORE_DIR` | Persistent SQLite database — stores conversations, messages, scheduled tasks, and task run logs. Runtime operates on `/tmp/messages.db`; synced here via `wal_checkpoint(TRUNCATE)` + file copy after every HTTP response and on shutdown. |
+| `/data/store` | `STORE_DIR` | Persistent SQLite database — stores conversations, messages, scheduled tasks, and task run logs. Runtime operates on `/tmp/messages.db`; synced here via `wal_checkpoint(TRUNCATE)` + file copy after mutating HTTP responses (dirty-flag tracking skips read-only requests). Shutdown always forces a final sync. |
 
 Derived / ephemeral paths (not mounted separately):
 
@@ -229,14 +229,16 @@ Key rules:
 The dual-database strategy optimizes for both performance and durability:
 
 - **Runtime**: all reads/writes go to `/tmp/messages.db` (local filesystem, fast I/O).
-- **After each HTTP response**: `wal_checkpoint(TRUNCATE)` flushes WAL, then file copy to `/data/store/messages.db`.
-- **On shutdown** (`SIGTERM`, `SIGINT`, or `POST /control/stop`): final sync before process exit.
+- **After each mutating HTTP response**: `wal_checkpoint(TRUNCATE)` flushes WAL, then file copy to `/data/store/messages.db`. A dirty flag tracks whether any writes occurred — read-only requests (health probes, `GET /chat`, `GET /tasks`, `POST /task/check` with no due tasks) skip the sync entirely.
+- **On shutdown** (`SIGTERM`, `SIGINT`, or `POST /control/stop`): forced final sync regardless of dirty state.
 
 This avoids SQLite-on-NFS corruption risks while ensuring data survives container recycling.
 
+SQLite is initialized with performance-tuned pragmas: `synchronous=NORMAL` (safe with WAL mode), 8 MB page cache, and `temp_store=MEMORY`.
+
 ### 3.4 Data Lifecycle & Automatic Cleanup
 
-PicoClaw automatically prunes stale data during each database sync (after every HTTP response and on shutdown). Two cleanup policies run inside `cleanupStaleData()`:
+PicoClaw automatically prunes stale data during database sync. Cleanup is throttled to run at most once per `CLEANUP_INTERVAL_SEC` (default 60 seconds) to avoid running expensive DELETE queries on every request. Two cleanup policies run inside `cleanupStaleData()`:
 
 | Policy | Env Var | Default | Behavior |
 |---|---|---|---|
@@ -304,6 +306,7 @@ Do not downgrade these packages. Upgrades should include compatibility regressio
 | `PICOCLAW_MCP_SERVER_PATH` | `dist/mcp-server.js` | Custom MCP server executable path (legacy `NANOCLAW_MCP_SERVER_PATH` accepted as fallback) |
 | `OUTBOUND_TTL_DAYS` | `7` | Days to keep delivered outbound messages before automatic cleanup |
 | `TASK_LOG_RETENTION` | `100` | Maximum task run log entries retained per task (oldest pruned) |
+| `CLEANUP_INTERVAL_SEC` | `60` | Min seconds between cleanup runs during DB sync. Set to `0` to run cleanup on every sync (pre-1.2.23 behavior). |
 
 ## 5. Authentication & Request Tracking
 

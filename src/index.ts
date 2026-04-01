@@ -109,7 +109,7 @@ async function main(): Promise<void> {
     isShuttingDown = true;
     logger.info({ signal }, 'Shutdown signal received');
     try {
-      syncDatabaseToVolume();
+      syncDatabaseToVolume(true);
       closeDatabase();
     } catch (err) {
       logger.error({ err }, 'Failed to sync database on shutdown');
